@@ -1,7 +1,7 @@
 # Compiled Object files
 *.slo
 *.lo
-*.o
+**/*.o
 *.obj
 
 # Compiled Dynamic libraries
@@ -19,7 +19,7 @@
 *.exe
 *.out
 *.app
-*.elf
+**/*.elf
 
 # Other things
 *.sym

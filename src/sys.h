@@ -29,3 +29,5 @@ extern int pow(int,int);
 #define wait_for_interrupt() asm volatile("hlt" : : : "memory");
 #define disable_interrupts() asm volatile("cli" : : : "memory");
 #define enable_interrupts()  asm volatile("sti" : : : "memory");
+
+// #define DEBUG

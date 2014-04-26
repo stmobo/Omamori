@@ -148,6 +148,7 @@ void kfree(char* ptr) {
 // memblock_inspect - print linked list overview
 // This function traverses the list and prints debugging info (struct data members) to console.
 void memblock_inspect() {
+#ifdef DEBUG
     char hex[8];
     k_heap_blk* blk = heap.start;
     while((blk != NULL)) { // Don't compress the first or last block in the heap.
@@ -167,4 +168,5 @@ void memblock_inspect() {
             terminal_writestring("\nBlock marked as \'free\'.\n");
         blk = blk->next;
     }
+#endif
 }

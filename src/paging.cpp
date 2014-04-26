@@ -159,6 +159,7 @@ void initialize_pageframes(multiboot_info_t* mb_info) {
     }
     mem_avail_kb = mem_avail_bytes / 1024;
     num_pages = mem_avail_kb / 4;
+#ifdef DEBUG
     terminal_writestring(int_to_decimal(n_mem_ranges));
     terminal_writestring(" pageframe ranges detected.\n");
     int_to_hex(mem_avail_kb, hex);
@@ -168,17 +169,20 @@ void initialize_pageframes(multiboot_info_t* mb_info) {
     int_to_hex(num_pages, hex);
     terminal_writestring(hex, 8);
     terminal_writestring(" 4kb pages.\n");
+#endif
     // now allocate space for the buddy maps.
     buddy_maps = (size_t**)kmalloc((BUDDY_MAX_ORDER+1)*sizeof(size_t*));
     for(int i=0;i<=BUDDY_MAX_ORDER;i++) {
         int block_size = 1024*pow(2, i+2);
         int num_blocks = mem_avail_bytes / block_size;
         int num_blk_entries = num_blocks / 8;
+#ifdef DEBUG
         terminal_writestring("Allocating space for ");
         terminal_writestring(int_to_decimal(num_blocks));
         terminal_writestring(" order ");
         terminal_writestring(int_to_decimal(i));
         terminal_writestring(" blocks.\n");
+#endif
         buddy_maps[i] = (size_t*)kmalloc(num_blk_entries);
         n_blocks[i] = num_blocks;
     }
@@ -198,8 +202,10 @@ void recursive_mark_allocated(int c1_index, int c2_index, signed int order, bool
 page_frame* pageframe_allocate(int n_frames) {
     // find out the order of the allocated frame
     int order = 0;
+#ifdef DEBUG
     char hex[9];
     hex[8] = '\0';
+#endif
     if(n_frames > 1) {
         for(int i=0;i<BUDDY_MAX_ORDER;i++) {
             if( ( (1<<i) <= n_frames) && ((1<<(i+1)) > n_frames)  ) {
@@ -207,10 +213,12 @@ page_frame* pageframe_allocate(int n_frames) {
             }
         }
     }
+#ifdef DEBUG
     terminal_writestring("Allocating pageframes. \nAllocating order 0x");
     int_to_hex(order, hex);
     terminal_writestring(hex);
     terminal_writestring(" block.");
+#endif
     // now allocate a block.
     
     // (i = <order>)
@@ -246,6 +254,7 @@ page_frame* pageframe_allocate(int n_frames) {
             terminal_writestring(hex);
             terminal_writestring(".\n");
             */
+#ifdef DEBUG
             terminal_writestring("Memory addresses: 0x");
             int_to_hex( get_block_addr((1<<order), 0 ), hex );
             terminal_writestring(hex);
@@ -253,6 +262,7 @@ page_frame* pageframe_allocate(int n_frames) {
             int_to_hex( get_block_addr( (1<<(order+1))-1, 0 ), hex );
             terminal_writestring(hex);
             terminal_writestring(".\n");
+#endif
             
             for(int j=i*(1<<order);j<((i+1)*(1<<(order)))-1;j++) { // for all j from 2^order to (2^(order+1))-1...
                 frames[j].id = j;

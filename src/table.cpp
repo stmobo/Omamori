@@ -97,12 +97,14 @@ void write_idt(uint8_t* dest, uint16_t index, idt_entry entry) {
 
 void write_gdt(uint8_t* dest, uint8_t index, gdt_entry entry) {
     uint8_t* offset_index = (uint8_t*)(dest+(index*8));
+#ifdef DEBUG
     char hex[9];
     hex[8] = '\0';
     terminal_writestring("writing to GDT, offset= 0x");
     int_to_hex((size_t)offset_index, hex);
     terminal_writestring(hex);
     terminal_putchar('\n');
+#endif
     encode_gdt_entry(offset_index, entry);
 }
 
@@ -123,12 +125,14 @@ void sync_idt() {
 // Both functions then flush their struct arrays to memory (see sync_*dt(), above) and then call their
 // assembly loading functions (load<IDT/GDT>()) which execute the requisite "lidt" and "lgdt" instructions.
 void gdt_init() {
+#ifdef DEBUG
     char hex[8];
     terminal_writestring("Loading global descriptor table.\n");
     terminal_writestring("\ngdt= *(0x");
     int_to_hex((size_t)gdt, hex);
     terminal_writestring(hex);
     terminal_writestring(")\n");
+#endif
     
     // GDT null descriptor
     gdt_structs[0].base = 0;
@@ -155,21 +159,24 @@ void gdt_init() {
     loadGDT((size_t)8*NUM_ENTRIES_GDT-1, (size_t)gdt);
     
     uint32_t gdt_base = getGDT_base();
-    
+#ifdef DEBUG
     terminal_writestring("GDT is now located at 0x");
     int_to_hex(gdt_base, hex);
     terminal_writestring(hex, 8);
     terminal_writestring("\nNow reloading segment registers.\n");
+#endif
     reload_seg_registers();
 }
 
 void idt_init() {
     char hex[8];
+#ifdef DEBUG
     terminal_writestring("Loading interrupt descriptor table.\n");
     terminal_writestring("\nidt= *(0x");
     int_to_hex((size_t)idt, hex);
     terminal_writestring(hex);
     terminal_writestring(")\n");
+#endif
     
     add_idt_trap_entry(_isr_div_zero, 0)
     add_idt_trap_entry(_isr_debug, 1)
@@ -218,11 +225,13 @@ void idt_init() {
     
     loadIDT((size_t)0x800-1, (size_t)idt);
     
+#ifdef DEBUG
     uint32_t idt_base = getIDT_base();
     terminal_writestring("\nIDT is now located at 0x");
     int_to_hex(idt_base, hex);
     terminal_writestring(hex, 8);
     terminal_putchar('\n');
+#endif
 }
 
 // add_*dt_entry - Add a descriptor to the struct array

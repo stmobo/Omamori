@@ -216,5 +216,7 @@ void flush_serial_buffer(void* n) {
     while(output_length > 0) {
         wait_for_interrupt();
     }
+#ifdef DEBUG
     terminal_writestring("Serial buffers flushed.\n");
+#endif
 }

@@ -96,6 +96,16 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     terminal_writestring("Initializing PS/2 keyboards.\n");
     ps2_keyboard_initialize();
     
+    terminal_writestring("Press ENTER to continue...\n");
+    while(true) {
+        ps2_keypress *kp = ps2_keyboard_get_keystroke();
+        if(kp->is_ascii && !kp->released) {
+            terminal_putchar(kp->key);
+        } else if(kp->key == KEY_Enter) {
+            break;
+        }
+    }
+    
     terminal_writestring("Setup complete, halting!\n");
     unsigned long long int last_ticked = 0;
     //timer t(1000, true, true, NULL);

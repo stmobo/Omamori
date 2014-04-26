@@ -22,13 +22,13 @@ size_t strlen(char* str)
 // These functions convert from an integral type to a string.
 // The caller is responsible for ensuring that *ret has enough space for the returned string!
 char* byte_to_hex(char n, char *ret) {
-    ret[0] = hex_alpha[ (n & 0x0F) ];
-    ret[1] = hex_alpha[ (n >> 8) ];
+    ret[0] = hex_alpha[ (n >> 4) & 0xF ];
+    ret[1] = hex_alpha[ (n & 0x0F) ];
     return ret;
 }
 
 char* short_to_hex(short n, char *ret) {
-    ret[0] = hex_alpha[ ((n & 0xF000) >> 12) & 0xF ];
+    ret[0] = hex_alpha[ (n >> 12) & 0xF ];
     ret[1] = hex_alpha[ (n & 0x0F00) >> 8 ];
     ret[2] = hex_alpha[ (n & 0x00F0) >> 4 ];
     ret[3] = hex_alpha[ (n & 0x000F) ];
@@ -36,7 +36,7 @@ char* short_to_hex(short n, char *ret) {
 }
 
 char* int_to_hex(int n, char *ret) {
-    ret[0] = hex_alpha[ ((n & 0xF0000000) >> 28) & 0xF ];
+    ret[0] = hex_alpha[ (n >> 28) & 0xF ];
     ret[1] = hex_alpha[ (n & 0x0F000000) >> 24 ];
     ret[2] = hex_alpha[ (n & 0x00F00000) >> 20 ];
     ret[3] = hex_alpha[ (n & 0x000F0000) >> 16 ];

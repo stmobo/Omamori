@@ -59,14 +59,22 @@ ps2_keypress* ps2_keyboard_read_keystroke_from_buffer() {
 void ps2_keyboard_initialize() {
     uint16_t port1_ident = ps2_get_ident_bytes(false);
     uint16_t port2_ident = ps2_get_ident_bytes(true);
-    if(port1_ident == 0xAB83 || port1_ident == 0xAB41 || port1_ident == 0xABC1) {
+    //if(port1_ident != 0xFFFF) {
         terminal_writestring("Initializing port 1 keyboard.\n");
         ps2_send_byte(0xF0, false); // 0xF0 - Set scancode set
+        ps2_wait_for_input();
+        ps2_send_byte(0x02, false); // sub-command for the above
+        ps2_wait_for_input();
         ps2_send_byte(0xF4, false); // 0xF4 - Enable scanning
-    }
-    if(port2_ident == 0xAB83 || port2_ident == 0xAB41 || port2_ident == 0xABC1) {
+        ps2_wait_for_input();
+    //}
+    //if(port2_ident != 0xFFFF) {
         terminal_writestring("Initializing port 2 keyboard.\n");
         ps2_send_byte(0xF0, true); // 0xF0 - Set scancode set
+        ps2_wait_for_input();
+        ps2_send_byte(0x02, true); // sub-command for the above
+        ps2_wait_for_input();
         ps2_send_byte(0xF4, true); // 0xF4 - Enable scanning
-    }
+        ps2_wait_for_input();
+    //}
 }

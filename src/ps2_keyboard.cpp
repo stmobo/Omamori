@@ -1,8 +1,10 @@
 // ps2_keyboard.cpp - ps2 keyboard driver
 #include "includes.h"
+#include "ps2_controller.h"
 #include "ps2_keyboard.h"
 #include "pic.h"
 #include "irq.h"
+#include "vga.h"
 
 bool shift_stat, alt_stat, ctrl_stat;
 char current_state;
@@ -36,7 +38,7 @@ ps2_keypress* convert_scancode(bool f0, bool e0, char code_end) {
     return kp;
 }
 
-ps2_keypress* read_keystroke_from_buffer() {
+ps2_keypress* ps2_keyboard_read_keystroke_from_buffer() {
     if(keystroke_buffer_offset == 0)
         return NULL;
     
@@ -52,4 +54,19 @@ ps2_keypress* read_keystroke_from_buffer() {
     // enable interrupts here
     
     return ks;
+}
+
+void ps2_keyboard_initialize() {
+    uint16_t port1_ident = ps2_get_ident_bytes(false);
+    uint16_t port2_ident = ps2_get_ident_bytes(true);
+    if(port1_ident == 0xAB83 || port1_ident == 0xAB41 || port1_ident == 0xABC1) {
+        terminal_writestring("Initializing port 1 keyboard.\n");
+        ps2_send_byte(0xF0, false); // 0xF0 - Set scancode set
+        ps2_send_byte(0xF4, false); // 0xF4 - Enable scanning
+    }
+    if(port2_ident == 0xAB83 || port2_ident == 0xAB41 || port2_ident == 0xABC1) {
+        terminal_writestring("Initializing port 2 keyboard.\n");
+        ps2_send_byte(0xF0, true); // 0xF0 - Set scancode set
+        ps2_send_byte(0xF4, true); // 0xF4 - Enable scanning
+    }
 }

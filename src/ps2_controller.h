@@ -46,4 +46,4 @@ extern bool ps2_send_byte(unsigned char, bool);
 extern bool ps2_send_command(unsigned char);
 extern unsigned char ps2_receive_byte(bool);
 extern void ps2_set_interrupt_status(bool);
-extern short ps2_get_ident_bytes(bool);
+extern uint16_t ps2_get_ident_bytes(bool);

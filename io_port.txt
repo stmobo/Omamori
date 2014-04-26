@@ -1,4 +1,0 @@
-Serial port 1 active.
-Testing serial port behavior.
-Testing serial port behavior again
-Testing serial port behavior yet again

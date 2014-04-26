@@ -10,6 +10,7 @@
 #include "irq.h"
 #include "serial.h"
 #include "ps2_controller.h"
+#include "ps2_keyboard.h"
 
 bool a = true;
 
@@ -64,10 +65,12 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     
     terminal_writestring("Initializing serial interface.\n");
     initialize_serial(COM1_BASE_PORT, 3);
+    /*
     serial_print_basic("Serial port 1 active.\n");
     serial_write("Testing serial port behavior.\n");
     serial_write("Testing serial port behavior again\n");
     serial_write("Testing serial port behavior yet again\n");
+    */
     
     test = int_to_decimal(test2);
     terminal_writestring("Test:");
@@ -90,6 +93,9 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     
     terminal_writestring("Initializing PS/2 controller.\n");
     ps2_controller_init();
+    
+    //terminal_writestring("Initializing PS/2 keyboards.\n");
+    //ps2_keyboard_initialize();
     
     terminal_writestring("Setup complete, halting!\n");
     unsigned long long int last_ticked = 0;

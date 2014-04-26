@@ -16,9 +16,6 @@
 #define KB_STATE_RETRY_2                    0x04
 #define KB_STATE_RETRY_3                    0x05
 
-//ascii sequence, starts at 20h:
-const char* ascii_sequence = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
-
 // scancodes:
 #define KEY_F1               0xA0
 #define KEY_F2               0xA1
@@ -140,3 +137,6 @@ struct ps2_keypress {
     bool released;
     char key;
 };
+
+extern void ps2_keyboard_initialize(void);
+extern ps2_keypress* ps2_keyboard_read_keystroke_from_buffer(void);

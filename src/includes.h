@@ -1,3 +1,4 @@
+// Where we're going, we don't _need_ a standard library!
 #pragma once
 #if !defined(__cplusplus)
 #include <stdbool.h>

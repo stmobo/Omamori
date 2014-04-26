@@ -35,6 +35,19 @@ void test_func3() {
     terminal_writestring("Tick.\n");
 }
 
+bool strcmp(char* s1, char* s2) {
+    int i = 0;
+    while(true) {
+        if(s1[i] != s2[i])
+            return false;
+        if(s1[i] == 0)
+            return true;
+        if(s2[i] == 0)
+            return true;
+        i++;
+    }
+}
+
 #if defined(__cplusplus)
 extern "C"
 #endif
@@ -93,17 +106,22 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     terminal_writestring("Initializing PS/2 controller.\n");
     ps2_controller_init();
     
-    terminal_writestring("Initializing PS/2 keyboards.\n");
+    terminal_writestring("Initializing PS/2 keyboard.\n");
     ps2_keyboard_initialize();
     
     terminal_writestring("Press ENTER to continue...\n");
+    terminal_putchar('>');
     while(true) {
-        ps2_keypress *kp = ps2_keyboard_get_keystroke();
-        if(kp->is_ascii && !kp->released) {
-            terminal_putchar(kp->key);
-        } else if(kp->key == KEY_Enter) {
+        int len;
+        char *line = ps2_keyboard_readline(&len);
+        terminal_writestring(line, len);
+        if(strcmp(line, "exit")) {
+            terminal_putchar('\n');
+            kfree(line);
             break;
         }
+        kfree(line);
+        terminal_writestring("\n>");
     }
     
     terminal_writestring("Setup complete, halting!\n");

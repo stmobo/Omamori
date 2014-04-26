@@ -15,6 +15,51 @@ char current_state;
 ps2_keypress* keystroke_buffer[256];
 int keystroke_buffer_offset = 0;
 
+char shift_char(char in) {
+    switch(in) {
+        case '1':
+            return '!';
+        case '2':
+            return '@';
+        case '3':
+            return '#';
+        case '4':
+            return '$';
+        case '5':
+            return '%';
+        case '6':
+            return '^';
+        case '7':
+            return '&';
+        case '8':
+            return '*';
+        case '9':
+            return '(';
+        case '0':
+            return ')';
+        case '`':
+            return '~';
+        case '\'':
+            return '"';
+        case '-':
+            return '_';
+        case '=':
+            return '+';
+        case ';':
+            return ':';
+        case ',':
+            return '<';
+        case '.':
+            return '>';
+        case '/':
+            return '?';
+        case ' ':
+            return ' ';
+        default:
+            return in & ~(1<<5);
+    }
+}
+
 ps2_keypress* convert_scancode(bool f0, bool e0, unsigned char code_end) {
     unsigned char keycode = 0;
     ps2_keypress* kp = new ps2_keypress;
@@ -61,6 +106,10 @@ ps2_keypress* convert_scancode(bool f0, bool e0, unsigned char code_end) {
     else
         kp->is_ascii = false;
     kp->key = keycode;
+    if(shift_stat)
+        kp->character = shift_char(keycode);
+    else
+        kp->character = keycode;
     kp->shift = shift_stat;
     kp->ctrl = ctrl_stat;
     kp->alt = alt_stat;
@@ -98,4 +147,41 @@ void ps2_keyboard_initialize() {
         ps2_send_byte(0xF4, false); // 0xF4 - Enable scanning
         ps2_wait_for_input();
     //}
+}
+
+char* ps2_keyboard_readline(int *len) {
+    char* buf = kmalloc(HEAP_BLK_SIZE);
+    int bytes_recv = 0;
+    int buf_sz = HEAP_BLK_SIZE;
+    while(true) {
+        ps2_keypress *kp = ps2_keyboard_get_keystroke();
+        if(!kp->released) {
+            if(kp->key == KEY_Enter) {
+                terminal_putchar('\n');
+                break;
+            } else if(kp->key == KEY_Bksp && bytes_recv > 0) {
+                bytes_recv--;
+                if(--terminal_column > VGA_WIDTH) {
+                    if(--terminal_row > VGA_HEIGHT) {
+                        terminal_scroll(-1);
+                        terminal_row = 0;
+                    }
+                }
+                terminal_putentryat(' ', terminal_color, terminal_column, terminal_row);
+            } else if(kp->is_ascii) {
+                buf[bytes_recv] = kp->character;
+                terminal_putchar(kp->character);
+                if(bytes_recv > buf_sz) {
+                    buf_sz += HEAP_BLK_SIZE;
+                    char *buf2 = kmalloc(buf_sz);
+                    for(int i=0;i<bytes_recv;i++)
+                        buf2[i] = buf[i];
+                    buf = buf2;
+                }
+                bytes_recv++;
+            }
+        }
+    }
+    *len = bytes_recv;
+    return buf;
 }

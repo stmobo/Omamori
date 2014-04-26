@@ -2,6 +2,7 @@
 OPTIONS="-ffreestanding -O2 -g -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-conversion-null -Wno-write-strings -Wno-narrowing -fno-exceptions -fno-rtti -std=c++11"
 OBJ_DIR="./obj"
 SRC_DIR="./src"
+export PATH="$HOME/opt/cross/bin:$PATH"
 
 echo "Cleaning old files."
 rm obj/*

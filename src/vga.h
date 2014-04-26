@@ -1,6 +1,9 @@
 #pragma once
 #include "includes.h"
  
+extern const size_t VGA_WIDTH;
+extern const size_t VGA_HEIGHT;
+ 
 extern size_t terminal_row;
 extern size_t terminal_column;
 extern uint8_t terminal_color;

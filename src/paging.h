@@ -35,8 +35,10 @@ typedef struct pageframe {
 } page_frame;
 
 extern void initialize_pageframes(multiboot_info_t*);
-extern bool get_block_status(int,int);
-extern void set_block_status(int,int,bool);
+extern bool pageframe_get_block_status(int,int);
+extern void pageframe_set_block_status(int,int,bool);
 extern size_t get_block_addr(int,int);
+extern int pageframe_get_block_from_addr(size_t);
 extern page_frame* pageframe_allocate(int);
+extern page_frame* pageframe_allocate_specific(int,int);
 extern void pageframe_deallocate(page_frame*, int);

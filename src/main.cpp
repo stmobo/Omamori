@@ -66,14 +66,16 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     initialize_pageframes(mb_info);
     //system_halt;
     int_to_hex((size_t)&kernel_end, hex);
-    terminal_writestring("Kernel ends at: 0x");
+    terminal_writestring("Kernel ends at address 0x");
     terminal_writestring(hex, 8);
+    terminal_writestring(", corresponding to pageframe ID ");
+    terminal_writestring( int_to_decimal( pageframe_get_block_from_addr( (size_t)&kernel_end ) ) );
     
     terminal_writestring("\nInitializing PICs.\n");
     pic_initialize(PIC_IRQ_OFFSET_1, PIC_IRQ_OFFSET_2);
     set_all_irq_status(true);
     
-    terminal_writestring("\nInitializing PIT.\n");
+    terminal_writestring("Initializing PIT.\n");
     pit_initialize(PIT_DEFAULT_FREQ_DIVISOR);
     
     terminal_writestring("Initializing serial interface.\n");
@@ -91,15 +93,8 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     atexit(&flush_serial_buffer, NULL);
     
     //block_for_interrupt(1);
-    terminal_writestring("Allocating 13 4k frames (52k memory).\n");
-    framez = pageframe_allocate(13);
-    pageframe_deallocate(framez, 13);
-    framez2 = pageframe_allocate(65);
-    pageframe_deallocate(framez2, 65);
-    framez = pageframe_allocate(13);
-    pageframe_deallocate(framez, 13);
     unsigned long long int sys_time = get_sys_time_counter();
-    terminal_writestring("Time since system startup:");
+    terminal_writestring("\nTime since system startup:");
     terminal_writestring(int_to_decimal(sys_time));
     terminal_writestring(" ms.\n");
     
@@ -108,6 +103,15 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     
     terminal_writestring("Initializing PS/2 keyboard.\n");
     ps2_keyboard_initialize();
+    
+    terminal_writestring("Allocating 160 4k frames (636k memory).\n");
+    framez = pageframe_allocate(160);
+    terminal_writestring("Allocating 35 4k frames (140k memory).\n");
+    framez2 = pageframe_allocate(35);
+    pageframe_deallocate(framez2, 35);
+    pageframe_deallocate(framez, 160);
+    framez = pageframe_allocate(13);
+    pageframe_deallocate(framez, 13);
     
     terminal_writestring("Press ENTER to continue...\n");
     terminal_putchar('>');

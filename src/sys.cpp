@@ -55,6 +55,7 @@ char* int_to_decimal(int n) {
         char* mem = kmalloc(2);
         mem[0] = '0';
         mem[1] = '\0';
+        return mem;
     }
     while(n2 > 0) {
         d++;

@@ -12,6 +12,8 @@
 #include "vga.h"
 #include "vector.h"
 
+#include "ps2_keyboard.h"
+
 /*
 My test system says:
 Avail: 
@@ -25,6 +27,9 @@ In addition, what GRUB doesn't tell us is that memory from 0x0 to 0x500 is used 
 and may be overwritten if we return to Real Mode for whatever reason.
 (it's the RealMode IVT and the BIOS Data Area). We could theoretically overwrite it
 but that's probably going to break stuff.
+
+There are also a few other spots we need to keep marked as "always in memory".
+One is the region from 0x10000 to kernel_end -- this is kernel code.
 */
 
 uint32_t pagedir[1024];
@@ -50,7 +55,6 @@ size_t get_block_addr(int blk_num, int order) {
     terminal_writestring(hex);
     terminal_writestring(".\n");
     */
-    int range_n = 0;
     for(int i=0;i<n_mem_ranges;i++) {
         /*
         terminal_writestring("Examining memory range ");
@@ -61,9 +65,10 @@ size_t get_block_addr(int blk_num, int order) {
         terminal_writestring(int_to_decimal(memory_ranges[i].page_index_end));
         terminal_writestring(".\n");
         */
-        if( (memory_ranges[i].page_index_start <= zero_order_blk) && (zero_order_blk < memory_ranges[i].page_index_end) ) {
+        if( (memory_ranges[i].page_index_start <= zero_order_blk) && (zero_order_blk < memory_ranges[i].page_index_end) )
+        {
             int intrarange_offset = zero_order_blk - memory_ranges[i].page_index_start;
-            int byte_offset = intrarange_offset*4096;
+            size_t byte_offset = intrarange_offset*4096;
             return memory_ranges[i].base+byte_offset;
         }
     }
@@ -143,15 +148,13 @@ void initialize_pageframes(multiboot_info_t* mb_info) {
                 memory_ranges[i].end = end;
                 memory_ranges[i].page_index_start = n_pageframes;
                 memory_ranges[i].page_index_end = n_pageframes + (length / 4096);
-                /*
                 terminal_writestring("Page index ranges: ");
                 terminal_writestring(int_to_decimal(memory_ranges[i].page_index_start));
                 terminal_writestring(" to ");
                 terminal_writestring(int_to_decimal(memory_ranges[i].page_index_end));
                 terminal_writestring(".\n");
-                */
                 memory_ranges[i].n_pageframes = length / 4096;
-                n_pageframes += (length / 4096)+1;
+                n_pageframes += (length / 4096);
                 i++;
             }
             mmap = (memory_map_t*)( (unsigned int)mmap + mmap->size + sizeof(unsigned int) );
@@ -263,12 +266,13 @@ page_frame* pageframe_allocate(int n_frames) {
             terminal_writestring(hex);
             terminal_writestring(".\n");
 #endif
-            
+            int k=0;
             for(int j=i*(1<<order);j<((i+1)*(1<<(order)))-1;j++) { // for all j from 2^order to (2^(order+1))-1...
-                frames[j].id = j;
-                frames[j].id_allocated_as = i;
-                frames[j].order_allocated_as = order;
-                frames[j].address = get_block_addr(j, 0);
+                frames[k].id = j;
+                frames[k].id_allocated_as = i;
+                frames[k].order_allocated_as = order;
+                frames[k].address = get_block_addr(j, 0);
+                k++;
             }
             break;
         }

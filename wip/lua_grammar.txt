@@ -25,41 +25,26 @@ namelist = identifier {comma identifier}
 explist = exp {comma exp}
 
 exp =  value_nil | value_false | value_true | numeric_literal | string_literal | `...´ | function | prefixexp | tableconstructor | exp binop exp | unop exp
-exp =  prefixexp | value_nil | value_false | value_true | numeric_literal | string_literal | `...´ | function | tableconstructor | exp binop exp | unop exp
-exp =  prefixexp | exp binop exp | unop exp | value_nil | value_false | value_true | numeric_literal | string_literal | `...´ | function | tableconstructor |
-exp =  (var | functioncall | open_paren exp close_paren) | exp binop exp | unop exp | value_nil | value_false | value_true | numeric_literal | string_literal | `...´ | function | tableconstructor
-exp =  var | functioncall | open_paren exp close_paren | exp binop exp | unop exp | value_nil | value_false | value_true | numeric_literal | string_literal | `...´ | function | tableconstructor
-exp =  open_paren exp close_paren | exp binop exp | unop exp | var | functioncall | value_nil | value_false | value_true | numeric_literal | string_literal | `...´ | function | tableconstructor
-exp =  var | functioncall | value_nil | value_false | value_true | numeric_literal | string_literal | `...´ | function | tableconstructor | open_paren exp close_paren | exp binop exp | unop exp 
 
-// the two rules below match thinks like
-// ident[(a+5)]
-// flfafafa().derp
-// adqa8x.wheeee
-     
-prefixexp = var | functioncall | open_paren exp close_paren
+prefixexp = identifier | open_paren exp close_paren
+
+//primaryexp = prefixexp rest
+primaryexp = prefixexp { period identifier | colon identifier args | args }
+//primaryexp = prefixexp { period identifier | [colon identifier] args }
+
+//rest = <empty> | period identifier rest | colon identifier args rest | args rest
+//rest = [period identifier rest | colon identifier args rest | args rest]
+
+assignment_or_call = primaryexp [comma | oper_assignment]
+
+// rest1 = empty | comma | equals
+// rest1 = [comma | equals]
+
+//prefixexp = var | functioncall | open_paren exp close_paren
 
 var =  identifier | prefixexp open_squarebracket exp close_squarebracket | prefixexp period identifier 
-var =  identifier | prefixexp (open_squarebracket exp close_squarebracket | period identifier )
-var =  identifier | (var | functioncall | open_paren exp close_paren) (open_squarebracket exp close_squarebracket | period identifier )
-
-var = identifier
-      | var (open_squarebracket exp close_squarebracket | period identifier )
-      | functioncall (open_squarebracket exp close_squarebracket | period identifier )
-      | open_paren exp close_paren (open_squarebracket exp close_squarebracket | period identifier )
-      
-var = identifier | (functioncall | open_paren exp close_paren) (open_squarebracket exp close_squarebracket | period identifier )
-      | var (open_squarebracket exp close_squarebracket | period identifier)
-  
-...var = identifier | var (open_squarebracket exp close_squarebracket | period identifier) | (functioncall | open_paren exp close_paren) (open_squarebracket exp close_squarebracket | period identifier )
-...var = identifier (open_squarebracket exp close_squarebracket | period identifier)* | (functioncall | open_paren exp close_paren) (open_squarebracket exp close_squarebracket | period identifier )*
-...var = (identifier | functioncall | open_paren exp close_paren) (open_squarebracket exp close_squarebracket | period identifier)*
 
 functioncall =  prefixexp args | prefixexp colon identifier args 
-functioncall =  (functioncall | var | open_paren exp close_paren) args | ( functioncall | var | open_paren exp close_paren) colon identifier args 
-functioncall =  (functioncall | var | open_paren exp close_paren) (args | colon identifier args)
-functioncall =  (var | open_paren exp close_paren | functioncall) (args | colon identifier args)
-functioncall = (var | open_paren exp close_paren)* (args | colon identifier args)
 
 args =  open_paren [explist] close_paren | tableconstructor | string_literal
 

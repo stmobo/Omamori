@@ -5,9 +5,7 @@
 #include <cassert>
 
 lex_token t = lex_token::nothing;
-lex_token t_lookahead = lex_token::nothing;
 char *t_str = NULL;
-char *lookahead_str = NULL;
 
 int recursion_depth = 0;
 
@@ -22,7 +20,10 @@ bool namelist(const char*, int*, int);
 bool explist(const char*, int*, int);
 bool exp(const char*, int*, int);
 bool prefixexp(const char*, int*, int);
+bool primaryexp(const char*, int*, int);
+bool rest(const char*, int*, int);
 bool functioncall(const char*, int*, int);
+bool assignment_or_call(const char*, int*, int);
 bool args(const char*, int*, int);
 bool function(const char*, int*, int);
 bool funcbody(const char*, int*, int);
@@ -62,15 +63,12 @@ void getsym(const char* str, int *pos, int len) {
         delete[] t_str;
     }
     
-    t = t_lookahead;
-    t_str = lookahead_str;
-    
-    lex_token t_candidate = lex_next(str, pos, len, &lookahead_str);
+    lex_token t_candidate = lex_next(str, pos, len, &t_str);
     while( t_candidate == lex_token::whitespace ) {
-        t_candidate = lex_next(str, pos, len, &lookahead_str);
+        t_candidate = lex_next(str, pos, len, &t_str);
         std::cout << "T-candidate @ " << *pos <<  ": " << token_to_str( t_candidate ) << std::endl;
     }
-    t_lookahead = t_candidate;
+    t = t_candidate;
 }
 
 bool chunk(const char* str, int *pos, int len) {
@@ -262,6 +260,11 @@ bool stat(const char* str, int *pos, int len) {
             std::cout << "Exiting STATEMENT." << std::endl;            
             return false;
         default:
+            if( assignment_or_call(str, pos, len) ) {
+                // stuff here
+                return true;
+            }
+            /*
             if( functioncall(str, pos, len) ) {
                 std::cout << "Exiting STATEMENT." << std::endl;
                 return true;
@@ -272,6 +275,7 @@ bool stat(const char* str, int *pos, int len) {
                     return explist(str, pos, len);
                 }
             }
+            */
             std::cout << "Exiting STATEMENT." << std::endl;
             return false;
     }
@@ -339,6 +343,8 @@ bool varlist(const char* str, int *pos, int len) {
     return false;
 }
 
+/*
+
 bool var(const char* str, int *pos, int len) {
     std::cout << "Entering VAR." << std::endl;
     if( t == lex_token::identifier || functioncall(str, pos, len) || t == lex_token::open_paren ) {
@@ -389,7 +395,7 @@ bool var(const char* str, int *pos, int len) {
     return false;
 }
 
-/*
+*/
 
 bool var(const char* str, int *pos, int len) {
     std::cout << "Entering VAR." << std::endl;
@@ -419,8 +425,6 @@ bool var(const char* str, int *pos, int len) {
     std::cout << "Exiting VAR." << std::endl;
     return false;
 }
-
-*/
 
 bool namelist(const char* str, int *pos, int len) {
     std::cout << "Entering NAMELIST." << std::endl;
@@ -486,6 +490,46 @@ bool exp(const char* str, int *pos, int len) {
     return false;
 }
 
+bool primaryexp(const char* str, int *pos, int len) {
+    std::cout << "Entering PRIMARYEXP." << std::endl;
+    if( prefixexp(str, pos, len) ) {
+        bool found_args = false;
+        while( t == lex_token::period || t == lex_token::colon || (found_args = args(str, pos, len))  ) {
+            if( !found_args ) {
+                getsym(str, pos, len);
+                // do stuff here
+            } else {
+                found_args = false;
+                // do stuff here
+            }
+        }
+        std::cout << "Exiting PRIMARYEXP." << std::endl;
+        return true;
+    }
+    std::cout << "Exiting PRIMARYEXP." << std::endl;
+    return false;
+}
+
+bool assignment_or_call(const char* str, int *pos, int len) {
+    std::cout << "Entering ASSIGNMENT-OR-CALL." << std::endl;
+    if( primaryexp(str, pos, len) ) {
+        if( t == lex_token::comma ) {
+            getsym(str, pos, len);
+            // multiple assignment
+        } else if(t == lex_token::oper_assignment) {
+            getsym(str, pos, len);
+            // single assignment;
+        } else {
+            // function call
+            ;
+        }
+        std::cout << "Exiting ASSIGNMENT-OR-CALL." << std::endl;
+        return true;
+    }
+    std::cout << "Exiting ASSIGNMENT-OR-CALL." << std::endl;
+    return false;
+}
+
 bool prefixexp(const char* str, int *pos, int len) {
     recursion_depth++;
     assert( recursion_depth < 10 );
@@ -493,9 +537,9 @@ bool prefixexp(const char* str, int *pos, int len) {
     if( var(str, pos, len) ) {
         std::cout << "Exiting PREFIXEXP." << std::endl;
         return true;
-    } else if( functioncall(str, pos, len) ) {
+    /*} else if( functioncall(str, pos, len) ) {
         std::cout << "Exiting PREFIXEXP." << std::endl;
-        return true;
+        return true; */
     } else if ( t == lex_token::open_paren ) {
         getsym(str, pos, len);
         if( exp(str, pos, len) ) {
@@ -510,14 +554,14 @@ bool prefixexp(const char* str, int *pos, int len) {
     return false;
 }
 
+/*
 bool functioncall(const char* str, int *pos, int len) {
     std::cout << "Entering FUNCTIONCALL." << std::endl;
     while(  )
     std::cout << "Exiting FUNCTIONCALL." << std::endl;
     return false;
 }
-
-/*
+*/
 
 bool functioncall(const char* str, int *pos, int len) {
     std::cout << "Entering FUNCTIONCALL." << std::endl;
@@ -537,8 +581,6 @@ bool functioncall(const char* str, int *pos, int len) {
     std::cout << "Exiting FUNCTIONCALL." << std::endl;
     return false;
 }
-
-*/
 
 bool args(const char* str, int *pos, int len) {
     std::cout << "Entering ARGS." << std::endl;
@@ -724,7 +766,7 @@ bool unop(const char* str, int *pos, int len) {
 
 //const char* test_str = "if (t >= -5) and (#z ~= 51515) then a = b.some_function(\"this is a string\", [[this is a string \"with quotes\" in it.]]) elseif t < 5 then f2 = f.another_function(52, 33) end";
 //const char* test_str = "if (a > 5) then a_func(ident) end";
-const char* test_str = "a = 5";
+const char* test_str = "if b == 10 then a = 5 end";
 
 int main() {
     std::string s(test_str);

@@ -58,6 +58,9 @@ enum struct lex_token : char {
     period,
     colon,
     ellipsis,
+    nothing,
 };
 
+extern const char* token_to_str( lex_token );
 extern lex_token lex_next(const char*, int*, int, char**);
+extern void lex(std::string str);

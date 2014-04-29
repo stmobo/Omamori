@@ -1,7 +1,6 @@
 // This isn't meant to go into the main repo. Not yet.
-#include <iostream>
-#include <cstring>
-#include <string>
+
+#include "lua_lexer.h"
 
 // Lexer rules:
 // An uninterrupted string of alphanumeric characters is a token.
@@ -14,8 +13,6 @@
 // Semicolons are equivalent to whitespace.
 // Brackets (of the curly and square variants) are also always tokens.
 // Quote marks (and double square brackets) make 1 token out of everything between them.
-
-#include "lua_lexer.h"
 
 const char* token_to_str( lex_token token ) {
     switch(token) {
@@ -121,8 +118,12 @@ const char* token_to_str( lex_token token ) {
             return "Error: unmatched quote";
         case lex_token::error_unrecognized_character:
             return "Error: unrecognized character";
+        case lex_token::nothing:
+            return "nothing";
+        case lex_token::whitespace:
+            return "whitespace";
         default:
-            return "";
+            return "Error: unknown token type";
     }
 }
 
@@ -392,6 +393,7 @@ lex_token lex_next(const char* str, int *pos, int len, char **state_data) {
         *pos += 1;
         return lex_token::whitespace;
     }
+    return lex_token::nothing; // we should not get here
 }
 
 void lex(std::string str) {
@@ -404,6 +406,8 @@ void lex(std::string str) {
         if(t != lex_token::whitespace) {
             if(t == lex_token::identifier || t == lex_token::numeric_literal || t == lex_token::string) {
                 std::cout << token_to_str(t) << " (" << std::string(returned_string) << ")" << std::endl;
+                delete[] returned_string;
+                *returned_string = NULL;
             } else {
                 std::cout << token_to_str(t) << std::endl;
             }

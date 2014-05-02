@@ -1,4 +1,4 @@
-// This isn't meant to go into the main repo. Not yet.
+// This isn't meant to go into the kernel. Not yet, anyways.
 
 #include "lua_lexer.h"
 

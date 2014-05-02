@@ -1,5 +1,7 @@
 // lua_lexer.h -- interface to the lua lexer
 
+// the below are just for convenience / debugging - the actual version as used in the kernel
+// can't and won't use any standard libraries.
 #include <iostream>
 #include <cstring>
 #include <string>

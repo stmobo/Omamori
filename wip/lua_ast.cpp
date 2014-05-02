@@ -124,5 +124,8 @@ struct ast_exp : ast_node {
     ast_binop op,
 };
 
-struct ast_funcbody : ast_node {
-}
+struct ast_func : ast_node {
+    ast_parameter parameters,
+    char* name,
+    ast_block body,
+};

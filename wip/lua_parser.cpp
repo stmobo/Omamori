@@ -39,29 +39,6 @@ bool climbing_prefix(const char*, int*, int, int);
 bool precedence_climbing(const char*, int*, int, int);
 int get_oper_precedence(lex_token);
 
-/*
-
-void lex(std::string str) {
-    ////std::cout << "Getting line length." << std::endl;
-    int len = str.length()+1; // length of printable characters + null terminator
-    int pos = 0;
-    char *returned_string = NULL;
-    while(pos < len) {
-        lex_token t = lex_next(str.c_str(), &pos, len, &returned_string);
-        if(t != lex_token::whitespace) {
-            if(t == lex_token::identifier || t == lex_token::numeric_literal || t == lex_token::string) {
-                //std::cout << token_to_str(t) << " (" << std::string(returned_string) << ")" << std::endl;
-                delete[] returned_string;
-                *returned_string = NULL;
-            } else {
-                //std::cout << token_to_str(t) << std::endl;
-            }
-        }
-    }
-}
-
-*/
-
 void getsym(const char* str, int *pos, int len) {
     if(t == lex_token::identifier || t == lex_token::numeric_literal || t == lex_token::string) {
         delete[] t_str;
@@ -422,60 +399,6 @@ bool varlist(const char* str, int *pos, int len) {
     return false;
 }
 
-/*
-
-bool var(const char* str, int *pos, int len) {
-    //std::cout << "Entering VAR." << std::endl;
-    if( t == lex_token::identifier || functioncall(str, pos, len) || t == lex_token::open_paren ) {
-        if( t == lex_token::open_paren ) {
-            getsym(str, pos, len);
-            if( exp(str, pos, len) ) {
-                if( t == lex_token::close_paren ) {
-                    getsym(str, pos, len);
-                } else {
-                    //std::cout << "Exiting VAR." << std::endl;
-                    return false;
-                }
-            } else {
-                //std::cout << "Exiting VAR." << std::endl;
-                return false;
-            }
-        } else if( t == lex_token::identifier ) {
-            getsym(str, pos, len);
-        }
-        while( t == lex_token::open_squarebracket || t == lex_token::period ) {
-            if( t == lex_token::open_squarebracket ) {
-                getsym(str, pos, len);
-                if( exp(str, pos, len) ) {
-                    if( t == lex_token::close_squarebracket ) {
-                        getsym(str, pos, len);
-                    } else {
-                        //std::cout << "Exiting VAR." << std::endl;
-                        return false;
-                    }
-                } else {
-                    //std::cout << "Exiting VAR." << std::endl;
-                    return false;
-                }
-            } else if (t == lex_token::period) {
-                getsym(str, pos, len);
-                if( t == lex_token::identifier ) {
-                    getsym(str, pos, len);
-                } else {
-                    //std::cout << "Exiting VAR." << std::endl;
-                    return false;
-                }
-            }
-        }
-        //std::cout << "Exiting VAR." << std::endl;
-        return true;
-    }
-    //std::cout << "Exiting VAR." << std::endl;
-    return false;
-}
-
-*/
-
 bool var(const char* str, int *pos, int len) {
     //std::cout << "Entering VAR." << std::endl;
     if( t == lex_token::identifier ) {
@@ -669,34 +592,6 @@ bool unop(const char* str, int *pos, int len) {
 bool exp(const char* str, int *pos, int len) {
     //std::cout << "Entering EXP." << std::endl;
     return precedence_climbing(str, pos, len, 0);
-    /*
-    if( t == lex_token::value_nil || t == lex_token::value_false || t == lex_token::value_true || t == lex_token::numeric_literal || t == lex_token::string || t == lex_token::ellipsis ) {
-        getsym(str, pos, len);
-        //std::cout << "Exiting EXP - found constant value / ellipsis" << std::endl;
-        return true;
-    } else if( function(str, pos, len) ) {
-        //std::cout << "Exiting EXP - found function definition" << std::endl;
-        return true;
-    } else if( prefixexp(str, pos, len) ) {
-        //std::cout << "Exiting EXP - found prefix-exp" << std::endl;
-        return true;
-    } else if( tableconstructor(str, pos, len) ) {
-        //std::cout << "Exiting EXP - found table" << std::endl;
-        return true;
-    } else if( exp(str, pos, len) ) {
-        if( binop(str, pos, len) ) {
-            if( exp(str, pos, len) ) {
-                //std::cout << "Exiting EXP - found binop" << std::endl;
-                return true;
-            }
-        }
-    } else if( unop(str, pos, len) ) {
-        //std::cout << "Exiting EXP - found unop" << std::endl;
-        return true;
-    }
-    //std::cout << "Exiting EXP." << std::endl;
-    return false;
-    */
 }
 
 bool primaryexp(const char* str, int *pos, int len) {

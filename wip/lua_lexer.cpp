@@ -175,6 +175,9 @@ lex_token lex_next(const char* str, int *pos, int len, char **state_data) {
         *pos += 1;
         return lex_token::whitespace;
     }
+    if(*pos >= len) {
+        return lex_token::nothing;
+    }
     //std::cout << "*pos=" << *pos << std::endl;
     //std::cout << "len=" << len << std::endl;
     //std::cout << "str[*pos]=" << str[*pos] << std::endl;
@@ -189,7 +192,9 @@ lex_token lex_next(const char* str, int *pos, int len, char **state_data) {
                 break;
             }
         }
-        //std::cout << "(str_len-*pos)=" << (str_len-*pos) << std::endl;
+        //std::cout << "alphanumeric: (str_len-*pos)=" << (str_len-*pos) << std::endl;
+        /*for(int i=*pos;i<len;i++)
+            std::cout << str[i];*/
         char *data = new char[(str_len-*pos)+1];
         data[(str_len-*pos)] = '\0';
         for(int i=*pos;i<str_len;i++) {
@@ -213,6 +218,7 @@ lex_token lex_next(const char* str, int *pos, int len, char **state_data) {
                             break;
                         }
                     }
+                    //std::cout << "hexadecimal (str_len-*pos)=" << (str_len-*pos) << std::endl;
                     *state_data = new char[(str_len-*pos)+1];
                     *state_data[(str_len-*pos)] = '\0';
                     for(int i=*pos;i<str_len;i++) {
@@ -233,6 +239,7 @@ lex_token lex_next(const char* str, int *pos, int len, char **state_data) {
                 }
             }
             //std::cout << "Allocating *state_data." << std::endl;
+            //std::cout << "decimal (str_len-*pos)=" << (str_len-*pos) << std::endl;
             char *data = new char[(str_len-*pos)+1];
             //std::cout << "Adding null terminator to index " << (str_len-*pos) << std::endl;
             data[(str_len-*pos)] = '\0';

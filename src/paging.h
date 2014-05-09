@@ -42,3 +42,4 @@ extern int pageframe_get_block_from_addr(size_t);
 extern page_frame* pageframe_allocate(int);
 extern page_frame* pageframe_allocate_specific(int,int);
 extern void pageframe_deallocate(page_frame*, int);
+extern void pageframe_restrict_range(size_t, size_t);

@@ -149,19 +149,9 @@ void kfree(char* ptr) {
 // This function traverses the list and prints debugging info (struct data members) to console.
 void memblock_inspect() {
 #ifdef DEBUG
-    char hex[8];
     k_heap_blk* blk = heap.start;
     while((blk != NULL)) { // Don't compress the first or last block in the heap.
-        int_to_hex((size_t)blk, hex);
-        terminal_writestring("Heap block located at 0x");
-        terminal_writestring(hex, 8);
-        terminal_writestring(":\n");
-        int_to_hex((size_t)blk->prev, hex);
-        terminal_writestring("blk->prev: 0x");
-        terminal_writestring(hex, 8);
-        terminal_writestring("\nblk->next: 0x");
-        int_to_hex((size_t)blk->next, hex);
-        terminal_writestring(hex, 8);
+        kprintf("Heap block located at 0x%x:\nblk->prev: 0x%x\nblk->next: 0x%x", (size_t)blk, (size_t)blk->prev, (size_t)blk->next);
         if(blk->used)
             terminal_writestring("\nBlock marked as \'used\'.\n");
         else

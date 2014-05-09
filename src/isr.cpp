@@ -19,35 +19,7 @@
 // 0 - Error code (again) (new ESP)
 
 void halt_err(size_t err, size_t eip, size_t cs, char* desc) {
-    char hex[10];
-    hex[8] = '\n';
-    hex[9] = '\0';
-    terminal_writestring(desc);
-    serial_write(desc);
-    
-    serial_write("\n    error code = ");
-    terminal_writestring("\n    error code = ");
-    
-    int_to_hex(err, hex);
-    
-    serial_write(hex);
-    terminal_writestring(hex);
-    
-    serial_write("    EIP = ");
-    terminal_writestring("    EIP = ");
-    
-    int_to_hex(eip, hex);
-    
-    serial_write(hex);
-    terminal_writestring(hex);
-    
-    serial_write("    CS = ");
-    terminal_writestring("    CS = ");
-    
-    int_to_hex(cs, hex);
-    
-    serial_write(hex);
-    terminal_writestring(hex);
+    kprintf("%n\nerror code=%u\nEIP=0x%x\nCS=0x%x", desc, err, eip, cs);
     while(true) {
         asm volatile("hlt\n\t" : : : "memory");
     }

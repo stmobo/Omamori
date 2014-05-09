@@ -5,79 +5,7 @@
 #include "vga.h"
 #include "dynmem.h"
 
-const char* hex_alpha = "0123456789ABCDEF";
-const char* dec_alpha = "0123456789";
-
 void *__stack_chk_guard = NULL;
-
-size_t strlen(char* str)
-{
-	size_t ret = 0;
-	while ( str[ret] != 0 )
-		ret++;
-	return ret;
-}
-
-// byte/short/int/ll_to_hex - convert from integer to fixed-width string
-// These functions convert from an integral type to a string.
-// The caller is responsible for ensuring that *ret has enough space for the returned string!
-char* byte_to_hex(char n, char *ret) {
-    ret[0] = hex_alpha[ (n >> 4) & 0xF ];
-    ret[1] = hex_alpha[ (n & 0x0F) ];
-    return ret;
-}
-
-char* short_to_hex(short n, char *ret) {
-    ret[0] = hex_alpha[ (n >> 12) & 0xF ];
-    ret[1] = hex_alpha[ (n & 0x0F00) >> 8 ];
-    ret[2] = hex_alpha[ (n & 0x00F0) >> 4 ];
-    ret[3] = hex_alpha[ (n & 0x000F) ];
-    return ret;
-}
-
-char* int_to_hex(int n, char *ret) {
-    ret[0] = hex_alpha[ (n >> 28) & 0xF ];
-    ret[1] = hex_alpha[ (n & 0x0F000000) >> 24 ];
-    ret[2] = hex_alpha[ (n & 0x00F00000) >> 20 ];
-    ret[3] = hex_alpha[ (n & 0x000F0000) >> 16 ];
-    ret[4] = hex_alpha[ (n & 0x0000F000) >> 12 ];
-    ret[5] = hex_alpha[ (n & 0x00000F00) >> 8 ];
-    ret[6] = hex_alpha[ (n & 0x000000F0) >> 4 ];
-    ret[7] = hex_alpha[ (n & 0x0000000F) ];
-    return ret;
-}
-
-// there is DEFINITELY a better way to do this.
-char* int_to_decimal(int n) {
-    int d = 0;
-    int n2 = n;
-    if(n == 0) {
-        char* mem = kmalloc(2);
-        mem[0] = '0';
-        mem[1] = '\0';
-        return mem;
-    }
-    while(n2 > 0) {
-        d++;
-        n2 /= 10;
-    }
-    n2 = n;
-    d++;
-    char* mem = kmalloc(d);
-    for(int i=1;i<d;i++) {
-        mem[d-(i+1)] = dec_alpha[(n2%10)];
-        n2 /= 10;
-    }
-    mem[d-1] = '\0';
-    return mem;
-}
-
-char* ll_to_hex(long long int n, char *ret) {
-    for(int i=0;i<16;i++) {
-        ret[(15-i)] = hex_alpha[(n>>(i*4))&0xF];
-    }
-    return ret;
-}
 
 void io_outb(short port, char data) {
     asm volatile("out %0, %1\n\t" : : "a"(data), "d"(port) );

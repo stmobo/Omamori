@@ -91,18 +91,9 @@ unsigned char ps2_receive_byte(bool port2) {
 }
 
 void irq1_handler() {
-#ifdef DEBUG
-    char hex[4];
-    hex[0] = '0';
-    hex[1] = '0';
-    hex[2] = '\n';
-    hex[3] = '\0';
-#endif
     unsigned char data = io_inb(0x60);
 #ifdef DEBUG
-    terminal_writestring("IRQ 1! Data=0x");
-    byte_to_hex(data, hex);
-    terminal_writestring(hex);
+    kprintf("IRQ 1! Data=0x%x\n", data);
 #endif
     port1_input_buffer[port1_buffer_length] = data;
     port1_buffer_length++;
@@ -111,18 +102,9 @@ void irq1_handler() {
 }
 
 void irq12_handler() {
-#ifdef DEBUG
-    char hex[4];
-    hex[0] = '0';
-    hex[1] = '0';
-    hex[2] = '\n';
-    hex[3] = '\0';
-#endif
     unsigned char data = io_inb(0x60);
 #ifdef DEBUG
-    terminal_writestring("IRQ 12! Data=0x");
-    byte_to_hex(data, hex);
-    terminal_writestring(hex);
+    kprintf("IRQ 12! Data=0x%x\n", data);
 #endif
     port2_input_buffer[port2_buffer_length] = data;
     port2_buffer_length++;
@@ -154,7 +136,7 @@ void ps2_controller_init() {
     if(ps2_wait_for_input() != 0x55)
         return; // maybe warn?
 #ifdef DEBUG
-    terminal_writestring("PS/2 controller self-test passed.\n");
+    kprintf("PS/2 controller self-test passed.\n");
 #endif    
 
     // Get PS2 port self-test statuses
@@ -162,19 +144,13 @@ void ps2_controller_init() {
         ps2_send_command(PS2_CMD_TEST_PORT1);
         unsigned char test_result = ps2_wait_for_input();
         if(test_result != PS2_RESP_SUCCESS) {
-            char hex[4];
-            hex[2] = '\n';
-            hex[3] = '\0';
-            port1_status = false;
 #ifdef DEBUG
-            terminal_writestring("PS/2 port 1 self-test FAILED, status=");
-            byte_to_hex(test_result, hex);
-            terminal_writestring(hex);
+            kprintf("PS/2 port 1 self-test FAILED, status=0x%x\n", test_result);
 #endif
         } else {
             port1_status = true;
 #ifdef DEBUG
-            terminal_writestring("PS/2 port 1 self-test passed.\n");
+            kprintf("PS/2 port 1 self-test passed.\n");
 #endif
         }
     }
@@ -184,18 +160,13 @@ void ps2_controller_init() {
         unsigned char test_result = ps2_wait_for_input();
         if(test_result != PS2_RESP_SUCCESS) {
 #ifdef DEBUG
-            char hex[4];
-            hex[2] = '\n';
-            hex[3] = '\0';
-            terminal_writestring("PS/2 port 2 self-test FAILED, status=");
-            byte_to_hex(test_result, hex);
-            terminal_writestring(hex);
+            kprintf("PS/2 port 2 self-test FAILED, status=0x%x\n", test_result);
 #endif
             port2_status = false;
         } else {
             port2_status = true;
 #ifdef DEBUG
-            terminal_writestring("PS/2 port 2 self-test passed.\n");
+            kprintf("PS/2 port 2 self-test passed.\n");
 #endif
         }
     }
@@ -213,19 +184,12 @@ void ps2_controller_init() {
         unsigned char response = ps2_wait_for_input();
         if((response != PS2_RESP_SUCCESS) && (response != 0xAA)) {
 #ifdef DEBUG
-            char hex[4];
-            hex[0] = '0';
-            hex[1] = '0';
-            hex[2] = '\n';
-            hex[3] = '\0';
-            terminal_writestring("PS/2 port 1 reset FAILED, status=0x");
-            byte_to_hex(response, hex);
-            terminal_writestring(hex);
+            kprintf("PS/2 port 1 reset FAILED, status=0x%x\n", response);
 #endif
             port1_status = false;
         } else {
 #ifdef DEBUG
-            terminal_writestring("PS/2 port 1 reset was successful.\n");
+            kprintf("PS/2 port 1 reset was successful.\n");
 #endif
             port1_status = true;
         }
@@ -236,20 +200,12 @@ void ps2_controller_init() {
         unsigned char response = ps2_wait_for_input();
         if((response != PS2_RESP_SUCCESS) && (response != 0xAA)) {
 #ifdef DEBUG
-            char hex[4];
-            hex[0] = '0';
-            hex[1] = '0';
-            terminal_writestring("PS/2 port 2 reset FAILED, status=0x");
-            byte_to_hex(response, hex);
-            hex[2] = '\n';
-            hex[3] = '\0';
-            terminal_writestring(hex);
-            terminal_writestring("\n");
+            kprintf("PS/2 port 2 reset FAILED, status=0x%x\n", response);
 #endif
             port2_status = false;
         } else {
 #ifdef DEBUG
-            terminal_writestring("PS/2 port 2 reset was successful.\n");
+            kprintf("PS/2 port 2 reset was successful.\n");
 #endif
             port2_status = true;
         }
@@ -278,17 +234,8 @@ void ps2_controller_init() {
         }
     }
 #ifdef DEBUG
-    char hex[6];
-    hex[4] = '\n';
-    hex[5] = '\0';
-    terminal_writestring("Port 1 ident: 0x");
-    short_to_hex(port1_ident, hex);
-    terminal_writestring(hex);
-
-
-    terminal_writestring("Port 2 ident: 0x");
-    short_to_hex(port2_ident, hex);
-    terminal_writestring(hex);
+    kprintf("Port 1 ident: 0x%x\n", port1_ident);
+    kprintf("Port 2 ident: 0x%x\n", port2_ident);
 #endif
     
     // Now enable interrupts.

@@ -113,15 +113,6 @@ int write_uart_fifo(short base) {
     while((io_inb(base+LSR_OFFSET) & LSR_EMPTY_TRANS_HOLD)) {
         if(bytes_written > output_length)
             break;
-        /*
-        terminal_writestring("Writing byte");
-        int_to_hex(bytes_written, hex);
-        terminal_writestring(hex, 8);
-        int_to_hex(output_length, hex);
-        terminal_writestring(" of ");
-        terminal_writestring(hex, 8);
-        terminal_writestring(".\n");
-        */
         io_outb(base, output_buffer[bytes_written]);
         bytes_written++;
     }

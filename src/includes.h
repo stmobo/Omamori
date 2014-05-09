@@ -7,4 +7,5 @@
 #include <stdint.h>
 
 #include "sys.h"
+#include "print.h"
 #include "dynmem.h"

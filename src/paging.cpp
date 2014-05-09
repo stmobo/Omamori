@@ -46,25 +46,8 @@ size_t **buddy_maps;
 int n_blocks[BUDDY_MAX_ORDER+1];
 
 size_t pageframe_get_block_addr(int blk_num, int order) {
-    char hex[9];
-    hex[8] = '\0';
     int zero_order_blk = blk_num*(1<<order);
-    /*
-    int_to_hex(zero_order_blk, hex);
-    terminal_writestring("Finding address of block, id=");
-    terminal_writestring(hex);
-    terminal_writestring(".\n");
-    */
     for(int i=0;i<n_mem_ranges;i++) {
-        /*
-        terminal_writestring("Examining memory range ");
-        terminal_writestring(int_to_decimal(i));
-        terminal_writestring(", ranging from IDs");
-        terminal_writestring(int_to_decimal(memory_ranges[i].page_index_start));
-        terminal_writestring(" to ");
-        terminal_writestring(int_to_decimal(memory_ranges[i].page_index_end));
-        terminal_writestring(".\n");
-        */
         if( (memory_ranges[i].page_index_start <= zero_order_blk) && (zero_order_blk < memory_ranges[i].page_index_end) ) {
             int intrarange_offset = zero_order_blk - memory_ranges[i].page_index_start;
             size_t byte_offset = intrarange_offset*0x1000;
@@ -117,7 +100,6 @@ void pageframe_set_block_status(int blk_num, int order, bool status) {
 }
 
 void initialize_pageframes(multiboot_info_t* mb_info) {
-    char hex[16];
     terminal_writestring("Memory available:\n");
     if(mb_info->flags&(1<<6)) {
         char hex2[16];
@@ -143,30 +125,16 @@ void initialize_pageframes(multiboot_info_t* mb_info) {
             unsigned long long int length = (mmap->length_high<<16) + mmap->length_low;
             if (mmap->type == 1) {
                 unsigned long long int end = base + length;
-                terminal_writestring("Avail: 0x");
-                ll_to_hex(base, hex);
-                ll_to_hex(end, hex2);
-                terminal_writestring(hex, 16);
-                terminal_writestring(" - 0x");
-                terminal_writestring(hex2, 16); 
-                terminal_writestring(" (0x");
-                ll_to_hex(length, hex2);
-                terminal_writestring(hex2, 16);
-                terminal_writestring(" bytes)\n");
                 mem_avail_bytes += length;
                 memory_ranges[i].base = base;
                 memory_ranges[i].length = length;
                 memory_ranges[i].end = end;
                 memory_ranges[i].page_index_start = n_pageframes;
                 memory_ranges[i].page_index_end = n_pageframes + (length / 4096);
-                terminal_writestring("Page index ranges: ");
-                terminal_writestring(int_to_decimal(memory_ranges[i].page_index_start));
-                terminal_writestring(" to ");
-                terminal_writestring(int_to_decimal(memory_ranges[i].page_index_end));
-                terminal_writestring(".\n");
                 memory_ranges[i].n_pageframes = length / 4096;
                 n_pageframes += (length / 4096);
                 i++;
+                kprintf("Avail: 0x%x - 0x%x (%u bytes)\n", base, end, length);
             }
             mmap = (memory_map_t*)( (unsigned int)mmap + mmap->size + sizeof(unsigned int) );
         }
@@ -174,15 +142,7 @@ void initialize_pageframes(multiboot_info_t* mb_info) {
     mem_avail_kb = mem_avail_bytes / 1024;
     num_pages = mem_avail_kb / 4;
 #ifdef DEBUG
-    terminal_writestring(int_to_decimal(n_mem_ranges));
-    terminal_writestring(" pageframe ranges detected.\n");
-    int_to_hex(mem_avail_kb, hex);
-    terminal_writestring("0x");
-    terminal_writestring(hex, 8);
-    terminal_writestring(" kb available in 0x");
-    int_to_hex(num_pages, hex);
-    terminal_writestring(hex, 8);
-    terminal_writestring(" 4kb pages.\n");
+    kprintf("%u pageframe ranges detected.\n %u kb available in %u 4kb pages.\n", n_mem_ranges, mem_avail_kb, num_pages);
 #endif
     // now allocate space for the buddy maps.
     buddy_maps = (size_t**)kmalloc((BUDDY_MAX_ORDER+1)*sizeof(size_t*));
@@ -191,14 +151,18 @@ void initialize_pageframes(multiboot_info_t* mb_info) {
         int num_blocks = mem_avail_bytes / block_size;
         int num_blk_entries = num_blocks / 8;
 #ifdef DEBUG
-        terminal_writestring("Allocating space for ");
-        terminal_writestring(int_to_decimal(num_blocks));
-        terminal_writestring(" order ");
-        terminal_writestring(int_to_decimal(i));
-        terminal_writestring(" blocks.\n");
+        kprintf("Allocating space for %u order %u blocks.\n", num_blocks, i);
 #endif
         buddy_maps[i] = (size_t*)kmalloc(num_blk_entries);
         n_blocks[i] = num_blocks;
+    }
+    pageframe_restrict_range( (size_t)buddy_maps, ((size_t)buddy_maps)+((BUDDY_MAX_ORDER+1)*sizeof(size_t*)) );
+    // now go back and restrict these ranges of memory from paging
+    for(int i=0;i<=BUDDY_MAX_ORDER;i++) {
+        int block_size = 1024*pow(2, i+2);
+        int num_blocks = mem_avail_bytes / block_size;
+        int num_blk_entries = num_blocks / 8;
+        pageframe_restrict_range( ((size_t)(buddy_maps[i])), ((size_t)(buddy_maps[i]))+(sizeof(size_t)*num_blk_entries) );
     }
 }
 
@@ -226,16 +190,8 @@ page_frame* pageframe_allocate_specific(int id, int order) {
         }
         frames = (page_frame*)kmalloc(sizeof(page_frame)*(1<<order));
         
-#ifdef DEBUG    
-        char hex[9];
-        hex[8] = '\0';
-        terminal_writestring("Memory addresses: 0x");
-        int_to_hex( get_block_addr((1<<order), 0 ), hex );
-        terminal_writestring(hex);
-        terminal_writestring(" to 0x");
-        int_to_hex( get_block_addr( (1<<(order+1))-1, 0 ), hex );
-        terminal_writestring(hex);
-        terminal_writestring(".\n");
+#ifdef DEBUG
+        kprintf("Memory addresses: 0x%x to 0x%x.\n", get_block_addr((1<<order), 0 ), get_block_addr( (1<<(order+1))-1, 0 ) )
 #endif
         
         int k=0;
@@ -261,12 +217,7 @@ page_frame* pageframe_allocate(int n_frames) {
         }
     }
 #ifdef DEBUG
-    char hex[9];
-    hex[8] = '\0';
-    terminal_writestring("Allocating pageframes. \nAllocating order 0x");
-    int_to_hex(order, hex);
-    terminal_writestring(hex);
-    terminal_writestring(" block.");
+    kprintf("Allocating pageframes.\nAllocating order 0x%x block.\n", order);
 #endif
     
     for(int i=0;i<n_blocks[order];i++) {
@@ -287,5 +238,13 @@ void deallocate_block(int blk_num, int order) {
 void pageframe_deallocate(page_frame* frames, int n_frames) {
     for(int i=0;i<n_frames;i++) {
         deallocate_block(frames[i].id, 0);
+    }
+}
+
+void pageframe_restrict_range(size_t start_addr, size_t end_addr) {
+    int start_block = pageframe_get_block_from_addr(start_addr);
+    int end_block = pageframe_get_block_from_addr(end_addr);
+    for(int i=start_block;i<=end_block;i++) {
+        pageframe_allocate_specific(i, 0);
     }
 }

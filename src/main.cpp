@@ -53,23 +53,18 @@ extern "C"
 #endif
 void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
 {
-    char hex[8];
     char *test;
     int test2 = 0x12345678;
     page_frame* framez;
     page_frame* framez2;
     terminal_initialize();
     terminal_writestring("Project Omamori now starting...\n");
+    k_heap_init(HEAP_START_ADDR);
     gdt_init();
     idt_init();
-    k_heap_init(HEAP_START_ADDR);
     initialize_pageframes(mb_info);
     //system_halt;
-    int_to_hex((size_t)&kernel_end, hex);
-    terminal_writestring("Kernel ends at address 0x");
-    terminal_writestring(hex, 8);
-    terminal_writestring(", corresponding to pageframe ID ");
-    terminal_writestring( int_to_decimal( pageframe_get_block_from_addr( (size_t)&kernel_end ) ) );
+    kprintf("Kernel ends at address 0x%x, corresponding to pageframe ID %u.\n", ((size_t)&kernel_end), (pageframe_get_block_from_addr( (size_t)&kernel_end )) );
     
     terminal_writestring("\nInitializing PICs.\n");
     pic_initialize(PIC_IRQ_OFFSET_1, PIC_IRQ_OFFSET_2);

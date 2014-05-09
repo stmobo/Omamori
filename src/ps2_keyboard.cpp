@@ -67,12 +67,7 @@ ps2_keypress* convert_scancode(bool f0, bool e0, unsigned char code_end) {
         if(code_end > 0x7D) {
             keycode = 0xFF;
 #ifdef DEBUG
-            char hex[4];
-            hex[2] = '\n';
-            hex[3] = '\0';
-            terminal_writestring("Unknown extd-scancode received from keyboard. code_end=0x");
-            byte_to_hex(code_end, hex);
-            terminal_writestring(hex);
+            kprintf("Unknown extd-scancode received from keyboard. code_end=0x%x\n", code_end);
 #endif
         } else {
             keycode = extd_scancodes[code_end];
@@ -81,12 +76,7 @@ ps2_keypress* convert_scancode(bool f0, bool e0, unsigned char code_end) {
         if(code_end > 0x83) {
             keycode = 0xFF;
 #ifdef DEBUG
-            char hex[4];
-            hex[2] = '\n';
-            hex[3] = '\0';
-            terminal_writestring("Unknown base-scancode received from keyboard. code_end=0x");
-            byte_to_hex(code_end, hex);
-            terminal_writestring(hex);
+            kprintf("Unknown base-scancode received from keyboard. code_end=0x%x\n", code_end);
 #endif
         } else {
             keycode = base_scancodes[code_end];

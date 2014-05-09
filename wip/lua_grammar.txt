@@ -29,7 +29,7 @@ laststat = keyword_return [explist] | keyword_break
 
 funcname = identifier {period identifier} [colon identifier]
 
-varlist = var {comma var}
+//varlist = var {comma var}
 
 namelist = identifier {comma identifier}
 
@@ -42,27 +42,12 @@ exp = Exp(0)
 Exp(p) = P {binop Exp(q)} 
 P = unop Exp(q) | open_paren exp close_paren | data_var
 
-//exp =  value_nil | value_false | value_true | numeric_literal | string_literal | `...´ | function | identifier | open_paren exp close_paren | tableconstructor | exp binop exp | unop exp
+open_paren exp close_paren | tableconstructor | exp binop exp | unop exp
 
-prefixexp = identifier | open_paren exp close_paren
+primaryexp = (identifier | open_paren exp close_paren) { period identifier | colon identifier args | args }
 
-//primaryexp = prefixexp rest
-primaryexp = prefixexp { period identifier | colon identifier args | args }
-//primaryexp = prefixexp { period identifier | [colon identifier] args }
+assignment_or_call = primaryexp [ {comma primaryexp} oper_assignment exp ]
 
-//rest = <empty> | period identifier rest | colon identifier args rest | args rest
-//rest = [period identifier rest | colon identifier args rest | args rest]
-
-assignment_or_call = primaryexp [comma | oper_assignment]
-
-// rest1 = empty | comma | equals
-// rest1 = [comma | equals]
-
-//prefixexp = var | functioncall | open_paren exp close_paren
-
-var =  identifier | prefixexp open_squarebracket exp close_squarebracket | prefixexp period identifier 
-
-//functioncall =  prefixexp args | prefixexp colon identifier args 
 functioncall = [colon identifier] args 
 
 args =  open_paren [explist] close_paren | tableconstructor | string_literal

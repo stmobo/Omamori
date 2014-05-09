@@ -289,8 +289,13 @@ lex_token lex_next(const char* str, int *pos, int len, char **state_data) {
                 }
                 break;
             case '.':
-                *pos += 1;
-                return lex_token::period;
+                if( (str[*pos+1] == '.') && (str[*pos+2] == '.') ) {
+                    *pos += 3;
+                    return lex_token::ellipsis;
+                } else {
+                    *pos += 1;
+                    return lex_token::period;
+                }
             case '(':
                 *pos += 1;
                 return lex_token::open_paren;

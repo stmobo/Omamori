@@ -2,23 +2,27 @@
 // handwritten recursive descent parser for Lua
 
 #include "lua_lexer.h"
+#include "lua_ast.h"
 #include <cassert>
 
 lex_token t = lex_token::nothing;
 char *t_str = NULL;
+ast_node *currentNode = NULL;
 
 int recursion_depth = 0;
 
-bool chunk(const char*, int*, int);
-bool block(const char*, int*, int);
-bool stat(const char*, int*, int);
-bool laststat(const char*, int*, int);
+bool chunk(const char*, int*, int, ast_block**);
+bool block(const char*, int*, int, ast_block**);
+bool stat(const char*, int*, int, ast_statement**);
+bool laststat(const char*, int*, int, ast_statement**);
 bool funcname(const char*, int*, int);
+/*
 bool varlist(const char*, int*, int);
 bool var(const char*, int*, int);
-bool namelist(const char*, int*, int);
-bool explist(const char*, int*, int);
-bool exp(const char*, int*, int);
+*/
+bool namelist(const char*, int*, int, ast_data**);
+bool explist(const char*, int*, int, ast_exp**);
+bool exp(const char*, int*, int, ast_exp**);
 bool prefixexp(const char*, int*, int);
 bool primaryexp(const char*, int*, int);
 bool rest(const char*, int*, int);
@@ -35,9 +39,11 @@ bool fieldsep(const char*, int*, int);
 bool binop(const char*, int*, int);
 bool unop(const char*, int*, int);
 bool data_var(const char*, int*, int);
-bool climbing_prefix(const char*, int*, int, int);
+bool climbing_prefix(const char*, int*, int, int, ast_exp_prefix);
 bool precedence_climbing(const char*, int*, int, int);
 int get_oper_precedence(lex_token);
+ast_binop token_to_binop(lex_token);
+ast_unop token_to_unop(lex_token);
 
 void getsym(const char* str, int *pos, int len) {
     if(t == lex_token::identifier || t == lex_token::numeric_literal || t == lex_token::string) {
@@ -69,14 +75,16 @@ void error( const char* error_str, int pos ) {
     std::cout << error_str << std::endl;
 }
 
-bool chunk(const char* str, int *pos, int len) {
+bool chunk(const char* str, int *pos, int len, ast_block **node) {
     //std::cout << "Entering CHUNK." << std::endl;
-    while( stat(str, pos, len) ) {
+    ast_statement **current = &((*node)->first);
+    while( stat(str, pos, len, current ) ) {
+        current = &((*current)->next);
         if( t == lex_token::semicolon ) {
             getsym(str, pos, len);
         }
     }
-    if( laststat(str, pos, len) ) {
+    if( laststat(str, pos, len, current) ) {
         if( t == lex_token::semicolon ) {
             getsym(str, pos, len);
         }
@@ -85,17 +93,18 @@ bool chunk(const char* str, int *pos, int len) {
     return true;
 }
 
-bool block(const char* str, int *pos, int len) {
-    return chunk(str, pos, len);
+bool block(const char* str, int *pos, int len, ast_block **node) {
+    return chunk(str, pos, len, node);
 }
 
-bool stat(const char* str, int *pos, int len) {
+bool stat(const char* str, int *pos, int len, ast_statement **node) {
     //std::cout << "Entering STATEMENT." << std::endl;
     switch(t) {
         case lex_token::keyword_do:
+            (*node) = new ast_do;
             //std::cout << "STATEMENT: Do case." << std::endl;
             getsym(str, pos, len);
-            if( block(str, pos, len) ) {
+            if( block(str, pos, len, &(((ast_do*)(*node))->block) ) ) {
                 if( t == lex_token::keyword_end ) {
                     getsym(str, pos, len);
                     //std::cout << "Exiting STATEMENT - found do block" << std::endl;
@@ -108,12 +117,14 @@ bool stat(const char* str, int *pos, int len) {
             error("expected code block after \"do\"",*pos);
             return false;
         case lex_token::keyword_while:
+            (*node) = new ast_loop;
             getsym(str, pos, len);
-            if( exp(str, pos, len) ) {
+            if( exp(str, pos, len, &(((ast_loop*)(*node))->condition) ) ) {
                 if( t == lex_token::keyword_do ) {
                     getsym(str, pos, len);
-                    if( block(str, pos, len) ) {
+                    if( block(str, pos, len, &(((ast_loop*)(*node))->block) ) ) {
                         if( t == lex_token::keyword_end ) {
+                            (*node)->type = ast_stat_type::while_block;
                             getsym(str, pos, len);
                             //std::cout << "Exiting STATEMENT - found while loop" << std::endl;
                             return true;
@@ -131,13 +142,15 @@ bool stat(const char* str, int *pos, int len) {
             //std::cout << "Exiting STATEMENT." << std::endl;
             return false;
         case lex_token::keyword_repeat:
+            (*node) = new ast_loop;
             //std::cout << "STATEMENT: Repeat case." << std::endl;
             getsym(str, pos, len);
-            if( block(str, pos, len) ) {
+            if( block(str, pos, len, &(((ast_loop*)(*node))->block)) ) {
                 if( t == lex_token::keyword_until ) {
+                    ((*node)->type) = ast_stat_type::repeat_block;
                     getsym(str, pos, len);
                     //std::cout << "Exiting STATEMENT - Entering EXP - found repeat-until block" << std::endl;
-                    return exp(str, pos, len);
+                    return exp(str, pos, len, &(((ast_loop*)(*node))->condition));
                 } else {
                     error("expected \"until\" after \"repeat\"",*pos);
                 }
@@ -146,24 +159,28 @@ bool stat(const char* str, int *pos, int len) {
             //std::cout << "Exiting STATEMENT." << std::endl;
             return false;
         case lex_token::keyword_if:
+            (*node) = new ast_branch;
             //std::cout << "STATEMENT: If case." << std::endl;
             getsym(str, pos, len);
             //std::cout << "found if" << std::endl;
-            if( exp(str, pos, len) ) {
+            if( exp( str, pos, len, &(((ast_branch*)(*node))->condition) ) ) {
                 //std::cout << "found conditional" << std::endl;
                 if( t == lex_token::keyword_then ) {
                     //std::cout << "found then" << std::endl;
                     getsym(str, pos, len);
-                    if( block(str, pos, len) ) {
+                    if( block(str, pos, len, &(((ast_branch*)(*node))->then_block)) ) {
                         //std::cout << "found then block" << std::endl;
+                        ast_branch **elseif = &(((ast_branch*)(*node))->elseif);
                         while( t == lex_token::keyword_elseif ) {
+                            (*elseif) = new ast_branch;
                             getsym(str, pos, len);
-                            if( exp(str, pos, len) ) {
+                            if( exp(str, pos, len, &(((ast_branch*)(*elseif))->condition)) ) {
                                 if( t == lex_token::keyword_then ) {
                                     getsym(str, pos, len);
                                     //std::cout << "found elseif block" << std::endl;
-                                    if( block(str, pos, len) ) {
-                                        ;// do whatever
+                                    if( block(str, pos, len, &(((ast_branch*)(*elseif))->then_block)) ) {
+                                        elseif = &(((ast_branch*)(*elseif))->elseif);
+                                        // do whatever
                                     } else {
                                         //std::cout << "Exiting STATEMENT." << std::endl;
                                         error("expected code block after \"then\"",*pos);
@@ -183,7 +200,7 @@ bool stat(const char* str, int *pos, int len) {
                         if( t == lex_token::keyword_else ) {
                             getsym(str, pos, len);
                             //std::cout << "found else block" << std::endl;
-                            if( block(str, pos, len) ) {
+                            if( block(str, pos, len, &(((ast_branch*)(*node))->else_block)) ) {
                                 // do whatever
                             } else {
                                 //std::cout << "Exiting STATEMENT." << std::endl;
@@ -213,16 +230,17 @@ bool stat(const char* str, int *pos, int len) {
             //std::cout << "STATEMENT: For case." << std::endl;
             getsym(str, pos, len);
             if( t == lex_token::identifier ) {
+                (*node) = new ast_numeric_for;
                 getsym(str, pos, len);
                 if( t == lex_token::oper_assignment ) {
                     getsym(str, pos, len);
-                    if( exp(str, pos, len) ) {
+                    if( exp(str, pos, len, &(((ast_numeric_for*)(*node))->start)) ) {
                         if( t == lex_token::comma ) {
                             getsym(str, pos, len);
-                            if( exp(str, pos, len) ) {
+                            if( exp(str, pos, len, &(((ast_numeric_for*)(*node))->end)) ) {
                                 if( t == lex_token::comma ) {
                                     getsym(str, pos, len);
-                                    if( exp(str, pos, len) ){
+                                    if( exp(str, pos, len, &(((ast_numeric_for*)(*node))->step)) ){
                                         ; // do whatever -- step expression
                                     } else {
                                         //std::cout << "Exiting STATEMENT." << std::endl;
@@ -232,7 +250,7 @@ bool stat(const char* str, int *pos, int len) {
                                 }
                                 if( t == lex_token::keyword_do ) {
                                     getsym(str, pos, len);
-                                    if( block(str, pos, len) ) {
+                                    if( block(str, pos, len, &(((ast_numeric_for*)(*node))->block)) ) {
                                         if( t == lex_token::keyword_end ) {
                                             getsym(str, pos, len);
                                             //std::cout << "Exiting STATEMENT - found numeric for block" << std::endl;
@@ -258,31 +276,34 @@ bool stat(const char* str, int *pos, int len) {
                 } else {
                     error("expected assignment operator after identifier in numeric \"for\"",*pos);
                 }
-            } else if( namelist(str, pos, len) ) {
-                if( t == lex_token::keyword_in ) {
-                    getsym(str, pos, len);
-                    if( explist(str, pos, len) ) {
-                        if( t == lex_token::keyword_do ) {
-                            getsym(str, pos, len);
-                            if( block(str, pos, len) ) {
-                                if( t == lex_token::keyword_end ) {
-                                    getsym(str, pos, len);
-                                    //std::cout << "Exiting STATEMENT - found iterator for block" << std::endl;
-                                    return true;
+            } else {
+                (*node) = new ast_iterator_for;
+                if( namelist(str, pos, len, &(((ast_iterator_for*)(*node))->namelist) ) ) {
+                    if( t == lex_token::keyword_in ) {
+                        getsym(str, pos, len);
+                        if( explist(str, pos, len, &(((ast_iterator_for*)(*node))->iterator) ) ) {
+                            if( t == lex_token::keyword_do ) {
+                                getsym(str, pos, len);
+                                if( block(str, pos, len, &(((ast_iterator_for*)(*node))->block) ) ) {
+                                    if( t == lex_token::keyword_end ) {
+                                        getsym(str, pos, len);
+                                        //std::cout << "Exiting STATEMENT - found iterator for block" << std::endl;
+                                        return true;
+                                    } else {
+                                        error("expected \"end\" after iterator \"for\"",*pos);
+                                    }
                                 } else {
-                                    error("expected \"end\" after iterator \"for\"",*pos);
+                                    error("expected code block after iterator \"for\"",*pos);
                                 }
                             } else {
-                                error("expected code block after iterator \"for\"",*pos);
+                                error("expected \"do\" after expression list in iterator \"for\"",*pos);
                             }
                         } else {
-                            error("expected \"do\" after expression list in iterator \"for\"",*pos);
+                            error("expected expression list after \"in\" in iterator \"for\"",*pos);
                         }
                     } else {
-                        error("expected expression list after \"in\" in iterator \"for\"",*pos);
+                        error("expected \"in\" after identifier list in iterator \"for\"",*pos);
                     }
-                } else {
-                    error("expected \"in\" after identifier list in iterator \"for\"",*pos);
                 }
             }
             error("expected namelist or identifier after \"for\"",*pos);
@@ -290,10 +311,11 @@ bool stat(const char* str, int *pos, int len) {
             return false;
         case lex_token::keyword_function:
             //std::cout << "STATEMENT: function case." << std::endl;
+            (*node) = new ast_func;
             getsym(str, pos, len);
-            if( funcname(str, pos, len) ) {
+            if( funcname(str, pos, len, &(((ast_func*)(*node))->name) ) ) {
                 //std::cout << "Exiting STATEMENT - Entering FUNCBODY - found nonlocal function definition" << std::endl;
-                return funcbody(str, pos, len);
+                return funcbody(str, pos, len, node);
             }
             error("expected identifier after \"function\"",*pos);
             //std::cout << "Exiting STATEMENT." << std::endl;
@@ -302,29 +324,33 @@ bool stat(const char* str, int *pos, int len) {
             //std::cout << "STATEMENT: local case." << std::endl;
             getsym(str, pos, len);
             if( t == lex_token::keyword_function ) {
+                (*node) = new ast_func;
                 getsym(str, pos, len);
                 if( t == lex_token::identifier ) {
+                    strcpy( ((ast_func*)(*node))->name, const_cast<const char*>(t_str) );
                     getsym(str, pos, len);
                     //std::cout << "Exiting STATEMENT - Entering FUNCBODY - found local function definition" << std::endl;
-                    return funcbody(str, pos, len);
+                    return funcbody(str, pos, len, node);
                 } else {
                     error("expected identifier after \"local function\"",*pos);
                 }
-            } else if ( namelist(str, pos, len) ) {
-                if( t == lex_token::oper_assignment ) {
-                    getsym(str, pos, len);
-                    //std::cout << "Exiting STATEMENT - Entering EXPLIST - found local variable assignment" << std::endl;
-                    return explist(str, pos, len);
+            } else { // note to self: write this later
+                if ( namelist(str, pos, len) ) {
+                    if( t == lex_token::oper_assignment ) {
+                        getsym(str, pos, len);
+                        //std::cout << "Exiting STATEMENT - Entering EXPLIST - found local variable assignment" << std::endl;
+                        return explist(str, pos, len);
+                    }
+                    //std::cout << "Exiting STATEMENT - found local variable definition" << std::endl;
+                    return true;
                 }
-                //std::cout << "Exiting STATEMENT - found local variable definition" << std::endl;
-                return true;
             }
             error("expected \"function\" or identifiers after \"local\"",*pos);
             //std::cout << "Exiting STATEMENT." << std::endl;
             return false;
-        default:
+        default: // note to self: write this later
             //std::cout << "STATEMENT: Default case." << std::endl;
-            if( assignment_or_call(str, pos, len) ) {
+            if( assignment_or_call(str, pos, len, node) ) {
                 // stuff here
                 //std::cout << "Exiting STATEMENT - found assignment / call" << std::endl;
                 return true;
@@ -335,16 +361,21 @@ bool stat(const char* str, int *pos, int len) {
     return false;
 }
 
-bool laststat(const char* str, int *pos, int len) {
+bool laststat(const char* str, int *pos, int len, ast_statement **node) {
     //std::cout << "Entering LAST-STATEMENT." << std::endl;
     if( t == lex_token::keyword_return ) {
         getsym(str, pos, len);
-        if( explist(str, pos, len) ) {
+        (*node) = new ast_return;
+        (*node)->next = NULL;
+        if( explist( str, pos, len, ((ast_return*)(*node))->ret ) ) {
             ; // do whatever
         }
         //std::cout << "Exiting LAST-STATEMENT - found return" << std::endl;
         return true;
     } else if( t == lex_token::keyword_break ) {
+        (*node) = new ast_statement;
+        (*node)->type = ast_stat_type::last_break;
+        (*node)->next = NULL;
         getsym(str, pos, len);
         //std::cout << "Exiting LAST-STATEMENT - found break" << std::endl;
         return true;
@@ -353,13 +384,26 @@ bool laststat(const char* str, int *pos, int len) {
     return false;
 }
 
-bool funcname(const char* str, int *pos, int len) {
+bool funcname(const char* str, int *pos, int len, char** name) {
     //std::cout << "Entering FUNCNAME." << std::endl;
     if( t == lex_token::identifier ) {
+        int str_len = sizeof(t_str); // strlen() doesn't take the null terminator into account.
+        char* str = new char[ str_len ]; 
         getsym(str, pos, len);
         while( t == lex_token::period ) {
             getsym(str, pos, len);
             if( t == lex_token::identifier ) {
+                int old_str_end = sizeof(str);
+                str_len += (sizeof(t_str)+1); // 1 for the period
+                char* new_str = new char[ str_len ];
+                char* t2 = (char*)(((size_t)new_str)+old_str_end);
+                // 
+                strcpy( new_str, const_cast<const char*>(str) );
+                new_str[old_str_end] = '.';
+                strcpy( t2, const_cast<const char*>(t_str) );
+                delete[] str;
+                str = new_str;
+                str[ str_len-1 ] = '\0';
                 getsym(str, pos, len);
             } else {
                 //std::cout << "Exiting FUNCNAME." << std::endl;
@@ -371,6 +415,17 @@ bool funcname(const char* str, int *pos, int len) {
             getsym(str, pos, len);
             if( t == lex_token::identifier ) {
                 // okay, do stuff here
+                int old_str_end = sizeof(str);
+                str_len += sizeof(t_str)+1;
+                char* new_str = new char[ str_len ];
+                char* t2 = (char*)(((size_t)new_str)+old_str_end);
+                // 
+                strcpy( new_str, const_cast<const char*>(str) );
+                new_str[old_str_end] = ':';
+                strcpy( t2, const_cast<const char*>(t_str) );
+                delete[] str;
+                str = new_str;
+                str[ str_len-1 ] = '\0';
                 getsym(str, pos, len);
             } else {
                 //std::cout << "Exiting FUNCNAME." << std::endl;
@@ -378,6 +433,7 @@ bool funcname(const char* str, int *pos, int len) {
                 return false;
             }
         }
+        (*name) = str;
         //std::cout << "Exiting FUNCNAME - found identifier(s)" << std::endl;
         return true;
     }
@@ -385,11 +441,15 @@ bool funcname(const char* str, int *pos, int len) {
     return false;
 }
 
-bool varlist(const char* str, int *pos, int len) {
+/*
+
+bool varlist(const char* str, int *pos, int len, ast_data **node) {
     //std::cout << "Entering VARLIST." << std::endl;
-    if( var(str, pos, len) ) {
+    ast_data **current = node;
+    if( var(str, pos, len, node) ) {
         while( t == lex_token::comma ) {
-            var(str, pos, len);
+            var(str, pos, len, node);
+            current = &((*node)->next);
             getsym(str, pos, len);
         }
         //std::cout << "Exiting VARLIST - found variables" << std::endl;
@@ -399,10 +459,11 @@ bool varlist(const char* str, int *pos, int len) {
     return false;
 }
 
-bool var(const char* str, int *pos, int len) {
+bool var(const char* str, int *pos, int len, ast_data **node) {
     //std::cout << "Entering VAR." << std::endl;
     if( t == lex_token::identifier ) {
         //std::cout << "Exiting VAR - found simple identifier (" << t_str << ")" << std::endl;
+        (*node)->type = 
         getsym(str, pos, len);
         return true;
     } else if( prefixexp(str, pos, len) ) {
@@ -436,17 +497,32 @@ bool var(const char* str, int *pos, int len) {
     return false;
 }
 
-bool namelist(const char* str, int *pos, int len) {
+*/
+
+bool namelist(const char* str, int *pos, int len, ast_data **node) {
     //std::cout << "Entering NAMELIST." << std::endl;
-    if( exp(str, pos, len) ) {
+    if( t == lex_token::identifier ) {
+        ast_data **current = node;
+        (*current) = new ast_data;
+        (*current)->type = ast_data_type::variable;
+        (*current)->value.string = new char[ sizeof(t_str) ];
+        strcpy( (*current)->value.string, const_cast<const char*>(t_str) );
+        (*current)->value.string[sizeof(t_str)-1] = '\0';
+        getsym(str, pos, len);
         while( t == lex_token::comma ) {
             getsym(str, pos, len);
             if( t == lex_token::identifier) {
+                current = &((*current)->next);
+                (*current) = new ast_data;
+                (*current)->type = ast_data_type::variable;
+                (*current)->value.string = new char[ sizeof(t_str) ];
+                strcpy( (*current)->value.string, const_cast<const char*>(t_str) );
+                (*current)->value.string[sizeof(t_str)-1] = '\0';
                 // t is now an identifier.
                 getsym(str, pos, len);
             } else {
                 //std::cout << "Exiting NAMELIST." << std::endl;
-                error("expected \"\" after \"\"",*pos);
+                error("expected identifier after comma",*pos);
                 return false;
             }
         }
@@ -457,12 +533,14 @@ bool namelist(const char* str, int *pos, int len) {
     return false;
 }
 
-bool explist(const char* str, int *pos, int len) {
+bool explist(const char* str, int *pos, int len, ast_exp **node) {
     //std::cout << "Entering EXPLIST." << std::endl;
-    if( exp(str, pos, len) ) {
+    if( exp(str, pos, len, node) ) {
+        ast_exp **current = &((*node)->next);
         while( t == lex_token::comma ) {
             getsym(str, pos, len);
-            exp(str, pos, len);
+            current = &((*node)->next);
+            exp(str, pos, len, current);
         }
         //std::cout << "Exiting EXPLIST - found list of expressions" << std::endl;
         return true;
@@ -471,23 +549,54 @@ bool explist(const char* str, int *pos, int len) {
     return false;
 }
 
-bool data_var(const char* str, int *pos, int len) {
-    if( t == lex_token::value_nil || t == lex_token::value_true || t == lex_token::value_false || t == lex_token::identifier || t == lex_token::string || t == lex_token::numeric_literal || tableconstructor(str, pos, len) ) {
-        return true;
+bool data_var(const char* str, int *pos, int len, ast_data **node) {
+    (*node) = new ast_data; 
+    switch(t) {
+        case lex_token::value_nil:
+            (*node)->type = ast_data_type::nil;
+            return true;
+        case lex_token::value_true:
+            (*node)->type = ast_data_type::boolean;
+            (*node)->value.boolean = true;
+            return true;
+        case lex_token::value_false:
+            (*node)->type = ast_data_type::boolean;
+            (*node)->value.boolean = false;
+            return true;
+        case lex_token::value_identifier:
+            (*node)->type = ast_data_type::variable;
+            (*node)->value.string = new char[ sizeof(t_str) ];
+            strcpy( (*node)->value.string, const_cast<const char*>( t_str ) );
+            return true;
+        case lex_token::value_numeric_literal:
+            (*node)->type = ast_data_type::number;
+            (*node)->value.floating = stod( const_cast<const char*>( t_str ) );
+            return true;
+        case lex_token::value_string:
+            (*node)->type = ast_data_type::string;
+            (*node)->value.string = new char[ sizeof(t_str) ];
+            strcpy( (*node)->value.string, const_cast<const char*>( t_str ) );
+            return true;
+        default:
+            if( tableconstructor(str, pos, len, node) )
+                return true;
+            delete (*node);
+            (*node) = NULL;
+            return false;
     }
-    return false;
 }
 
-bool climbing_prefix(const char* str, int *pos, int len, int level) { // P
+bool climbing_prefix(const char* str, int *pos, int len, int level, ast_exp_prefix **node) { // P
     //std::cout << "Entering CLIMBING_PREFIX." << std::endl;
     if( unop(str, pos, len) ) {
+        (*node)->op = token_to_unop(t);
         //std::cout << "Found unary operator: " << token_to_str( t ) << std::endl;
         getsym(str, pos, len);
-        return precedence_climbing(str, pos, len, level);
+        return precedence_climbing( str, pos, len, level, &((*node)->exp) );
     } else if( t == lex_token::open_paren ) {
         getsym(str, pos, len);
         //std::cout << "Recursing to exp(0)." << std::endl;
-        if( exp(str, pos, len) ) {
+        if( exp(str, pos, len, &((*node)->exp)) ) {
             if( t == lex_token::close_paren ) {
                 getsym(str, pos, len);
                 return true;
@@ -497,7 +606,7 @@ bool climbing_prefix(const char* str, int *pos, int len, int level) { // P
         } else {
             error("expected expression after (",*pos);
         }
-    } else if( data_var(str, pos, len) ) {
+    } else if( data_var(str, pos, len, &((*node)->data)) ) {
         //std::cout << "Found data identifier: " << token_to_str( t ) << std::endl;
         getsym(str, pos, len);
         return true;
@@ -506,22 +615,23 @@ bool climbing_prefix(const char* str, int *pos, int len, int level) { // P
     return false;
 }
 
-bool precedence_climbing(const char* str, int *pos, int len, int level) { // Exp(p)
+bool precedence_climbing(const char* str, int *pos, int len, int level, ast_exp **node) { // Exp(p)
     //std::cout << "Entering PRECEDENCE_CLIMBING" << std::endl;
-    if( climbing_prefix(str, pos, len, level) ) {
+    if( climbing_prefix( str, pos, len, level, &((*node)->lhs) ) ) {
         while( binop(str, pos, len) && get_oper_precedence(t) >= level  ) {
             lex_token t_saved = t;
+            (*node)->op = t_saved; 
             //std::cout << "Found operator, type: " << token_to_str( t_saved ) << std::endl;
             if( t == lex_token::oper_exp ) {
                 getsym(str, pos, len);
                 //std::cout << "Recursing, right-associative." << std::endl;
-                if( precedence_climbing(str, pos, len, get_oper_precedence(t_saved)+1) ) {
+                if( precedence_climbing( str, pos, len, get_oper_precedence(t_saved)+1, &((*node)->rhs) ) ) {
                     ;
                 }
             } else {
                 getsym(str, pos, len);
                 //std::cout << "Recursing, left-associative." << std::endl;
-                if( precedence_climbing(str, pos, len, get_oper_precedence(t_saved)) ) {
+                if( precedence_climbing( str, pos, len, get_oper_precedence(t_saved), &((*node)->rhs) ) ) {
                     ;
                 }
             }
@@ -564,6 +674,55 @@ int get_oper_precedence(lex_token token) {
     }
 }
 
+ast_binop token_to_binop(lex_token token) {
+    switch(token) {
+        case lex_token::cmp_less_or_equal:
+            return ast_binop::cmp_less_or_equal;
+        case lex_token::cmp_greater_or_equal:
+            return ast_binop::cmp_greater_equal;
+        case lex_token::cmp_equal:
+            return ast_binop::cmp_equal;
+        case lex_token::cmp_unequal:
+            return ast_binop::cmp_unequal;
+        case lex_token::cmp_less:
+            return ast_binop::cmp_less;
+        case lex_token::cmp_greater:
+            return ast_binop::cmp_greater;
+        case lex_token::oper_assignment:
+            return ast_binop::oper_assignment;
+        case lex_token::oper_plus:
+            return ast_binop::oper_plus;
+        case lex_token::oper_minus:
+            return ast_binop::oper_minus;
+        case lex_token::oper_multiply:
+            return ast_binop::oper_multiply;
+        case lex_token::oper_divide:
+            return ast_binop::oper_divide;
+        case lex_token::oper_exp:
+            return ast_binop::oper_exp;
+        case lex_token::oper_modulus:
+            return ast_binop::oper_modulus;
+        case lex_token::oper_or:
+            return ast_binop::oper_or;
+        //case lex_token::oper_and:
+        default:
+            return ast_binop::oper_and;
+    }
+}
+
+ast_unop token_to_unop(lex_token token) {
+    switch(token) {
+        case lex_token::oper_not:
+            return ast_binop::oper_not;
+        case lex_token::oper_inverse:
+            return ast_binop::oper_inverse;
+        //case lex_token::oper_len:
+        default:
+            return ast_binop::oper_len;
+    }
+}
+
+
 bool binop(const char* str, int *pos, int len) {
     //std::cout << "Entering BINOP." << std::endl;
     if(t == lex_token::oper_plus || t == lex_token::oper_minus || t == lex_token::oper_multiply || t == lex_token::oper_divide || t == lex_token::oper_exp || t == lex_token::oper_modulus || t == lex_token::cmp_less || t == lex_token::cmp_greater || t == lex_token::cmp_less_or_equal || t == lex_token::cmp_greater_or_equal || t == lex_token::cmp_equal || t == lex_token::cmp_unequal || t == lex_token::oper_and || t == lex_token::oper_or) {
@@ -589,16 +748,30 @@ bool unop(const char* str, int *pos, int len) {
 }
 
 
-bool exp(const char* str, int *pos, int len) {
+bool exp(const char* str, int *pos, int len, ast_exp **node) {
     //std::cout << "Entering EXP." << std::endl;
-    return precedence_climbing(str, pos, len, 0);
+    return precedence_climbing(str, pos, len, 0, node);
 }
 
 bool primaryexp(const char* str, int *pos, int len) {
     //std::cout << "Entering PRIMARYEXP." << std::endl;
-    if( prefixexp(str, pos, len) ) {
-        bool found_args = args(str, pos, len);
-        while( found_args || t == lex_token::period || t == lex_token::colon ){
+    bool found_prefix = false;
+    if( t == lex_token::identifier ) {
+        getsym(str, pos, len);
+        found_prefix = true;
+    } else if( t == lex_token::open_paren ) {
+        getsym(str, pos, len);
+        if( exp(str, pos, len) ) {
+            error("expected expression after open parenthesis",*pos);
+        }
+        if( t == lex_token::close_paren ) {
+            error("expected close parenthesis after expression",*pos);
+        }
+        found_prefix = true;
+    }
+    if(found_prefix) {
+        bool found_args = false;
+        while( (found_args = args(str, pos, len)) || t == lex_token::period || t == lex_token::colon ){
             if( t == lex_token::period || t == lex_token::colon ) {
                 getsym(str, pos, len);
                 // do stuff here
@@ -606,11 +779,10 @@ bool primaryexp(const char* str, int *pos, int len) {
                 found_args = false;
                 // do stuff here
             }
-            found_args = args(str, pos, len);
         }
         //std::cout << "Exiting PRIMARYEXP - found prefixexp" << std::endl;
         return true;
-    }
+    
     //std::cout << "Exiting PRIMARYEXP." << std::endl;
     return false;
 }
@@ -619,9 +791,11 @@ bool assignment_or_call(const char* str, int *pos, int len) {
     //std::cout << "Entering ASSIGNMENT-OR-CALL." << std::endl;
     if( primaryexp(str, pos, len) ) {
         if( t == lex_token::comma ) {
-            getsym(str, pos, len);
-            // multiple assignment
-            //std::cout << "ASSIGNMENT-OR-CALL: found multiple assignment." << std::endl;
+            while( t == lex_token::comma ) {
+                getsym(str, pos, len);
+                // multiple assignment
+                //std::cout << "ASSIGNMENT-OR-CALL: found multiple assignment." << std::endl;
+            }
         } else if(t == lex_token::oper_assignment) {
             getsym(str, pos, len);
             // single assignment;
@@ -642,6 +816,7 @@ bool assignment_or_call(const char* str, int *pos, int len) {
     return false;
 }
 
+/*
 bool prefixexp(const char* str, int *pos, int len) {
     recursion_depth++;
     assert( recursion_depth < 10 );
@@ -650,9 +825,9 @@ bool prefixexp(const char* str, int *pos, int len) {
         getsym(str, pos, len);
         //std::cout << "Exiting PREFIXEXP - found identifier" << std::endl;
         return true;
-    /*} else if( functioncall(str, pos, len) ) {
+    \/\*} else if( functioncall(str, pos, len) ) {
         //std::cout << "Exiting PREFIXEXP." << std::endl;
-        return true; */
+        return true; \*\/
     } else if ( t == lex_token::open_paren ) {
         getsym(str, pos, len);
         if( exp(str, pos, len) ) {
@@ -670,6 +845,7 @@ bool prefixexp(const char* str, int *pos, int len) {
     //std::cout << "Exiting PREFIXEXP." << std::endl;
     return false;
 }
+*/
 
 bool functioncall(const char* str, int *pos, int len) {
     //std::cout << "Entering FUNCTIONCALL." << std::endl;

@@ -18,6 +18,10 @@
 
 #define PAGING_BASE_ADDR            0x500
 
+#define PAGING_KERNEL_BASE_ADDR     0xC0000000
+
+//#define PAGING_DEBUG
+
 typedef struct memory_range {
     unsigned long long int base;
     unsigned long long int end;
@@ -35,6 +39,7 @@ typedef struct pageframe {
 } page_frame;
 
 extern void initialize_pageframes(multiboot_info_t*);
+extern void initialize_paging();
 extern bool pageframe_get_block_status(int,int);
 extern void pageframe_set_block_status(int,int,bool);
 extern size_t get_block_addr(int,int);

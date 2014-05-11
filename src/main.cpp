@@ -9,6 +9,7 @@
 #include "pit.h"
 #include "irq.h"
 #include "serial.h"
+#include "pci.h"
 #include "ps2_controller.h"
 #include "ps2_keyboard.h"
 
@@ -63,8 +64,9 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     gdt_init();
     idt_init();
     initialize_pageframes(mb_info);
+    
     //system_halt;
-    kprintf("Kernel ends at address 0x%x, corresponding to pageframe ID %u.\n", ((size_t)&kernel_end), (pageframe_get_block_from_addr( (size_t)&kernel_end )) );
+    kprintf("Kernel ends at address 0x%x, corresponding to pageframe ID %u.\n", (unsigned long long int)(&kernel_end), (unsigned long long int)(pageframe_get_block_from_addr( (size_t)&kernel_end )) );
     
     terminal_writestring("\nInitializing PICs.\n");
     pic_initialize(PIC_IRQ_OFFSET_1, PIC_IRQ_OFFSET_2);
@@ -75,6 +77,7 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     
     terminal_writestring("Initializing serial interface.\n");
     initialize_serial(COM1_BASE_PORT, 3);
+    
     /*
     serial_print_basic("Serial port 1 active.\n");
     serial_write("Testing serial port behavior.\n");
@@ -84,51 +87,62 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     
     terminal_writestring("Test:");
     terminal_writestring(int_to_decimal(test2));
+    kprintf("\nTest 2: %u / %x\n.", (unsigned long long int)test2, (unsigned long long int)test2);
     
     atexit(&flush_serial_buffer, NULL);
     
     //block_for_interrupt(1);
-    unsigned long long int sys_time = get_sys_time_counter();
-    terminal_writestring("\nTime since system startup:");
-    terminal_writestring(int_to_decimal(sys_time));
-    terminal_writestring(" ms.\n");
+    kprintf("Time since system startup: %u ticks.", (unsigned long long int)get_sys_time_counter());
     
-    terminal_writestring("Initializing PS/2 controller.\n");
+    kprintf("Initializing PS/2 controller.\n");
     ps2_controller_init();
     
-    terminal_writestring("Initializing PS/2 keyboard.\n");
+    kprintf("Initializing PS/2 keyboard.\n");
     ps2_keyboard_initialize();
     
-    terminal_writestring("Allocating 160 4k frames (636k memory).\n");
+    initialize_paging();
+    
+    kprintf("Allocating 160 4k frames (636k memory).\n");
     framez = pageframe_allocate(160);
-    terminal_writestring("Allocating 35 4k frames (140k memory).\n");
+    kprintf("Allocating 35 4k frames (140k memory).\n");
     framez2 = pageframe_allocate(35);
+    kprintf("Deallocating all frames.\n");
     pageframe_deallocate(framez2, 35);
     pageframe_deallocate(framez, 160);
+    kprintf("Allocating 2x13 4k frames (52k memory).\n");
     framez = pageframe_allocate(13);
+    framez2 = pageframe_allocate(13);
+    pageframe_deallocate(framez2, 13);
     pageframe_deallocate(framez, 13);
     
-    terminal_writestring("Press ENTER to continue...\n");
+    kprintf("Initializing PCI.\n");
+    pci_check_bus(0);
+    
+    kprintf("Press ENTER to continue...\n");
     terminal_putchar('>');
     while(true) {
         int len;
         char *line = ps2_keyboard_readline(&len);
-        terminal_writestring(line, len);
         if(strcmp(line, "exit")) {
             terminal_putchar('\n');
             kfree(line);
+            //flush_serial_buffer(NULL);
             break;
+        } else if(strcmp(line, "time")) {
+            kprintf("Time since system startup: %u ticks.", (unsigned long long int)get_sys_time_counter());
+        } else {
+            kprintf(line, len);
         }
         kfree(line);
         terminal_writestring("\n>");
     }
     
-    terminal_writestring("Setup complete, halting!\n");
+    kprintf("Setup complete, halting!\n");
     unsigned long long int last_ticked = 0;
     //timer t(1000, true, true, NULL);
     while(true) {
         //if(t.get_active()) {
-        //    terminal_writestring("Tock.");
+        //    kprintf("Tock.");
         //    t.reload();
         //}
         if(last_ticked+1000 <= get_sys_time_counter()) {

@@ -1,4 +1,5 @@
 #include "vga.h"
+#include "serial.h"
 #include <stdarg.h>
 
 const char* numeric_alpha = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -12,6 +13,12 @@ size_t strlen(char* str)
 }
 
 char* int_to_octal(long long int n) {
+    if(n == 0) {
+        char* mem = kmalloc(2);
+        mem[0] = '0';
+        mem[1] = '\0';
+        return mem;
+    }
     char *ret = kmalloc(24);
     for(int i=0;i<22;i++) {
         if( (n >> ((21-i)*3)) == 0 ) {
@@ -25,18 +32,34 @@ char* int_to_octal(long long int n) {
 }
 
 char* int_to_hex(long long int n) {
-    char *ret = kmalloc(17);
-    for(int i=0;i<16;i++) {
-        if( (n >> ((15-i)*4)) == 0 ) {
-            ret[i] = '\0';
-        }
-        ret[i] = numeric_alpha[ ( ( n&(0xF<<((15-i)*4)) ) >> ((15-i)*4) ) ];
+    if(n == 0) {
+        char* mem = kmalloc(2);
+        mem[0] = '0';
+        mem[1] = '\0';
+        return mem;
     }
-    ret[16] = '\0';
+    int digits = 0;
+    for(int i=0;i<16;i++) {
+        if( (n >> (i*4)) == 0 ) {
+            digits = i;
+            break;
+        }
+    }
+    char *ret = kmalloc(digits+1);
+    for(int i=0;i<digits;i++) {
+        ret[(digits-i)-1] = numeric_alpha[ ( (n >> i*4)&0xF ) ];
+    }
+    ret[digits] = '\0';
     return ret;
 }
 
 char* int_to_bin(long long int n) {
+    if(n == 0) {
+        char* mem = kmalloc(2);
+        mem[0] = '0';
+        mem[1] = '\0';
+        return mem;
+    }
     char *ret = kmalloc(65);
     for(int i=0;i<64;i++) {
         ret[i] = numeric_alpha[ (n>>(63-i))&0x1 ];
@@ -78,28 +101,44 @@ void kprintf(const char* str, ...) {
         if( str[i] == '%' ) {
             switch( str[i+1] ) {
                 case 'u':
-                    {
-                        char *str = int_to_decimal( va_arg(args, unsigned long long int) );
-                        terminal_writestring( str );
-                        i++;
-                        break;
-                    }
-                case 'd':
-                case 'i':
-                    {
-                        signed long long int silli = va_arg(args, signed long long int);
-                        if(silli < 0) {
-                            terminal_putchar('-');
-                            silli *= -1;
-                        }
-                        terminal_writestring( int_to_decimal( silli ) );
-                        i++;
-                        break;
-                    }
-                case 'o':
-                    terminal_writestring( int_to_octal( va_arg(args, long long int) ) );
+                {
+                    char *str = int_to_decimal( va_arg(args, unsigned long long int) );
+                    terminal_writestring( str );
+#ifdef PRINT_ECHO_TO_SERIAL
+                    serial_write( str );
+#endif
                     i++;
                     break;
+                }
+                case 'd':
+                case 'i':
+                {
+                    signed long long int silli = va_arg(args, signed long long int);
+                    char *str = int_to_decimal( silli );
+                    if(silli < 0) {
+                        terminal_putchar('-');
+#ifdef PRINT_ECHO_TO_SERIAL
+                        serial_write( "-" );
+#endif
+                        silli *= -1;
+                    }
+                    terminal_writestring( str );
+#ifdef PRINT_ECHO_TO_SERIAL
+                    serial_write( str );
+#endif
+                    i++;
+                    break;
+                }
+                case 'o':
+                {
+                    char *str = int_to_octal( va_arg(args, long long int) );
+                    terminal_writestring( str );
+#ifdef PRINT_ECHO_TO_SERIAL
+                    serial_write( str );
+#endif
+                    i++;
+                    break;
+                }
                 case 'x':
                     {
                         char *upper = int_to_hex( va_arg(args, long long int) );
@@ -131,32 +170,73 @@ void kprintf(const char* str, ...) {
                             }
                         }
                         terminal_writestring(upper);
+#ifdef PRINT_ECHO_TO_SERIAL
+                        serial_write( upper );
+#endif
                         i++;
                         break;
                     }
                 case 'X':
-                    terminal_writestring( int_to_hex( va_arg(args, long long int) ) );
+                {
+                    char *str = int_to_hex( va_arg(args, long long int) );
+                    terminal_writestring( str );
+#ifdef PRINT_ECHO_TO_SERIAL
+                    serial_write( str );
+#endif
                     i++;
                     break;
+                }
                 case 'b':
-                    terminal_writestring( int_to_bin( va_arg(args, long long int) ) );
+                {
+                    char *str = int_to_bin( va_arg(args, long long int) );
+                    terminal_writestring( str );
+#ifdef PRINT_ECHO_TO_SERIAL
+                    serial_write( str );
+#endif
                     i++;
                     break;
+                }
                 case 's':
-                    terminal_writestring( va_arg(args, char*) );
+                {
+                    char *str = va_arg(args, char*);
+                    terminal_writestring( str );
+#ifdef PRINT_ECHO_TO_SERIAL
+                    serial_write( str );
+#endif
                     i++;
                     break;
+                }
                 case 'c':
-                    terminal_putchar( (char)va_arg(args, int) );
+                {
+                    char c = va_arg(args, int);
+                    char c2[2];
+                    c2[0] = c;
+                    c2[1] = 0;
+                    terminal_putchar( c );
+#ifdef PRINT_ECHO_TO_SERIAL
+                    serial_write( (char*)c2 );
+#endif
                     i++;
                     break;
+                }
                 case '%':
+                {
                     terminal_putchar( '%' );
+#ifdef PRINT_ECHO_TO_SERIAL
+                    serial_write( "%" );
+#endif
                     i++;
                     break;
+                }
             }
         } else {
+            char c2[2];
+            c2[0] = str[i];
+            c2[1] = 0;
             terminal_putchar( str[i] );
+#ifdef PRINT_ECHO_TO_SERIAL
+            serial_write( (char*)c2 ); 
+#endif
         }
     }
     va_end(args);

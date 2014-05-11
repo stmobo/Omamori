@@ -26,3 +26,4 @@ extern int pow(int,int);
 #define enable_interrupts()  asm volatile("sti" : : : "memory");
 
 // #define DEBUG
+#define PCI_DEBUG

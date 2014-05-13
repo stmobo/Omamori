@@ -60,13 +60,14 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     page_frame* framez2;
     terminal_initialize();
     terminal_writestring("Project Omamori now starting...\n");
-    k_heap_init(HEAP_START_ADDR);
     gdt_init();
     idt_init();
+    k_heap_init(HEAP_START_ADDR);
     initialize_pageframes(mb_info);
     
     //system_halt;
-    kprintf("Kernel ends at address 0x%x, corresponding to pageframe ID %u.\n", (unsigned long long int)(&kernel_end), (unsigned long long int)(pageframe_get_block_from_addr( (size_t)&kernel_end )) );
+    kprintf("Kernel begins at physical address 0x%x, corresponding to pageframe ID %u.\n", (unsigned long long int)(&kernel_start_phys), (unsigned long long int)(pageframe_get_block_from_addr( (size_t)&kernel_start_phys )) );
+    kprintf("Kernel ends at physical address 0x%x, corresponding to pageframe ID %u.\n", (unsigned long long int)(&kernel_end_phys), (unsigned long long int)(pageframe_get_block_from_addr( (size_t)&kernel_end_phys )) );
     
     terminal_writestring("\nInitializing PICs.\n");
     pic_initialize(PIC_IRQ_OFFSET_1, PIC_IRQ_OFFSET_2);
@@ -85,9 +86,9 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     serial_write("Testing serial port behavior yet again\n");
     */
     
-    terminal_writestring("Test:");
+    terminal_writestring("Test: ");
     terminal_writestring(int_to_decimal(test2));
-    kprintf("\nTest 2: %u / %x\n.", (unsigned long long int)test2, (unsigned long long int)test2);
+    kprintf("\nTest 2: %u / 0x%x\n.", (unsigned long long int)test2, (unsigned long long int)test2);
     
     atexit(&flush_serial_buffer, NULL);
     
@@ -100,18 +101,20 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     kprintf("Initializing PS/2 keyboard.\n");
     ps2_keyboard_initialize();
     
-    initialize_paging();
-    
     kprintf("Allocating 160 4k frames (636k memory).\n");
     framez = pageframe_allocate(160);
+    kprintf("Frame allocation 1 starts at ID %u\n", framez->id);
     kprintf("Allocating 35 4k frames (140k memory).\n");
     framez2 = pageframe_allocate(35);
+    kprintf("Frame allocation 2 starts at ID %u\n", framez2->id);
     kprintf("Deallocating all frames.\n");
     pageframe_deallocate(framez2, 35);
     pageframe_deallocate(framez, 160);
     kprintf("Allocating 2x13 4k frames (52k memory).\n");
     framez = pageframe_allocate(13);
     framez2 = pageframe_allocate(13);
+    kprintf("Frame allocation 1 starts at ID %u\n", framez->id);
+    kprintf("Frame allocation 2 starts at ID %u\n", framez2->id);
     pageframe_deallocate(framez2, 13);
     pageframe_deallocate(framez, 13);
     

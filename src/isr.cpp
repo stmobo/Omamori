@@ -19,7 +19,7 @@
 // 0 - Error code (again) (new ESP)
 
 void halt_err(size_t err, size_t eip, size_t cs, char* desc) {
-    kprintf("%n\nerror code=%u\nEIP=0x%x\nCS=0x%x", desc, err, eip, cs);
+    kprintf("%s\nerror code=%u\nEIP=0x%x\nCS=0x%x", desc, (unsigned long long int)err, (unsigned long long int)eip, (unsigned long long int)cs);
     while(true) {
         asm volatile("hlt\n\t" : : : "memory");
     }

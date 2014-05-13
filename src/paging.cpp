@@ -165,9 +165,9 @@ page_frame* pageframe_allocate(int n_frames) {
         // also find out the remainder
         int o8_blocks = n_frames >> BUDDY_MAX_ORDER;
         int remainder = n_frames & ((1<<BUDDY_MAX_ORDER)-1); // % (1 << BUDDY_MAX_ORDER);
-        
+#ifdef PAGING_DEBUG
         kprintf("Allocating %u order %u blocks and %u remainder frames.\n", (unsigned long long int)o8_blocks, (unsigned long long int)BUDDY_MAX_ORDER, (unsigned long long int)remainder );
-        
+#endif
         // now find the order of the remaining allocation
         int rem_order = 0;
         for(int i=0;i<=BUDDY_MAX_ORDER;i++) {
@@ -179,7 +179,9 @@ page_frame* pageframe_allocate(int n_frames) {
                 break;
             }
         }
+#ifdef PAGING_DEBUG
         kprintf("Remainder block order is %u.\n", rem_order);
+#endif
         
         // the number of allocated frames is now ( o8_blocks * (1<<BUDDY_MAX_ORDER) ) + (1<<rem_order)
         int allocated_frames = ( o8_blocks * (1<<BUDDY_MAX_ORDER) ) + (1<<rem_order);
@@ -193,9 +195,11 @@ page_frame* pageframe_allocate(int n_frames) {
                 frames[ (i*(1<<BUDDY_MAX_ORDER))+j ] = f_tmp[j];
             }
         }
-        f_tmp = pageframe_allocate( (1<<rem_order) );
-        for(int i=0;i<(1<<rem_order);i++) {
-            frames[ (o8_blocks*(1<<BUDDY_MAX_ORDER))+i ] = f_tmp[i];
+        if( remainder > 0) {
+            f_tmp = pageframe_allocate( (1<<rem_order) );
+            for(int i=0;i<(1<<rem_order);i++) {
+                frames[ (o8_blocks*(1<<BUDDY_MAX_ORDER))+i ] = f_tmp[i];
+            }
         }
         return frames;
     }
@@ -208,10 +212,10 @@ page_frame* pageframe_allocate(int n_frames) {
         kprintf("Inspecting block ID: %u, begins at ID %u.\n", ((unsigned long long int)i), ((unsigned long long int)i*(1<<order)));
 #endif
         if( !pageframe_get_block_status(i, order) ) { // if the block we're not looking at is not allocated...
-//#ifdef PAGING_DEBUG
+#ifdef PAGING_DEBUG
             kprintf("Allocating block ID: %u, order %u\n", ((unsigned long long int)i), ((unsigned long long int)order));
             kprintf("Block starts at ID %u.\n", ((unsigned long long int)i*(1<<order)));
-//#endif
+#endif
             return pageframe_allocate_specific(i, order); // then allocate it.
         }
     }
@@ -305,6 +309,20 @@ void initialize_pageframes(multiboot_info_t* mb_info) {
         n_blocks[i] = num_blocks;
     }
     
+    pageframe_restrict_range( (size_t)&kernel_start_phys, (size_t)&kernel_end_phys );
+    pageframe_restrict_range( (size_t)buddy_maps, ((size_t)buddy_maps)+((BUDDY_MAX_ORDER+1)*sizeof(size_t*)) );
+    kprintf("Map of buddy maps begins at 0x%x and ends at 0x%x\n", (unsigned long long int)buddy_maps, (unsigned long long int)(((size_t)buddy_maps)+((BUDDY_MAX_ORDER+1)*sizeof(size_t*))) );
+    // now go back and restrict these ranges of memory from paging
+    for(int i=0;i<=BUDDY_MAX_ORDER;i++) {
+        int block_size = 1024*pow(2, i+2);
+        int num_blocks = mem_avail_bytes / block_size;
+        int num_blk_entries = num_blocks / 8;
+        pageframe_restrict_range( ((size_t)(buddy_maps[i])), ((size_t)(buddy_maps[i]))+(sizeof(size_t)*num_blk_entries) );
+#ifdef PAGING_DEBUG
+        kprintf("Buddy map for order %u begins at 0x%x and ends at 0x%x\n", (unsigned long long int)i, ((unsigned long long int)(buddy_maps[i])), (unsigned long long int)(((size_t)(buddy_maps[i]))+(sizeof(size_t)*num_blk_entries)) );
+#endif
+    }
+    pageframe_restrict_range(0, 0x500);
 }
 
 void paging_set_pte(size_t vaddr, size_t paddr, uint16_t flags) {
@@ -322,72 +340,4 @@ uint32_t paging_get_pte(size_t vaddr) {
     
     uint32_t *table = (uint32_t*)(0xFFC00000+(table_no*0x1000));
     return table[table_offset];
-}
-
-void initialize_paging() {
-    pageframe_restrict_range( 0x100000, (size_t)&kernel_end );
-    pageframe_restrict_range( (size_t)buddy_maps, ((size_t)buddy_maps)+((BUDDY_MAX_ORDER+1)*sizeof(size_t*)) );
-    kprintf("Map of buddy maps begins at 0x%x and ends at 0x%x\n", (unsigned long long int)buddy_maps, (unsigned long long int)(((size_t)buddy_maps)+((BUDDY_MAX_ORDER+1)*sizeof(size_t*))) );
-    // now go back and restrict these ranges of memory from paging
-    for(int i=0;i<=BUDDY_MAX_ORDER;i++) {
-        int block_size = 1024*pow(2, i+2);
-        int num_blocks = mem_avail_bytes / block_size;
-        int num_blk_entries = num_blocks / 8;
-        pageframe_restrict_range( ((size_t)(buddy_maps[i])), ((size_t)(buddy_maps[i]))+(sizeof(size_t)*num_blk_entries) );
-        kprintf("Buddy map for order %u begins at 0x%x and ends at 0x%x\n", (unsigned long long int)i, ((unsigned long long int)(buddy_maps[i])), (unsigned long long int)(((size_t)(buddy_maps[i]))+(sizeof(size_t)*num_blk_entries)) );
-    }
-    pageframe_restrict_range(0, 0x500);
-    
-    kprintf("Allocating frames for tables.\n");
-    page_frame *frames = pageframe_allocate(1024); // 1023 frames for the tables and 1 for the directory
-    page_directory = (uint32_t*)frames[0].address;
-    /*
-    for(int i=0;i<1024;i++) {
-        kprintf("frames[%u].address=0x%x\n", (unsigned long long int)i, (unsigned long long int)frames[i].address);
-        ps2_keyboard_get_keystroke();
-    } */
-    kprintf("Loading page directory at address 0x%x\n", (unsigned long long int)frames[0].address);
-    for(int i=0;i<1023;i++) {
-        page_directory[i] = frames[i+1].address | 3; // set read-write permissions bit
-    }
-    page_directory[1023] = (uint32_t)page_directory | 3; // map last PDE to the page directory itself
-    // Page tables start at 0xFFC00000 (0xFFFFFFFF-0x40000000+1), and the directory itself is the very last page, 0xFFFFF000.
-    
-    // now set up mappings
-    
-    kprintf("Setting up initial page mappings.\n");
-    
-    // ID-map the 1st MB
-    uint32_t *pt0 = (uint32_t*)frames[1].address;
-    kprintf("Identity mapping 1st MB, pt0 at address 0x%x\n", (unsigned long long int)frames[1].address);
-    for(size_t i=0;i<0x100000;i+=0x1000) {
-        pt0[ i >> 0x0C ] = i | 3;
-    }
-    
-    // now, map 0x100000 - &kernel_end to PAGING_KERNEL_BASE_ADDR.
-    int pt_no = (PAGING_KERNEL_BASE_ADDR >> 22);
-    uint32_t *ptn = (uint32_t*)frames[pt_no].address;
-    kprintf("Remapping kernel, target table (no. %u) at address 0x%x\n", (unsigned long long int)pt_no, (unsigned long long int)ptn);
-    if(ptn == NULL) {
-        kprintf("Something is very, very wrong. ptn==NULL!\n");
-        asm volatile("int $3\n\t" : : : "memory");
-        while(true) {
-            asm volatile("cli\n\t"
-            "hlt\n\t" : : : "memory");
-        }
-    }
-    for(size_t i=0x100000;i<=((size_t)&kernel_end);i+=0x1000) {
-        ptn[ (i-0x100000) ] = i | 5;
-        //paging_set_pte( PAGING_KERNEL_BASE_ADDR+(i-0x100000), i, 5 ); // Access set to all, but write protect enabled (and present bit, ofc)
-    }
-    
-    // Now activate paging and hope we don't crash.
-    kprintf("Now activating paging.\n");
-    
-    asm volatile("mov %0, %%eax\n\t"
-                 "mov %%eax, %%cr3\n\t"
-                 "mov %%cr0, %%eax\n\t"
-                 "or 0x80000000, %%eax\n\t"
-                 "mov %%eax, %%cr0\n\t"
-                 : : "r"(page_directory) : "%eax", "memory");
 }

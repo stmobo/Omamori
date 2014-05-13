@@ -1,30 +1,21 @@
-.set ALIGN,     1<<0
-.set MEMINFO,   1<<1
-.set FLAGS,     ALIGN | MEMINFO
-.set MAGIC,     0x1BADB002
-.set CHECKSUM,  -(MAGIC+FLAGS)
-
-.section .multiboot
-.align 4
-.long MAGIC
-.long FLAGS
-.long CHECKSUM
-
 .section .bootstrap_stack, "aw", @nobits
+.align 32
 stack_bottom:
 .skip 16384
 stack_top:
 
-.section .text
-.global _start
-.type _start, @function
-_start:
+.section .text, "ax"
+.global _start_kernel
+.type _start_kernel, @function
+_start_kernel:
     # whoo kernel mode!
     movl $stack_top, %esp
     
-    # push multiboot struct addr
+    # push multiboot struct addr / magic number
     push %eax
+    add $0xC0000000, %ebx
     push %ebx
+    
     call kernel_main
     pop %ebx
     pop %eax
@@ -40,4 +31,4 @@ _start:
     hlt
     jmp .Lhang
     
-.size _start, . - _start
+.size _start_kernel, . - _start_kernel

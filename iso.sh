@@ -17,6 +17,7 @@ for i in $SRC_DIR/*.s; do
 done
 
 # ugly hack, make more elegant later
+mv $OBJ_DIR/early_boot.o $OBJ_DIR/___eboot.o
 mv $OBJ_DIR/boot.o $OBJ_DIR/__boot.o
 mv $OBJ_DIR/sys.o $OBJ_DIR/_sys.o
 mv $OBJ_DIR/isr_ll.o $OBJ_DIR/_isr_ll.o

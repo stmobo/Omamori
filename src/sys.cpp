@@ -67,7 +67,7 @@ void operator delete[](void* ptr) {
 }
 
 void memcpy(char* dst, char* src, size_t len) {
-    for(int i=0;i<len;i++)
+    for(unsigned int i=0;i<len;i++)
         dst[i] = src[i];
 }
 

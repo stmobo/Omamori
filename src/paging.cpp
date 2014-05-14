@@ -309,7 +309,8 @@ void initialize_pageframes(multiboot_info_t* mb_info) {
         n_blocks[i] = num_blocks;
     }
     
-    pageframe_restrict_range( (size_t)&kernel_start_phys, (size_t)&kernel_end_phys );
+    //pageframe_restrict_range( (size_t)&kernel_start_phys, (size_t)&kernel_end_phys );
+    pageframe_restrict_range( 0, 0x400000 );
     pageframe_restrict_range( (size_t)buddy_maps, ((size_t)buddy_maps)+((BUDDY_MAX_ORDER+1)*sizeof(size_t*)) );
     kprintf("Map of buddy maps begins at 0x%x and ends at 0x%x\n", (unsigned long long int)buddy_maps, (unsigned long long int)(((size_t)buddy_maps)+((BUDDY_MAX_ORDER+1)*sizeof(size_t*))) );
     // now go back and restrict these ranges of memory from paging
@@ -322,22 +323,77 @@ void initialize_pageframes(multiboot_info_t* mb_info) {
         kprintf("Buddy map for order %u begins at 0x%x and ends at 0x%x\n", (unsigned long long int)i, ((unsigned long long int)(buddy_maps[i])), (unsigned long long int)(((size_t)(buddy_maps[i]))+(sizeof(size_t)*num_blk_entries)) );
 #endif
     }
-    pageframe_restrict_range(0, 0x500);
+}
+
+inline void invalidate_tlb(size_t address) {
+    asm volatile("invlpg (%0)" : : "r"(address) : "memory");
 }
 
 void paging_set_pte(size_t vaddr, size_t paddr, uint16_t flags) {
     int table_no = (vaddr >> 22);
     int table_offset = (vaddr >> 12) & 0x3FF;
+    uint32_t *pde = (uint32_t*)(0xFFFFF000 + (table_no*4));
+    // first, check to see if there's an actual page table for the page we want to map in
+    // if not, then make a new one
+    if( ((*pde) & 1) == 0 ) {
+        page_frame* frame = pageframe_allocate(1);
+        (*pde) = frame->address | 1;
+    }
     
     uint32_t *table = (uint32_t*)(0xFFC00000+(table_no*0x1000));
-    
-    table[table_offset] = (paddr | (flags&0x7FF) | 0x01);
+    uint32_t pte = table[table_offset];
+    if( (pte & 1) > 0 ) {
+        // okay, so there's already a mapping present for this page.
+        // we need to swap it out, but we don't have a hard disk driver yet.
+        // so right now we just exit noisily.
+        kprintf("paging: Attempted to map vaddr 0x%x when mapping already present!", (unsigned long long int)vaddr);
+        return; 
+    }
+    table[table_offset] = paddr | (flags & 0xFFF) | 1;
+    invalidate_tlb( vaddr );
 }
 
 uint32_t paging_get_pte(size_t vaddr) {
     int table_no = (vaddr >> 22);
     int table_offset = (vaddr >> 12) & 0x3FF;
+    uint32_t *pde = (uint32_t*)(0xFFFFF000 + (table_no*4));
+    // first, check to see if there's an actual page table for the page we want to map in
+    // if not, then return "no such PTE"
+    if( ((*pde) & 1) == 0 ) {
+        return 0xFFFFFFFF;
+    }
     
     uint32_t *table = (uint32_t*)(0xFFC00000+(table_no*0x1000));
+    uint32_t pte = table[table_offset];
+    if( (pte & 1) > 0 ) {
+        // no PTE for address
+        return 0xFFFFFFFF;
+    }
     return table[table_offset];
+}
+
+void paging_handle_pagefault(char error_code, uint32_t cr2) {
+    if( (error_code & 1) == 0 ) {
+#ifdef PAGEFAULT_DEBUG
+        if( (error_code & 0x4) == 0 ) {
+            kprintf("paging: kmode pagefault at vaddr 0x%x.\n", (unsigned long long int)cr2);
+        } else {
+            kprintf("paging: umode pagefault at vaddr 0x%x.\n", (unsigned long long int)cr2);
+        }
+#endif
+        page_frame *frame = pageframe_allocate(1);
+        paging_set_pte( (size_t)cr2, frame->address, 0 ); // load vaddr to newly allocated page, with no flags except for PRESENT.
+#ifdef PAGEFAULT_DEBUG
+        kprintf("paging: mapped faulting address to paddr 0x%x.\n", (unsigned long long int)frame->address);
+#endif
+    } else {
+        // We're dealing with a protection violation.
+        if( (error_code & 0x4) == 0 ) {
+            // Supervisor mode exception.
+            panic("paging:  kernel-mode memory protection violation at vaddr 0x%x.", (unsigned long long int)cr2);
+        } else {
+            // User mode exception.
+            kprintf("paging: user-mode memory protection violation at vaddr 0x%x.", (unsigned long long int)cr2);
+        }
+    }
 }

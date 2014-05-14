@@ -65,7 +65,7 @@ int identify_uart(short base_port) {
 //   used, such as before the PICs are set up. 
 void serial_print_basic(char* data) {
     size_t len = strlen(data);
-    for(int i=0;i<len;i++) {
+    for(unsigned int i=0;i<len;i++) {
         serial_transmit(COM1_BASE_PORT, data[i]);
     }
 }

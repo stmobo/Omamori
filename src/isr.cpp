@@ -3,6 +3,8 @@
 #include "vga.h"
 #include "isr.h"
 
+extern void paging_handle_pagefault(char, uint32_t);
+
 // when we enter these functions, our stack will look like:
 // ... program stack ...
 // Saved EFLAGS
@@ -36,7 +38,7 @@ void do_isr_debug(size_t err, size_t eip, size_t cs) {
     halt_err(err, eip, cs, "Debug interrupt");
 }
 
-void do_isr_nmi(size_t err, size_t eip, size_t cs) {\
+void do_isr_nmi(size_t err, size_t eip, size_t cs) {
     halt_err(err, eip, cs, "Non-Maskable interrupt");
 }
     
@@ -81,7 +83,10 @@ void do_isr_gpfault(size_t err, size_t eip, size_t cs) {
 }
 
 void do_isr_pagefault(size_t err, size_t eip, size_t cs) {
-    halt_err(err, eip, cs, "Page fault");
+    uint32_t cr2;
+    asm volatile("mov %%cr2, %0" : "=g"(cr2) : : "memory");
+    paging_handle_pagefault(err, cr2);
+    //halt_err(err, eip, cs, "Page fault");
 }
     
 void do_isr_fpexcept(size_t err, size_t eip, size_t cs) {

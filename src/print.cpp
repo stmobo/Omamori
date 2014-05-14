@@ -93,20 +93,42 @@ char* int_to_decimal(signed long long int n) {
     return mem;
 }
 
+char *concatentate_strings(char* str1, char *str2) {
+    int len = strlen(str1) + strlen(str2);
+    char *out = kmalloc(len + 2);
+    for(unsigned int i=0;i<strlen(str1);i++) {
+        out[i] = str1[i];
+    }
+    for(unsigned int i=0;i<strlen(str2);i++) {
+        out[ i+strlen(str1) ] = str2[i];
+    } 
+    out[len+1] = '\0';
+    return out;
+}
 
-void kprintf(const char* str, ...) {
-    va_list args;
-    va_start(args, str);
+char *append_char(char* str1, char c) {
+    char *out = kmalloc( strlen(str1)+2 );
+    for(unsigned int i=0;i<strlen(str1);i++) {
+        out[i] = str1[i];
+    }
+    out[strlen(str1)] = c;
+    out[strlen(str1)+1] = 0;
+    return out;
+}
+
+// Print to string
+char *ksprintf_varg(const char* str, va_list args) {
+    char *out = kmalloc(1);
+    out[0] = '\0';
     for( size_t i=0;i<strlen(const_cast<char*>(str));i++ ) {
         if( str[i] == '%' ) {
             switch( str[i+1] ) {
                 case 'u':
                 {
-                    char *str = int_to_decimal( va_arg(args, unsigned long long int) );
-                    terminal_writestring( str );
-#ifdef PRINT_ECHO_TO_SERIAL
-                    serial_write( str );
-#endif
+                    char *str2 = int_to_decimal( va_arg(args, unsigned long long int) );
+                    char *out_copy = concatentate_strings( out, str2 );
+                    kfree(out);
+                    out = out_copy;
                     i++;
                     break;
                 }
@@ -114,7 +136,7 @@ void kprintf(const char* str, ...) {
                 case 'i':
                 {
                     signed long long int silli = va_arg(args, signed long long int);
-                    char *str = int_to_decimal( silli );
+                    char *str2 = int_to_decimal( silli );
                     if(silli < 0) {
                         terminal_putchar('-');
 #ifdef PRINT_ECHO_TO_SERIAL
@@ -122,20 +144,18 @@ void kprintf(const char* str, ...) {
 #endif
                         silli *= -1;
                     }
-                    terminal_writestring( str );
-#ifdef PRINT_ECHO_TO_SERIAL
-                    serial_write( str );
-#endif
+                    char *out_copy = concatentate_strings( out, str2 );
+                    kfree(out);
+                    out = out_copy;
                     i++;
                     break;
                 }
                 case 'o':
                 {
-                    char *str = int_to_octal( va_arg(args, long long int) );
-                    terminal_writestring( str );
-#ifdef PRINT_ECHO_TO_SERIAL
-                    serial_write( str );
-#endif
+                    char *str2 = int_to_octal( va_arg(args, long long int) );
+                    char *out_copy = concatentate_strings( out, str2 );
+                    kfree(out);
+                    out = out_copy;
                     i++;
                     break;
                 }
@@ -169,40 +189,36 @@ void kprintf(const char* str, ...) {
                                 break;
                             }
                         }
-                        terminal_writestring(upper);
-#ifdef PRINT_ECHO_TO_SERIAL
-                        serial_write( upper );
-#endif
+                        char *out_copy = concatentate_strings( out, upper );
+                        kfree(out);
+                        out = out_copy;
                         i++;
                         break;
                     }
                 case 'X':
                 {
-                    char *str = int_to_hex( va_arg(args, long long int) );
-                    terminal_writestring( str );
-#ifdef PRINT_ECHO_TO_SERIAL
-                    serial_write( str );
-#endif
+                    char *str2 = int_to_hex( va_arg(args, long long int) );
+                    char *out_copy = concatentate_strings( out, str2 );
+                    kfree(out);
+                    out = out_copy;
                     i++;
                     break;
                 }
                 case 'b':
                 {
-                    char *str = int_to_bin( va_arg(args, long long int) );
-                    terminal_writestring( str );
-#ifdef PRINT_ECHO_TO_SERIAL
-                    serial_write( str );
-#endif
+                    char *str2 = int_to_bin( va_arg(args, long long int) );
+                    char *out_copy = concatentate_strings( out, str2 );
+                    kfree(out);
+                    out = out_copy;
                     i++;
                     break;
                 }
                 case 's':
                 {
-                    char *str = va_arg(args, char*);
-                    terminal_writestring( str );
-#ifdef PRINT_ECHO_TO_SERIAL
-                    serial_write( str );
-#endif
+                    char *str2 = va_arg(args, char*);
+                    char *out_copy = concatentate_strings( out, str2 );
+                    kfree(out);
+                    out = out_copy;
                     i++;
                     break;
                 }
@@ -212,32 +228,62 @@ void kprintf(const char* str, ...) {
                     char c2[2];
                     c2[0] = c;
                     c2[1] = 0;
-                    terminal_putchar( c );
-#ifdef PRINT_ECHO_TO_SERIAL
-                    serial_write( (char*)c2 );
-#endif
+                    char *out_copy = concatentate_strings( out, c2 );
+                    kfree(out);
+                    out = out_copy;
                     i++;
                     break;
                 }
                 case '%':
                 {
-                    terminal_putchar( '%' );
-#ifdef PRINT_ECHO_TO_SERIAL
-                    serial_write( "%" );
-#endif
+                    char *out_copy = append_char( out, '%' );
+                    kfree(out);
+                    out = out_copy;
                     i++;
                     break;
                 }
             }
         } else {
-            char c2[2];
-            c2[0] = str[i];
-            c2[1] = 0;
-            terminal_putchar( str[i] );
-#ifdef PRINT_ECHO_TO_SERIAL
-            serial_write( (char*)c2 ); 
-#endif
+            char *out_copy = append_char( out, str[i] );
+            kfree(out);
+            out = out_copy;
         }
     }
+    return out;
+}
+
+// Format something.
+char *ksprintf(const char *str, ...) {
+    va_list args;
+    va_start(args, str);
+    char *out = ksprintf_varg(str, args);
     va_end(args);
+    return out;
+}
+
+// Print something to the screen, but take a va_list.
+void kprintf_varg(const char *str, va_list args) {
+    char *o = ksprintf_varg( str, args );
+    return terminal_writestring( o );
+}
+
+// Print something to screen.
+void kprintf(const char *str, ...) {
+    va_list args;
+    va_start(args, str);
+    kprintf_varg(str, args);
+    va_end(args);
+}
+
+// Print "panic: mesg" and then hang.
+void panic(const char *str, ...) {
+    va_list args;
+    va_start(args, str);
+    kprintf("panic: %s", ksprintf_varg(str, args));
+    va_end(args);
+    while(true) {
+        asm volatile("cli\n\t"
+        "hlt"
+        : : : "memory");
+    }
 }

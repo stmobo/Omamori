@@ -121,6 +121,11 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     kprintf("Initializing PCI.\n");
     pci_check_bus(0);
     
+    kprintf("Initiating page fault!\n");
+    int *pf_test = (int*)(0x80000000);
+    *pf_test = 5;
+    kprintf("Memory read-back test: %u (should be 5)\n", (unsigned long long int)*pf_test);
+    
     kprintf("Press ENTER to continue...\n");
     terminal_putchar('>');
     while(true) {

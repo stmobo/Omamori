@@ -21,6 +21,7 @@
 #define PAGING_KERNEL_BASE_ADDR     0xC0000000
 
 //#define PAGING_DEBUG
+#define PAGEFAULT_DEBUG
 
 typedef struct memory_range {
     unsigned long long int base;

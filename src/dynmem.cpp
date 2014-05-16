@@ -15,6 +15,7 @@ void k_heap_init(size_t heap_addr) {
     heap.start->prev = NULL;
     heap.start->next = NULL;
     heap.start->used = false;
+    heap.start->magic = HEAP_MAGIC_NUMBER;
 }
 
 // k_heap_get - Get an entry in the linked list.
@@ -33,6 +34,7 @@ void k_heap_add_at_offset(k_heap_blk* origin_blk, int block_offset) {
     k_heap_blk* blk = (k_heap_blk*)((size_t)origin_blk+(block_offset*HEAP_BLK_SIZE));
     blk->prev = origin_blk;
     blk->next = origin_blk->next;
+    blk->magic = HEAP_MAGIC_NUMBER;
     
     blk->prev->next = blk;
     if(blk->next != NULL)
@@ -44,6 +46,9 @@ void k_heap_add_at_offset(k_heap_blk* origin_blk, int block_offset) {
 // k_heap_delete - Unlink a block
 // This function removes a block from the linked list, effectively "deleting" it.
 void k_heap_delete(k_heap_blk* blk) {
+    if(blk == NULL) {
+        panic("dynmem: Attempted to delete NULL block!");
+    }
     if(blk->prev != NULL) {
         blk->prev->next = blk->next;
     } else {
@@ -56,6 +61,7 @@ void k_heap_delete(k_heap_blk* blk) {
     }
     blk->next = NULL;
     blk->prev = NULL;
+    blk->magic = 0;
     blk->used = false;
 }
 
@@ -129,19 +135,27 @@ void kfree(char* ptr) {
     // set the free bit
     // compress the list
     k_heap_blk *header_ptr = (k_heap_blk*)((size_t)(ptr-sizeof(k_heap_blk)-1));
-#ifdef DYNMEM_CLEAR_ON_FREE
-    for(uint32_t* clear_ptr = (uint32_t*)ptr;clear_ptr<(uint32_t*)header_ptr->next;clear_ptr++)
-        *clear_ptr = 0xDA110C8D; // Deallocated
-#endif
-    header_ptr->used = false;
-    // delete this block now
-    if(header_ptr->prev != NULL)
-        header_ptr->prev->next = header_ptr->next;
-    if(header_ptr->next != NULL)
-        header_ptr->next->prev = header_ptr->prev;
-    header_ptr->next = NULL;
-    header_ptr->prev = NULL;
-    //k_heap_compress();
+    if(header_ptr->magic == HEAP_MAGIC_NUMBER) {
+        header_ptr->used = false;
+        if(header_ptr->prev != NULL) {
+            if( !(header_ptr->prev->used) ) {
+                // Just delete this block.
+                k_heap_delete(header_ptr);
+            } 
+        }
+        if(header_ptr->next != NULL) {
+            if( !(header_ptr->next->used) ) {
+                // Delete header_ptr->next.
+                k_heap_blk *next = header_ptr->next;
+                k_heap_delete(next);
+            }
+        }
+        
+        k_heap_compress();
+    } else {
+        // We're freeing an invalid pointer.
+        panic("dynmem: bad free() call -- could not find magic number");
+    }
     
 }
 

@@ -42,6 +42,9 @@ echo "Making debug symbol file."
 objcopy --only-keep-debug omamori.elf omamori.sym
 objcopy --strip-debug omamori.elf
 
+echo "Outputting sorted symbols list."
+readelf -s omamori.sym | sort -k 2,2 > ./symbols
+
 echo "Creating .iso."
 cp omamori.elf isodir/boot/omamori.elf
 grub-mkrescue -o omamori.iso isodir

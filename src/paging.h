@@ -19,7 +19,6 @@
 #define PAGING_BASE_ADDR            0x500
 
 #define PAGING_KERNEL_BASE_ADDR     0xC0000000
-
 //#define PAGING_DEBUG
 #define PAGEFAULT_DEBUG
 
@@ -39,8 +38,17 @@ typedef struct pageframe {
     size_t address;
 } page_frame;
 
+#define AVL_ORDERING_ELEMENT length
+struct vaddr_range {
+    size_t address;
+    bool free;
+    struct vaddr_range *next;
+    struct vaddr_range *prev;
+};
+
+typedef struct vaddr_range vaddr_range;
+
 extern void initialize_pageframes(multiboot_info_t*);
-extern void initialize_paging();
 extern bool pageframe_get_block_status(int,int);
 extern void pageframe_set_block_status(int,int,bool);
 extern size_t get_block_addr(int,int);
@@ -49,3 +57,12 @@ extern page_frame* pageframe_allocate(int);
 extern page_frame* pageframe_allocate_specific(int,int);
 extern void pageframe_deallocate(page_frame*, int);
 extern void pageframe_restrict_range(size_t, size_t);
+extern inline void invalidate_tlb(size_t);
+extern void paging_set_pte(size_t, size_t, uint16_t);
+extern uint32_t paging_get_pte(size_t);
+extern size_t paging_vmem_alloc( vaddr_range*, size_t, int );
+extern size_t paging_vmem_alloc_specific( vaddr_range*, size_t, size_t );
+extern bool paging_vmem_free( vaddr_range*, size_t );
+extern size_t k_vmem_alloc( int );
+extern size_t k_vmem_alloc( size_t, size_t );
+extern size_t k_vmem_free( size_t );

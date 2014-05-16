@@ -3,8 +3,10 @@
 
 // Our test system has 2GB, in 2096700 page frames.
 // So, our order 0 bitmap is 256 KB.
-// we have bitmaps for everything up to order 10 (1MB blocks).
+// we have bitmaps for everything up to order 8 (1MB blocks).
 // In total, our bitmaps will take up 512KB of space.
+
+// We use a linked-list allocator for virtual memory in both kernel and user space.
 
 #include "includes.h"
 #include "multiboot.h"
@@ -45,6 +47,7 @@ int n_mem_ranges;
 memory_range* memory_ranges;
 size_t **buddy_maps;
 int n_blocks[BUDDY_MAX_ORDER+1];
+vaddr_range k_vmem_linked_list;
 
 uint32_t *page_directory;
 // instead of having a 1024-large array of pointers to the page tables,
@@ -191,15 +194,25 @@ page_frame* pageframe_allocate(int n_frames) {
         // now allocate all the blocks
         for(int i=0;i<o8_blocks;i++) {
             f_tmp = pageframe_allocate( (1<<BUDDY_MAX_ORDER) );
+            if(f_tmp == NULL) {
+                kfree((char*)frames);
+                return NULL;
+            }
             for( int j=0;j<(1<<BUDDY_MAX_ORDER);j++ ) {
                 frames[ (i*(1<<BUDDY_MAX_ORDER))+j ] = f_tmp[j];
             }
+            kfree((char*)f_tmp);
         }
         if( remainder > 0) {
             f_tmp = pageframe_allocate( (1<<rem_order) );
+            if(f_tmp == NULL) {
+                kfree((char*)frames);
+                return NULL;
+            }
             for(int i=0;i<(1<<rem_order);i++) {
                 frames[ (o8_blocks*(1<<BUDDY_MAX_ORDER))+i ] = f_tmp[i];
             }
+            kfree((char*)f_tmp);
         }
         return frames;
     }
@@ -309,16 +322,22 @@ void initialize_pageframes(multiboot_info_t* mb_info) {
         n_blocks[i] = num_blocks;
     }
     
+    k_vmem_linked_list.address = 0xC0000000;
+    k_vmem_linked_list.free = true;
+    k_vmem_linked_list.prev = NULL;
+    k_vmem_linked_list.next = NULL;
+    
     //pageframe_restrict_range( (size_t)&kernel_start_phys, (size_t)&kernel_end_phys );
     pageframe_restrict_range( 0, 0x400000 );
-    pageframe_restrict_range( (size_t)buddy_maps, ((size_t)buddy_maps)+((BUDDY_MAX_ORDER+1)*sizeof(size_t*)) );
+    k_vmem_alloc( 0xC0000000, 0xC0400000 );
+    k_vmem_alloc( (size_t)buddy_maps, (size_t)(((size_t)buddy_maps)+((BUDDY_MAX_ORDER+1)*sizeof(size_t*))) );
     kprintf("Map of buddy maps begins at 0x%x and ends at 0x%x\n", (unsigned long long int)buddy_maps, (unsigned long long int)(((size_t)buddy_maps)+((BUDDY_MAX_ORDER+1)*sizeof(size_t*))) );
     // now go back and restrict these ranges of memory from paging
     for(int i=0;i<=BUDDY_MAX_ORDER;i++) {
         int block_size = 1024*pow(2, i+2);
         int num_blocks = mem_avail_bytes / block_size;
         int num_blk_entries = num_blocks / 8;
-        pageframe_restrict_range( ((size_t)(buddy_maps[i])), ((size_t)(buddy_maps[i]))+(sizeof(size_t)*num_blk_entries) );
+        k_vmem_alloc( (size_t)(buddy_maps[i]), (size_t)(((size_t)(buddy_maps[i]))+(sizeof(size_t)*num_blk_entries)) );
 #ifdef PAGING_DEBUG
         kprintf("Buddy map for order %u begins at 0x%x and ends at 0x%x\n", (unsigned long long int)i, ((unsigned long long int)(buddy_maps[i])), (unsigned long long int)(((size_t)(buddy_maps[i]))+(sizeof(size_t)*num_blk_entries)) );
 #endif
@@ -372,6 +391,122 @@ uint32_t paging_get_pte(size_t vaddr) {
     return table[table_offset];
 }
 
+// Allocate <n_pages> pages of virtual memory from a predefined list
+size_t paging_vmem_alloc( vaddr_range *start, size_t maximum_address, int n_pages) {
+    vaddr_range *current = start;
+    size_t n_bytes = n_pages * 0x1000;
+    while( current != NULL ) {
+        if( current->free ) {
+            unsigned int len = maximum_address-1;
+            if( current->next != NULL ) {
+                len = current->next->address - 1;
+            }
+            len -= current->address;
+            if( len == n_bytes ) {
+                current->free = false;
+                return current->address & 0xFFFFF000;
+            } else if( len > n_bytes ) {
+                current->free = false;
+                vaddr_range *next = current->next;
+                current->next = new vaddr_range;
+                current->next->free = true;
+                current->next->address = (current->address)+n_bytes;
+                 
+                current->next->prev = current;
+                current->next->next = next;
+                if(next != NULL) { 
+                    next->prev = current->next;
+                }
+                return current->address & 0xFFFFF000;
+            }
+        }
+        current = current->next;
+    }
+    return NULL;
+}
+
+// Allocate a specific memory range.
+size_t paging_vmem_alloc_specific( vaddr_range *start, size_t start_addr, size_t end_addr) {
+    vaddr_range *current = start;
+    size_t n_bytes = end_addr - start_addr;
+    while( current != NULL ) {
+        if( (current->address <= start_addr) && (current->free) && ((current->next == NULL) || (current->next->address >= end_addr)) ) {
+            if( current->address == start_addr ) {
+                current->free = false;
+            } else if( current->address < start_addr ) {
+                vaddr_range *next = current->next;
+                current->next = new vaddr_range;
+                current->next->free = true;
+                current->next->address = (start_addr & 0xFFFFF000);
+                 
+                current->next->prev = current;
+                current->next->next = next;
+                next->prev = current->next;
+                current = current->next;
+            }
+            vaddr_range *next = current->next;
+            current->next = new vaddr_range;
+            current->next->free = true;
+            current->next->address = (end_addr & 0xFFFFF000);
+             
+            current->next->prev = current;
+            current->next->next = next;
+            next->prev = current->next;
+            return current->next->address;
+        }
+        current = current->next;
+    }
+    return NULL;
+}
+
+bool paging_vmem_free( vaddr_range *start, size_t address ) {
+    vaddr_range *current = start;
+    while( current != NULL ) {
+        if( current->address == address ) {
+            current->free = true;
+            if( current->prev->free ) {
+                current->prev->next = current->next;
+                current->next->prev = current->prev;
+                
+                /*
+                current->next = NULL;
+                current->prev = NULL;
+                current->address = NULL;
+                current->free = false;
+                */
+                delete current;
+                return true;
+            } else if( current->next->free ) {
+                current->next->next->prev = current;
+                current->next = current->next->next;
+                
+                /*
+                current->next->next = NULL;
+                current->next->prev = NULL;
+                current->next->address = NULL;
+                current->next->free = false;
+                */
+                delete current->next;
+                return true;
+            }
+        }
+        current = current->next;
+    }
+    return false;
+}
+
+size_t k_vmem_alloc( int n_pages ) {
+    return paging_vmem_alloc( &k_vmem_linked_list, (size_t)0xFFC00000, n_pages );
+}
+
+size_t k_vmem_alloc( size_t begin, size_t end ) {
+    return paging_vmem_alloc_specific( &k_vmem_linked_list, begin, end );
+}
+
+size_t k_vmem_free( size_t address ) {
+    return paging_vmem_free( &k_vmem_linked_list, address );
+}
+
 void paging_handle_pagefault(char error_code, uint32_t cr2) {
     if( (error_code & 1) == 0 ) {
 #ifdef PAGEFAULT_DEBUG
@@ -382,6 +517,9 @@ void paging_handle_pagefault(char error_code, uint32_t cr2) {
         }
 #endif
         page_frame *frame = pageframe_allocate(1);
+        if(frame == NULL) {
+            panic("paging: No pageframes left to allocate!");
+        }
         paging_set_pte( (size_t)cr2, frame->address, 0 ); // load vaddr to newly allocated page, with no flags except for PRESENT.
 #ifdef PAGEFAULT_DEBUG
         kprintf("paging: mapped faulting address to paddr 0x%x.\n", (unsigned long long int)frame->address);

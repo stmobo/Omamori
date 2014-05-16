@@ -118,11 +118,15 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     pageframe_deallocate(framez2, 13);
     pageframe_deallocate(framez, 13);
     
+    kprintf("Testing kernel vmem allocation.\n");
+    size_t vmem_test = k_vmem_alloc( 5 );
+    kprintf("Virtual allocation starts at address 0x%x.\n", (unsigned long long int)vmem_test);
+    
     kprintf("Initializing PCI.\n");
     pci_check_bus(0);
     
     kprintf("Initiating page fault!\n");
-    int *pf_test = (int*)(0x80000000);
+    int *pf_test = (int*)(0xC0400000);
     *pf_test = 5;
     kprintf("Memory read-back test: %u (should be 5)\n", (unsigned long long int)*pf_test);
     

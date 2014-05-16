@@ -9,4 +9,4 @@ extern char* ksprintf_varg(const char*, ...);
 extern void kprintf_varg(const char*, ...);
 extern char* ksprintf(const char*, ...);
 extern void kprintf(const char*, ...);
-extern void panic(const char*, ...);
+extern void panic(char*, ...);

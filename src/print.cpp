@@ -275,12 +275,30 @@ void kprintf(const char *str, ...) {
     va_end(args);
 }
 
+char *panic_str = NULL;
+
 // Print "panic: mesg" and then hang.
-void panic(const char *str, ...) {
-    va_list args;
-    va_start(args, str);
-    kprintf("panic: %s", ksprintf_varg(str, args));
-    va_end(args);
+void panic(char *str, ...) {
+    if(panic_str != NULL) { // Don't panic WHILE panicking.
+        terminal_writestring("panic: panicked while panicking!\n");
+        terminal_writestring("first panic string: ");
+        terminal_writestring(panic_str);
+        terminal_writestring("\nsecond panic string: ");
+        terminal_writestring(str);
+    } else {
+        panic_str = str; // save the unformatted string just in case
+        
+        va_list args;
+        va_start(args, str);
+        
+        char *o = ksprintf_varg( str, args );
+        panic_str = o; // okay, save the formatted string since we now have it.
+        
+        terminal_writestring("panic: ");
+        terminal_writestring(o);
+        va_end(args);
+    }
+    // Now halt.
     while(true) {
         asm volatile("cli\n\t"
         "hlt"

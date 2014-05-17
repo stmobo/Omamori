@@ -107,7 +107,6 @@ int read_uart_fifo(short base) {
 
 int write_uart_fifo(short base) {
     int bytes_written = 0;
-    char hex[8];
     if(output_length == 0)
         return 0;
     serial_disable_interrupts();
@@ -169,7 +168,6 @@ char* serial_read(int *ret_bytes) {
 }
 
 void serial_write(char* data) {
-    char hex[8];
     int len = strlen(data);
     //terminal_writestring("Entering serial_write.\n");
     while((output_length+len) > SERIAL_BUFFER_SIZE)

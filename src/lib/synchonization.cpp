@@ -9,39 +9,39 @@
 
 
 spinlock::spinlock() {
-    this->locked = false;
+    this->lock_value = SPINLOCK_UNLOCKED_VALUE;
 }
 
 void spinlock::lock() {
-    while(!cas(this->locked, false, true)) {
+    while(!cas(&this->lock_value, SPINLOCK_UNLOCKED_VALUE, SPINLOCK_LOCKED_VALUE)) {
         asm volatile("pause" : : : "memory");
     }
 }
 
 void spinlock::unlock() {
     asm volatile("" : : : "memory");
-    *(this->lock) = false;
+    this->lock_value = SPINLOCK_UNLOCKED_VALUE;
 }
 
 reentrant_mutex::reentrant_mutex() {
-    this->control_lock = false;
+    this->control_lock = new spinlock;
     this->uid = ~0;
     this->lock_count = 0;
 }
 
 void reentrant_mutex::lock( int uid ) {
-    spinlock_lock( &this->control_lock );
+    this->control_lock->lock();
     if( (this->uid == ~0) ){
         this->uid = uid;
     }
     if(this->uid == uid) {
         this->lock_count++;
     }
-    spinlock_unlock( &this->control_lock );
+    this->control_lock->unlock();
 }
 
 void reentrant_mutex::unlock( int uid ) {
-    spinlock_lock( &this->control_lock );
+    this->control_lock->lock();
     if(this->uid == uid) {
         this->lock_count--;
         if( this->lock_count == 0 ) {
@@ -50,30 +50,30 @@ void reentrant_mutex::unlock( int uid ) {
             panic("sync: attempted to unlock mutex more times than it was acquired!");
         }
     }
-    spinlock_unlock( &this->control_lock );
+    this->control_lock->unlock();
 }
 
 semaphore::semaphore() {
     this->count = 0;
     this->max_count = 0;
-    this->control_lock = false;
+    this->control_lock = new spinlock;
 }
 
 semaphore::semaphore(int max) {
     this->count = max;
     this->max_count = max;
-    this->control_lock = false;
+    this->control_lock = new spinlock;
 }
 
 semaphore::semaphore(int count, int max) {
     this->count = count;
     this->max_count = max;
-    this->control_lock = false;
+    this->control_lock = new spinlock;
 }
 
 
 void semaphore::release(int count) {
-    spinlock_lock( &this->control_lock );
+    this->control_lock->lock();
     
     // make sure we don't attempt to increment the count past what it's supposed to be
     if( (this->max_count == 0) || ((this->count + count) <= this->max_count) ) {
@@ -81,7 +81,7 @@ void semaphore::release(int count) {
     }
     
     
-    spinlock_unlock( &this->control_lock );
+    this->control_lock->unlock();
 }
 
 void semaphore::acquire(int count) {
@@ -90,13 +90,13 @@ void semaphore::acquire(int count) {
         return;
     }
     while(true) {
-        spinlock_lock( &this->control_lock );
+        this->control_lock->lock();
         if( this->count >= count ) {
             this->count -= count;
-            spinlock_unlock( &this->control_lock );
+            this->control_lock->unlock();
             break;
         }
-        spinlock_unlock( &this->control_lock );
+        this->control_lock->unlock();
         asm volatile("pause" : : : "memory");
     }
 }

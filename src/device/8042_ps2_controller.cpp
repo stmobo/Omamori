@@ -114,9 +114,9 @@ void irq12_handler() {
 
 void ps2_set_interrupt_status(bool status, bool port2) {
     if(!port2)
-        irq_mask(1, !status);
+        irq_set_mask(1, !status);
     else
-        irq_mask(12, !status);
+        irq_set_mask(12, !status);
 }
 
 void ps2_controller_init() {

@@ -5,7 +5,7 @@
 #include "arch/x86/table.h"
 
 cpu_regs active_regs;
-size_t current_kern_stack = NULL;
+size_t current_kern_stack = 0;
 // __syscall_entry will load this on context switch and reload from this when returning.
 
 // Context control flow:
@@ -44,7 +44,7 @@ void do_context_switch( process *p ) {
 */
 
 void switch_kern_stack() {
-    if( current_kern_stack != NULL ) {
+    if( current_kern_stack != 0 ) {
         k_vmem_free( current_kern_stack );
     }
     current_kern_stack = k_vmem_alloc( UMODE_STACK_PAGES );

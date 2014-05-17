@@ -319,6 +319,7 @@ page_frame* pageframe_allocate_at( size_t where, int n_frames ) {
             return NULL; // no point going further, it can't be allocated
         }
     }
+    return NULL;
 }
 
 void pageframe_deallocate_specific(int blk_num, int order) {

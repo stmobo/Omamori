@@ -1,9 +1,9 @@
 // ps2_keyboard.cpp - ps2 keyboard driver
 #include "includes.h"
 #include "arch/x86/irq.h"
+#include "arch/x86/pic.h"
 #include "device/ps2_controller.h"
 #include "device/ps2_keyboard.h"
-#include "device/pic.h"
 #include "device/vga.h"
 
 // for now, we'll just assume that port1 is always connected to the keyboard.
@@ -125,7 +125,7 @@ ps2_keypress* ps2_keyboard_get_keystroke() { // blocks for a keystroke
 
 
 void ps2_keyboard_initialize() {
-    uint16_t port1_ident = ps2_get_ident_bytes(false);
+    //uint16_t port1_ident = ps2_get_ident_bytes(false);
     //if(port1_ident != 0xFFFF) {
 #ifdef DEBUG
         terminal_writestring("Initializing port 1 keyboard.\n");

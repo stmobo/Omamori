@@ -1,4 +1,5 @@
 #include "includes.h"
+#include "arch/x86/pic.h"
 #include "arch/x86/isr.h"
 #include "arch/x86/table.h"
 #include "arch/x86/multitask.h"
@@ -254,8 +255,8 @@ void gdt_init() {
     
     loadGDT((size_t)8*NUM_ENTRIES_GDT-1, (size_t)gdt);
     
-    uint32_t gdt_base = getGDT_base();
 #ifdef DEBUG
+    uint32_t gdt_base = getGDT_base();
     kprintf("GDT is now located at 0x%x\n", gdt_base);
     terminal_writestring("Now reloading segment registers.\n");
 #endif

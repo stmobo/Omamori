@@ -7,7 +7,7 @@
 #include "arch/x86/pic.h"
 #include "arch/x86/irq.h"
 
-size_t irq_handlers[16] = { NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL };
+size_t irq_handlers[16] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };
 signed int waiting_for = -1;
 bool do_wait = false;
 
@@ -16,7 +16,7 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
     if(irq_num == waiting_for)
         waiting_for = -1;
     */
-    if(irq_handlers[irq_num] != NULL) {
+    if(irq_handlers[irq_num] != 0) {
         void (*handler)(void) = (void(*)())irq_handlers[irq_num]; // jump to the stored function pointer...
         handler(); // ...and hope there's someone there to catch us.
     }
@@ -25,7 +25,7 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
 }
 
 bool irq_add_handler(int irq_num, size_t addr) {
-    if(irq_handlers[irq_num] != NULL)
+    if(irq_handlers[irq_num] != 0)
         return false;
     irq_handlers[irq_num] = addr;
     irq_set_mask(irq_num, false);
@@ -36,7 +36,7 @@ void block_for_irq(int irq) {
     if((irq < 0) || (irq > 15))
         return;
     waiting_for = irq;
-    unsigned short mask = get_irq_mask_all();
+    unsigned short mask = pic_get_mask();
     set_all_irq_status(true);
     irq_set_mask(irq, false);
     while(true) {
@@ -44,7 +44,7 @@ void block_for_irq(int irq) {
         if(waiting_for == -1)
             break;
     }
-    set_irq_mask_all(mask);
+    pic_set_mask(mask);
 }
 
 void irq_set_mask(unsigned char irq, bool set) {

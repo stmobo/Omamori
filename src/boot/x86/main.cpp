@@ -3,9 +3,9 @@
 #include "arch/x86/irq.h"
 #include "arch/x86/pic.h"
 #include "arch/x86/table.h"
+#include "arch/x86/multitask.h"
 #include "boot/multiboot.h"
 #include "core/paging.h"
-#include "core/multitask.h"
 #include "device/pit.h"
 #include "device/serial.h"
 #include "device/pci.h"
@@ -13,14 +13,16 @@
 #include "device/ps2_keyboard.h"
 #include "device/vga.h"
 
-bool a = true;
-
 #if defined(__linux__)
 #error "You are not using a cross-compiler, you will most certainly run into trouble"
 #endif
  
 #if !defined(__i386__)
 #error "This needs to be compiled with a ix86-elf compiler"
+#endif
+
+#if !defined(__cplusplus)
+#error "This is C++ code, use a C++ compiler."
 #endif
 
 void test_func(void* n) {

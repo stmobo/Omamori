@@ -26,3 +26,5 @@
 *.iso
 io_port.txt
 symbols
+acpica-unix-20140424/*
+acpica-unix-20140424.tar.gz

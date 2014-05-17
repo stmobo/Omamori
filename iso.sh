@@ -29,7 +29,7 @@ for i in $SRC_DIR/*.cpp; do
     s=${i##*/}
     n=${s%%.*}
     echo "Compiling:" $n".cpp"
-    i686-elf-g++ -c $SRC_DIR/$n.cpp -o $OBJ_DIR/$n.o $OPTIONS
+    i686-elf-g++ -c $SRC_DIR/$n.cpp -o $OBJ_DIR/$n.o -I$SRC_DIR/include $OPTIONS 
 done
 
 mv $OBJ_DIR/irq.o $OBJ_DIR/_irq.o

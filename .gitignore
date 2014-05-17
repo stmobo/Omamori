@@ -1,7 +1,7 @@
 # Compiled Object files
 *.slo
 *.lo
-**/*.o
+*.o
 *.obj
 
 # Compiled Dynamic libraries
@@ -24,6 +24,7 @@
 # Other things
 *.sym
 *.iso
+*.d
 io_port.txt
 symbols
 acpica-unix-20140424/*

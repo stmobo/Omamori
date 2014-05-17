@@ -5,8 +5,8 @@ SRC_DIR="./src"
 export PATH="$HOME/opt/cross/bin:$PATH"
 
 echo "Cleaning old files."
-rm obj/*
-rm omamori.elf
+#rm obj/*
+#rm omamori.elf
 
 echo "Assembling .s files."
 for i in $SRC_DIR/*.s; do

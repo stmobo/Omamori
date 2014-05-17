@@ -2,8 +2,8 @@
 
 #include "includes.h"
 #include "core/sys.h"
-#include "device/vga.h"
 #include "core/dynmem.h"
+#include "device/vga.h"
 
 void *__stack_chk_guard = NULL;
 

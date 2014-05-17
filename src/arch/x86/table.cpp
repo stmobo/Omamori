@@ -1,9 +1,8 @@
 #include "includes.h"
 #include "arch/x86/isr.h"
-#include "device/vga.h"
 #include "arch/x86/table.h"
-#include "device/pic.h"
 #include "arch/x86/multitask.h"
+#include "device/vga.h"
 
 #define add_idt_trap_entry(func, index) \
     idt_structs[index].offset = (size_t)&func; \

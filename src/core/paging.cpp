@@ -12,9 +12,6 @@
 #include "boot/multiboot.h"
 #include "core/paging.h"
 #include "device/vga.h"
-#include "lib/vector.h"
-
-#include "ps2_keyboard.h"
 
 /*
 My test system says:

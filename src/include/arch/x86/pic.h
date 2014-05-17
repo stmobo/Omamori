@@ -12,11 +12,7 @@
 #define PIC_IRQ_OFFSET_1              32
 #define PIC_IRQ_OFFSET_2              40
 
-extern void pic_end_interrupt(bool);
+extern void pic_end_interrupt(int);
 extern void pic_initialize(char, char);
-extern void irq_mask(unsigned char,bool);
-extern bool get_irq_mask_status(unsigned char);
-extern bool get_irq_mask(unsigned char);
-extern void set_all_irq_status(bool);
-extern unsigned short get_irq_mask_all(void);
-extern void set_irq_mask_all(unsigned short);
+extern void pic_set_mask(uint16_t);
+extern uint16_t pic_get_mask(void);

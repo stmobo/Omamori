@@ -1,5 +1,5 @@
 #pragma once
-#include "dynmem.h"
+#include "core/dynmem.h"
 #include "core/sys.h"
 
 template <class list_obj_type>

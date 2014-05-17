@@ -1,8 +1,8 @@
 // serial.cpp - serial communications
+#include "arch/x86/irq.h"
+#include "arch/x86/pic.h"
 #include "core/sys.h"
 #include "core/dynmem.h"
-#include "arch/x86/irq.h"
-#include "device/pic.h"
 #include "device/serial.h"
 #include "device/vga.h"
 
@@ -199,7 +199,7 @@ void initialize_serial(short base, short divisor) {
     io_outb(base+LCR_OFFSET, LP_8N1);
     io_outb(base+FCR_IIR_OFFSET, FCR_FIFO_ON | FCR_FIFO_CLEAR_RECV | FCR_FIFO_CLEAR_TRANS | FCR_FIFO_INT_TRIG_14x);
     io_outb(base+MCR_OFFSET, MCR_DATA_TERM_READY | MCR_REQUEST_TO_SEND | MCR_AUX_OUT_2);
-    add_irq_handler(4, (size_t)&serial_irq);
+    irq_add_handler(4, (size_t)&serial_irq);
     serial_enable_interrupts();
     serial_initialized = true;
 }

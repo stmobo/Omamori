@@ -165,5 +165,5 @@ void pit_initialize(short reload_val) {
     pit_frequency = PIT_BASE_TIMER_SIGNAL / reload_val;
     ms_per_tick = (1/pit_frequency);
     set_pit_reload_val(reload_val);
-    add_irq_handler(0, (size_t)&irq0_handler);
+    irq_add_handler(0, (size_t)&irq0_handler);
 }

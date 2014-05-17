@@ -2,9 +2,9 @@
 
 #include "includes.h"
 #include "arch/x86/irq.h"
+#include "arch/x86/pic.h"
 #include "device/vga.h"
 #include "device/pit.h"
-#include "device/pic.h"
 #include "device/ps2_controller.h"
 
 unsigned char port1_input_buffer[256];
@@ -239,8 +239,8 @@ void ps2_controller_init() {
 #endif
     
     // Now enable interrupts.
-    add_irq_handler( 1, (size_t)&irq1_handler );
-    add_irq_handler( 12, (size_t)&irq12_handler );
+    irq_add_handler( 1, (size_t)&irq1_handler );
+    irq_add_handler( 12, (size_t)&irq12_handler );
     ps2_send_command(PS2_CMD_WRITE_CCB);
     ps2_send_byte(PS2_CCB_PORT1_INT | PS2_CCB_PORT2_INT | PS2_CCB_SYS_FLAG | PS2_CCB_PORT1_CLK | PS2_CCB_PORT2_CLK, false);
 }

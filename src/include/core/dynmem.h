@@ -6,7 +6,10 @@
 #define HEAP_BLK_SIZE           128
 // kernel heap start address
 #define HEAP_START_ADDR         ((size_t)&kernel_end+1) // do *not* set to 0x100000, that's where the kernel goes
-#define HEAP_MAGIC_NUMBER       0xA110CA7E
+#define HEAP_MAGIC_NUMBER       0x414C4F43 // 'ALOC' in packed ascii
+
+//enables checking for double/invalid free:
+//#define DYNMEM_CHECK_FREE_CALLS
 
 struct k_heap_blk {
     struct k_heap_blk  *next;

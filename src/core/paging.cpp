@@ -227,6 +227,8 @@ page_frame* pageframe_allocate(int n_frames) {
         }
         return frames;
     }
+    
+    // Allocate one set of blocks.
 #ifdef PAGING_DEBUG
     kprintf("Allocating order %u block.\n", ((unsigned long long int)order));
 #endif
@@ -248,78 +250,20 @@ page_frame* pageframe_allocate(int n_frames) {
 
 page_frame* pageframe_allocate_at( size_t where, int n_frames ) {
     // find out the order of the allocated frame
-    int order = 0;
     where &= 0xFFFFF000;
-    if( n_frames <= (1<<BUDDY_MAX_ORDER) ) {
-        for(int i=0;i<=BUDDY_MAX_ORDER;i++) {
-            if( (1<<i) == n_frames ) {
-                order = i;
-                break;
-            } else if( ( (1<<i) < n_frames) && ((1<<(i+1)) > n_frames)  ) {
-                order = i+1;
-                break;
+    int where_frame = pageframe_get_block_from_addr( where );
+    page_frame *frames = (page_frame*)kmalloc(sizeof(page_frame)*n_frames);
+    if( frames != NULL ) {
+        for(int i=0;i<n_frames;i++) {
+            size_t paddr = where + (i*0x1000);
+            frames[i].address = paddr;
+            frames[i].id = pageframe_get_block_from_addr( paddr );
+            if( frames[i].id != -1) {
+                pageframe_allocate_specific( frames[i].id, 0 );
             }
-        }
-    } else {
-        // find out how many order 8 blocks we'll have to allocate
-        // also find out the remainder
-        int o8_blocks = n_frames >> BUDDY_MAX_ORDER;
-        int remainder = n_frames & ((1<<BUDDY_MAX_ORDER)-1); // % (1 << BUDDY_MAX_ORDER);
-        // now find the order of the remaining allocation
-        int rem_order = 0;
-        for(int i=0;i<=BUDDY_MAX_ORDER;i++) {
-            if( (1<<i) == remainder ) {
-                rem_order = i;
-                break;
-            } else if( ( (1<<i) < remainder) && ((1<<(i+1)) > remainder)  ) {
-                rem_order = i+1;
-                break;
-            }
-        }
-        
-        // the number of allocated frames is now ( o8_blocks * (1<<BUDDY_MAX_ORDER) ) + (1<<rem_order)
-        int allocated_frames = ( o8_blocks * (1<<BUDDY_MAX_ORDER) ) + (1<<rem_order);
-        page_frame* frames = (page_frame*)kmalloc( sizeof(page_frame)*allocated_frames );
-        page_frame* f_tmp = NULL;
-        
-        // now allocate all the blocks
-        for(int i=0;i<o8_blocks;i++) {
-            f_tmp = pageframe_allocate_at( where+(0x1000*(i*(1<<BUDDY_MAX_ORDER))), (1<<BUDDY_MAX_ORDER) );
-            if(f_tmp == NULL) {
-                kfree((char*)frames);
-                return NULL;
-            }
-            for( int j=0;j<(1<<BUDDY_MAX_ORDER);j++ ) {
-                frames[ (i*(1<<BUDDY_MAX_ORDER))+j ] = f_tmp[j];
-            }
-            kfree((char*)f_tmp);
-        }
-        if( remainder > 0) {
-            f_tmp = pageframe_allocate_at( where+(0x1000*o8_blocks*(1<<BUDDY_MAX_ORDER)), (1<<rem_order) );
-            if(f_tmp == NULL) {
-                kfree((char*)frames);
-                return NULL;
-            }
-            for(int i=0;i<(1<<rem_order);i++) {
-                frames[ (o8_blocks*(1<<BUDDY_MAX_ORDER))+i ] = f_tmp[i];
-            }
-            kfree((char*)f_tmp);
-        }
-        return frames;
-    }
-    // find the ID of the requested pageframe
-    for(int i=0;i<n_blocks[order];i++) {
-        int block_start = i*(1<<order);
-        int next_block_start = (i+1)*(1<<order);
-        if( (pageframe_get_block_addr(block_start, 0) <= where) &&
-        (pageframe_get_block_addr(next_block_start, 0) > where) ) {
-            return pageframe_allocate_specific(i, order); // then allocate it.
-        }
-        if( (pageframe_get_block_addr(block_start, 0) > where)  ) {
-            return NULL; // no point going further, it can't be allocated
         }
     }
-    return NULL;
+    return frames;
 }
 
 void pageframe_deallocate_specific(int blk_num, int order) {
@@ -452,11 +396,29 @@ void paging_set_pte(size_t vaddr, size_t paddr, uint16_t flags) {
         // okay, so there's already a mapping present for this page.
         // we need to swap it out, but we don't have a hard disk driver yet.
         // so right now we just exit noisily.
-        kprintf("paging: Attempted to map vaddr 0x%x when mapping already present!", (unsigned long long int)vaddr);
+        kprintf("paging: Attempted to map vaddr 0x%x when mapping already present!\n", (unsigned long long int)vaddr);
         return; 
     }
     table[table_offset] = paddr | (flags & 0xFFF) | 1;
     invalidate_tlb( vaddr );
+}
+
+void paging_unset_pte(size_t vaddr) {
+    int table_no = (vaddr >> 22);
+    int table_offset = (vaddr >> 12) & 0x3FF;
+    uint32_t *pde = (uint32_t*)(0xFFFFF000 + (table_no*4));
+    // first, check to see if there's an actual page table for the page we want to map in
+    // if not, then make a new one
+    if( ((*pde) & 1) == 0 ) {
+        return;
+    }
+    
+    uint32_t *table = (uint32_t*)(0xFFC00000+(table_no*0x1000));
+    uint32_t pte = table[table_offset];
+    if( (pte & 1) > 0 ) {
+        table[table_offset] = 0;
+        invalidate_tlb( vaddr );
+    }
 }
 
 uint32_t paging_get_pte(size_t vaddr) {
@@ -594,6 +556,44 @@ size_t k_vmem_free( size_t address ) {
     return paging_vmem_free( &k_vmem_linked_list, address );
 }
 
+size_t paging_map_phys_address( size_t paddr, int n_frames ) {
+    page_frame *frames = pageframe_allocate_at( paddr, n_frames );
+    size_t vaddr = k_vmem_alloc( n_frames );
+    if( vaddr == NULL ) {
+        kprintf("paging_map_phys_address: could not find free vaddr!\n");
+        return NULL;
+    }
+    if( frames != NULL ) {
+        for( int i=0;i<n_frames;i++ ) {
+            paging_set_pte( vaddr+(i*0x1000), frames[i].address, 0 );
+        }
+        return vaddr;
+    } else {
+        kprintf("paging_map_phys_address: could not allocate space for page_frame*!\n");
+        k_vmem_free( vaddr );
+    }
+    return NULL;
+}
+
+void paging_unmap_phys_address( size_t vaddr, int n_frames ) {
+    size_t base_paddr = paging_get_pte( vaddr&0xFFFFF000 ) & 0xFFFFF000;
+    int base_id = pageframe_get_block_from_addr( base_paddr );
+    page_frame *frame = (page_frame*)kmalloc(sizeof(page_frame));
+    
+    for(int i=0;i<n_frames;i++) {
+        size_t paddr = paging_get_pte( vaddr+(i*0x1000) ) & 0xFFFFF000;
+        int id = pageframe_get_block_from_addr( paddr );
+        if( id != -1 ){
+            frame->address = paddr;
+            frame->id = id;
+            pageframe_deallocate(frame, 1);
+        }
+        paging_unset_pte( vaddr+(i*0x1000) );
+    }
+    
+    k_vmem_free( vaddr );
+}
+
 void paging_handle_pagefault(char error_code, uint32_t cr2) {
     if( (error_code & 1) == 0 ) {
 #ifdef PAGEFAULT_DEBUG
@@ -619,10 +619,10 @@ void paging_handle_pagefault(char error_code, uint32_t cr2) {
         // We're dealing with a protection violation.
         if( (error_code & 0x4) == 0 ) {
             // Supervisor mode exception.
-            panic("paging:  kernel-mode memory protection violation at vaddr 0x%x.", (unsigned long long int)cr2);
+            panic("paging: kernel-mode memory protection violation at vaddr 0x%x.\n", (unsigned long long int)cr2);
         } else {
             // User mode exception.
-            kprintf("paging: user-mode memory protection violation at vaddr 0x%x.", (unsigned long long int)cr2);
+            kprintf("paging: user-mode memory protection violation at vaddr 0x%x.\n", (unsigned long long int)cr2);
         }
     }
 }

@@ -16,7 +16,7 @@
 .section .boot_page_tables, "ax"
 .align 0x1000
 .global PageTable0
-.set address, 0x103
+.set address, 0x103 # Global, Read/Write, Present
 PageTable0:
     .rept 1024
     .long address

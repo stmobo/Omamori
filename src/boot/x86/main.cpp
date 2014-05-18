@@ -1,5 +1,5 @@
 #include "includes.h"
-
+#include "arch/x86/acpi.h"
 #include "arch/x86/irq.h"
 #include "arch/x86/pic.h"
 #include "arch/x86/table.h"
@@ -69,6 +69,12 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     terminal_writestring("Initializing PIT.\n");
     pit_initialize(PIT_DEFAULT_FREQ_DIVISOR);
     
+    terminal_writestring("Initializing ACPI.\n");
+    initialize_acpi();
+        
+    // now initialize PCI
+    // well, maybe later
+    
     terminal_writestring("Initializing serial interface.\n");
     initialize_serial(COM1_BASE_PORT, 3);
     
@@ -94,32 +100,16 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     kprintf("Initializing PS/2 keyboard.\n");
     ps2_keyboard_initialize();
     
-    kprintf("Allocating 160 4k frames (636k memory).\n");
-    framez = pageframe_allocate(160);
-    kprintf("Frame allocation 1 starts at ID %u\n", framez->id);
-    kprintf("Allocating 35 4k frames (140k memory).\n");
-    framez2 = pageframe_allocate(35);
-    kprintf("Frame allocation 2 starts at ID %u\n", framez2->id);
-    kprintf("Deallocating all frames.\n");
-    pageframe_deallocate(framez2, 35);
-    pageframe_deallocate(framez, 160);
-    kprintf("Allocating 2x13 4k frames (52k memory).\n");
-    framez = pageframe_allocate(13);
-    framez2 = pageframe_allocate(13);
-    kprintf("Frame allocation 1 starts at ID %u\n", framez->id);
-    kprintf("Frame allocation 2 starts at ID %u\n", framez2->id);
-    pageframe_deallocate(framez2, 13);
-    pageframe_deallocate(framez, 13);
-    
     kprintf("Testing kernel vmem allocation.\n");
     size_t vmem_test = k_vmem_alloc( 5 );
     kprintf("Virtual allocation starts at address 0x%x.\n", (unsigned long long int)vmem_test);
+    k_vmem_free( vmem_test );
     
     kprintf("Initializing PCI.\n");
     pci_check_bus(0);
     
     kprintf("Initiating page fault!\n");
-    int *pf_test = (int*)(0xC0400000);
+    int *pf_test = (int*)(0xC0800000);
     *pf_test = 5;
     kprintf("Memory read-back test: %u (should be 5)\n", (unsigned long long int)*pf_test);
     

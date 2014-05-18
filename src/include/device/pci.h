@@ -21,7 +21,7 @@ typedef struct pci_device pci_device_t;
 extern void pci_check_bus(char);
 extern void pci_register_device(char, char, char);
 extern char pci_check_device(char, char, char);
-/*
+
 extern void pci_write_config_8(char, char, char, char, uint8_t);
 extern void pci_write_config_16(char, char, char, char, uint16_t);
 extern void pci_write_config_32(char, char, char, char, uint32_t);
@@ -29,4 +29,3 @@ extern void pci_write_config_32(char, char, char, char, uint32_t);
 extern void pci_read_config_8(char, char, char, char);
 extern void pci_read_config_16(char, char, char, char);
 extern void pci_read_config_32(char, char, char, char);
-*/

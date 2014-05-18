@@ -135,7 +135,9 @@ void kfree(char* ptr) {
     // set the free bit
     // compress the list
     k_heap_blk *header_ptr = (k_heap_blk*)((size_t)(ptr-sizeof(k_heap_blk)-1));
+#ifdef DYNMEM_CHECK_FREE_CALLS
     if(header_ptr->magic == HEAP_MAGIC_NUMBER) {
+#endif
         header_ptr->used = false;
         if(header_ptr->prev != NULL) {
             if( !(header_ptr->prev->used) ) {
@@ -152,11 +154,12 @@ void kfree(char* ptr) {
         }
         
         k_heap_compress();
+#ifdef DYNMEM_CHECK_FREE_CALLS
     } else {
         // We're freeing an invalid pointer.
-        panic("dynmem: bad free() call -- could not find magic number");
+        panic("dynmem: bad free() call -- could not find magic number\ndynmem: Pointer points to: 0x%x.\n", (unsigned long long int)((size_t)ptr) );
     }
-    
+#endif
 }
 
 // memblock_inspect - print linked list overview

@@ -32,6 +32,14 @@ bool irq_add_handler(int irq_num, size_t addr) {
     return true;
 }
 
+bool irq_remove_handler(int irq_num) {
+    if(irq_handlers[irq_num] == 0)
+        return false;
+    irq_handlers[irq_num] = 0;
+    irq_set_mask(irq_num, true);
+    return true;
+}
+
 void block_for_irq(int irq) {
     if((irq < 0) || (irq > 15))
         return;

@@ -68,3 +68,5 @@ extern bool paging_vmem_free( vaddr_range*, size_t );
 extern size_t k_vmem_alloc( int );
 extern size_t k_vmem_alloc( size_t, size_t );
 extern size_t k_vmem_free( size_t );
+extern size_t paging_map_phys_address( size_t, int );
+extern void paging_unmap_phys_address( size_t, int );

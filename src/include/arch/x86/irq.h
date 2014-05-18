@@ -5,6 +5,7 @@
 extern "C" {
     extern void do_irq(size_t,size_t,size_t);
     extern bool irq_add_handler(int, size_t);
+    extern bool irq_remove_handler(int);
     extern void block_for_irq(int);
 }
 

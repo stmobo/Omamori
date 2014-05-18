@@ -23,6 +23,11 @@ void spinlock::unlock() {
     this->lock_value = SPINLOCK_UNLOCKED_VALUE;
 }
 
+uint32_t spinlock::get_lock_value() {
+    asm volatile("" : : : "memory");
+    return this->lock_value;
+}
+
 reentrant_mutex::reentrant_mutex() {
     this->control_lock = new spinlock;
     this->uid = ~0;
@@ -43,14 +48,23 @@ void reentrant_mutex::lock( int uid ) {
 void reentrant_mutex::unlock( int uid ) {
     this->control_lock->lock();
     if(this->uid == uid) {
+        if( this->lock_count == 0 ) {
+            panic("sync: attempted to unlock mutex more times than it was acquired!");
+        }
         this->lock_count--;
         if( this->lock_count == 0 ) {
             this->uid = ~0;
-        } else if( this->lock_count < 0 ) {
-            panic("sync: attempted to unlock mutex more times than it was acquired!");
         }
     }
     this->control_lock->unlock();
+}
+
+uint32_t reentrant_mutex::get_lock_count() {
+    return this->lock_count;
+}
+
+int reentrant_mutex::get_owner_uid() {
+    return this->uid;
 }
 
 semaphore::semaphore() {
@@ -59,20 +73,20 @@ semaphore::semaphore() {
     this->control_lock = new spinlock;
 }
 
-semaphore::semaphore(int max) {
+semaphore::semaphore(uint32_t max) {
     this->count = max;
     this->max_count = max;
     this->control_lock = new spinlock;
 }
 
-semaphore::semaphore(int count, int max) {
+semaphore::semaphore(uint32_t count, uint32_t max) {
     this->count = count;
     this->max_count = max;
     this->control_lock = new spinlock;
 }
 
 
-void semaphore::release(int count) {
+void semaphore::release(uint32_t count) {
     this->control_lock->lock();
     
     // make sure we don't attempt to increment the count past what it's supposed to be
@@ -84,7 +98,7 @@ void semaphore::release(int count) {
     this->control_lock->unlock();
 }
 
-void semaphore::acquire(int count) {
+void semaphore::acquire(uint32_t count) {
     // make sure we don't deadlock the process by attempting to fulfill an impossible request
     if( !(this->max_count == 0) && (count > this->max_count) ) {
         return;
@@ -99,4 +113,12 @@ void semaphore::acquire(int count) {
         this->control_lock->unlock();
         asm volatile("pause" : : : "memory");
     }
+}
+
+uint32_t semaphore::get_count() {
+    return this->count;
+}
+
+uint32_t semaphore::get_max_count() {
+    return this->max_count;
 }

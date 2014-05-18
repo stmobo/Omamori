@@ -9,16 +9,19 @@ typedef class spinlock {
     
     public:
     spinlock();
+    uint32_t get_lock_value();
     void lock();
     void unlock();
 } spinlock;
 
 typedef class reentrant_mutex {
     spinlock *control_lock;
-    int lock_count;
+    uint32_t lock_count;
     int uid;
     
     public:
+    int get_owner_uid();
+    uint32_t get_lock_count();
     void lock( int uid );
     void unlock( int uid );
     reentrant_mutex();
@@ -26,13 +29,15 @@ typedef class reentrant_mutex {
 
 typedef class semaphore {
     spinlock *control_lock;
-    int count;
-    int max_count;
+    uint32_t count;
+    uint32_t max_count;
     
     public:
-    void acquire( int count );
-    void release( int count );
+    uint32_t get_count();
+    uint32_t get_max_count();
+    void acquire( uint32_t count );
+    void release( uint32_t count );
     semaphore();
-    semaphore(int);
-    semaphore(int,int);
+    semaphore(uint32_t);
+    semaphore(uint32_t,uint32_t);
 } semaphore;

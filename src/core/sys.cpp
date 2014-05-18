@@ -44,8 +44,8 @@ void io_wait() {
     asm volatile("out %%al, $0x80" : : "a"(0));
 }
 
-unsigned long long int rdtsc() {
-    unsigned long long int tsc;
+uint64_t rdtsc() {
+    uint64_t tsc;
     asm volatile("rdtsc" : "=A" (tsc));
     return tsc;
 }
@@ -83,6 +83,26 @@ void memclr(void* dst, size_t len) {
     char *d = (char*)dst;
     for(size_t i=0;i<len;i++)
         d[i] = 0;
+}
+
+// memory search
+size_t memsrch(size_t start, size_t end, char *search_item, int len, size_t search_granularity) {
+    for(size_t i=start;i<=end;i+=search_granularity) {
+        char *data = (char*)start;
+        if( data[0] == search_item[0] ) {
+            bool is_match = true;
+            for(int j=1;j<len;j++) {
+                if(data[j] != search_item[j]) {
+                    is_match = false;
+                    break;
+                }
+            }
+            if(is_match) {
+                return i;
+            }
+        }
+    }
+    return 0xFFFFFFFF;
 }
 
 int pow(int base, int exp) {

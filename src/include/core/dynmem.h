@@ -9,7 +9,7 @@
 #define HEAP_MAGIC_NUMBER       0x414C4F43 // 'ALOC' in packed ascii
 
 //enables checking for double/invalid free:
-//#define DYNMEM_CHECK_FREE_CALLS
+#define DYNMEM_CHECK_FREE_CALLS
 
 struct k_heap_blk {
     struct k_heap_blk  *next;

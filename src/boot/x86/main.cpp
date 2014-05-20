@@ -31,7 +31,9 @@ void test_func(void* n) {
 }
 
 void test_process_1() {
+    volatile uint32_t loop_var = 0;
     while(true) {
+        loop_var++;
         kprintf("Process 1!\n");
     }
     /*
@@ -57,7 +59,9 @@ void test_process_1() {
 }
 
 void test_process_2() {
+    volatile uint32_t loop_var = 0;
     while(true) {
+        loop_var++;
         kprintf("Process 2!\n");
     }
 }

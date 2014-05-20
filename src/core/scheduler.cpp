@@ -85,9 +85,11 @@ event* wait_for_event(const char* event_name) {
 }
 
 void process_add_to_runqueue( process* process_to_add ) {
-    if( (process_to_add->priority < 16) && (process_to_add->priority > 0) ) {
+    if( (process_to_add->priority < SCHEDULER_PRIORITY_LEVELS) && (process_to_add->priority >= 0) ) {
         process_to_add->state = process_state::runnable;
         run_queues[process_to_add->priority].add( process_to_add );
+    } else {
+        kprintf("Invalid process priority %u\n", (unsigned long long int)(process_to_add->priority));
     }
 }
 
@@ -96,11 +98,13 @@ void process_scheduler() {
     for( int i=0;i<SCHEDULER_PRIORITY_LEVELS;i++ ) {
         if( run_queues[i].get_count() > 0 ) {
             current_priority = i;
+            kprintf("Scheduling process of priority %u.\n", (unsigned long long int)i);
             break;
         }
     }
     if(current_priority == -1) {
         system_wait_for_interrupt();
+        return process_scheduler();
     }
     
     process_current = run_queues[current_priority].remove();
@@ -128,7 +132,7 @@ process::process( size_t entry_point, bool is_usermode, int priority ) {
     this->regs.eip = entry_point;
     this->regs.eflags = (1<<9) | (1<<21); // Interrupt Flag and Identification Flag
     this->regs.ebp = 0;
-    this->regs.kernel_stack = stack_start;
+    this->regs.kernel_stack = stack_start + (PROCESS_STACK_SIZE*0x1000);
     if( is_usermode ){
         this->regs.esp = (uint32_t)(0xC00000000-1); // if the stack is underrun, then a protection violation happens.
         this->regs.cs = GDT_UCODE_SEGMENT*0x08;
@@ -156,7 +160,12 @@ process::process( size_t entry_point, bool is_usermode, int priority ) {
             panic("multitasking: failed to allocate new page directory for process!\n");
         }
     } else {
-        this->regs.esp = stack_start;
+        this->regs.esp = (stack_start + (PROCESS_STACK_SIZE*0x1000))-4;
+        page_frame *stack_frames = pageframe_allocate(PROCESS_STACK_SIZE);
+        for(int i=0;i<PROCESS_STACK_SIZE;i++) {
+            paging_set_pte( stack_start + (i*0x1000), stack_frames[i].address, 0 );
+        }
+        kfree( (char*)(stack_frames) );
         this->regs.cs = GDT_KCODE_SEGMENT*0x08;
         this->regs.ds = GDT_KDATA_SEGMENT*0x08;
         this->regs.es = GDT_KDATA_SEGMENT*0x08;

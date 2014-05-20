@@ -1,5 +1,4 @@
 .global multitasking_enabled
-.global multitasking_timeslice_reset_value
 .global multitasking_timeslice_tick_count
 
 # generic wrapper stuff
@@ -155,8 +154,6 @@ _isr_irq_0:
     cmp $0, %eax
     jne .__isr_irq_0_no_ctext_switch # do a "normal" irq call if it isn't
     
-    mov (multitasking_timeslice_reset_value), %eax
-    mov %eax, (multitasking_timeslice_tick_count)
     pop %eax
     jmp __multitasking_kmode_entry # do note that __multitasking_kmode_entry calls the irq handler in our stead.
     # not falling through -- __multitasking_kmode_entry does the iret itself

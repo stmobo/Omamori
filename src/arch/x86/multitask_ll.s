@@ -1,5 +1,6 @@
 # multitask_ll.s
 
+.global as_syscall
 .global syscall_num
 .global reg_dump_area
 .global __syscall_entry
@@ -34,6 +35,7 @@
 # Saved EIP
 
 __syscall_entry:
+    movl $1, (as_syscall)
     mov %eax, (syscall_num)
     # now fall through to below
     
@@ -88,9 +90,11 @@ __multitasking_kmode_entry:
     push %ebx
     
     call do_context_switch
+    
     pop %ebx
     
-    # clear syscall number
+    # clear syscall number / state
+    movl $0, (as_syscall)
     movl $0, (syscall_num)
     
     # were we in a syscall to begin with?

@@ -3,23 +3,24 @@
 #include "includes.h"
 #include "arch/x86/multitask.h"
 #include "arch/x86/table.h"
+#include "arch/x86/irq.h"
 #include "core/scheduler.h"
 
 // scratch space, do not use
 uint32_t syscall_num = 0;
+uint32_t as_syscall = 0;
 // we have to dump registers to this array
 uint8_t reg_dump_area[60];
 
 uint32_t multitasking_enabled = 0;
-uint32_t multitasking_timeslice_reset_value = MULTITASKING_RUN_TIMESLICE;
 uint32_t multitasking_timeslice_tick_count = MULTITASKING_RUN_TIMESLICE;
 bool starting_init_process = false;
 
 // active_tss->esp0 must be loaded upon scheduling a process to be run.
 
 extern "C" {
-    void __usermode_jump(size_t func, size_t cs, size_t ds, size_t stack_addr);
-    void do_context_switch(uint32_t syscall_n);
+    void __usermode_jump(size_t, size_t, size_t, size_t);
+    void do_context_switch(uint32_t);
     void __process_load_registers();
     void __save_registers_non_int();
 }
@@ -141,7 +142,7 @@ void do_context_switch(uint32_t syscall_n) {
         kprintf("We're starting the first process. Skipping state saving.\n");
         active_tss.esp0 = process_current->regs.kernel_stack;
         active_tss.load_active();
-        process_current->user_regs.eflags |= (1<<9);
+        process_current->regs.eflags |= (1<<9);
         process_current->regs.load_to_active();
         starting_init_process = false;
         kprintf("Now loading process context.\n");
@@ -161,7 +162,9 @@ void do_context_switch(uint32_t syscall_n) {
         // Save registers
         process_current->regs.load_from_active();
         // reschedule to run
-        process_add_to_runqueue( process_current );
+        multitasking_timeslice_tick_count = MULTITASKING_RUN_TIMESLICE;
+        if( process_current->state == process_state::runnable )
+            process_add_to_runqueue( process_current );
         process_scheduler();
         
         if( process_current == NULL ) {
@@ -171,7 +174,7 @@ void do_context_switch(uint32_t syscall_n) {
         // load new process context
         active_tss.esp0 = process_current->regs.kernel_stack;
         active_tss.load_active();
-        process_current->user_regs.eflags |= (1<<9); 
+        process_current->regs.eflags |= (1<<9); 
         process_current->regs.load_to_active();
     }
 }

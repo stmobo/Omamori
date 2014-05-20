@@ -153,7 +153,7 @@ void kfree(char* ptr) {
             }
         }
         
-        k_heap_compress();
+        //k_heap_compress();
 #ifdef DYNMEM_CHECK_FREE_CALLS
     } else {
         // We're freeing an invalid pointer.

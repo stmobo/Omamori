@@ -118,11 +118,9 @@ void timer::reload() {
 
 // This is called AFTER context switching, but before new task context is loaded.
 void irq0_handler() {
-    /*
     if(multitasking_enabled) {
         kprintf("IRQ0!\nTimeslice counter: 0x%x!\n", (unsigned long long int)multitasking_timeslice_tick_count);
     }
-    */
     tick_counter++;
     sys_timer_ms_fraction += ms_per_tick;
     int ms_added = floor(sys_timer_ms_fraction);

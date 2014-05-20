@@ -6,6 +6,7 @@
 #include "device/vga.h"
 #include "device/pit.h"
 #include "device/ps2_controller.h"
+#include "core/scheduler.h"
 
 unsigned char port1_input_buffer[256];
 unsigned char port2_input_buffer[256];
@@ -67,6 +68,17 @@ unsigned char ps2_wait_for_input() {
 }
 
 unsigned char ps2_receive_byte(bool port2) {
+    while(true) {
+        event *ps2_data = wait_for_event("ps2_data");
+        ps2_event_data *ev_dat = (ps2_event_data*)ps2_data->event_data[0];
+        if(ev_dat->port2 == port2) {
+            uint8_t data = ev_dat->data;
+            delete ev_dat;
+            delete ps2_data;
+            return data;
+        }
+    }
+    /*
     if(!port2) {
         while(port1_buffer_length <= 0)
             wait_for_interrupt();
@@ -88,6 +100,7 @@ unsigned char ps2_receive_byte(bool port2) {
         port2_buffer_length--;
         return byte;
     }
+    */
 }
 
 void irq1_handler() {
@@ -99,6 +112,23 @@ void irq1_handler() {
     port1_buffer_length++;
     if(port1_buffer_length > 255)
         port1_buffer_length = 0;
+        
+    event *n_ev = new event;
+    ps2_event_data *n_ev_data = new ps2_event_data;
+    
+    n_ev->event_type = "ps2_data";
+    n_ev->n_event_data = 1;
+    n_ev->event_data = new void*[1];
+    
+    n_ev_data->data = data;
+    n_ev_data->port2 = false;
+    
+    n_ev->event_data[0] = (void*)n_ev_data;
+    
+    send_event(n_ev);
+    
+    delete n_ev_data;
+    delete n_ev;
 }
 
 void irq12_handler() {

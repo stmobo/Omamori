@@ -3,6 +3,7 @@
 
 #include "includes.h"
 #include "arch/x86/irq.h"
+#include "arch/x86/multitask.h"
 #include "device/vga.h"
 #include "device/pit.h"
 #include "lib/linked_list.h"
@@ -115,8 +116,13 @@ void timer::reload() {
     this->internal->reload();
 }
 
+// This is called AFTER context switching, but before new task context is loaded.
 void irq0_handler() {
-    //terminal_writestring("IRQ0!\n");
+    /*
+    if(multitasking_enabled) {
+        kprintf("IRQ0!\nTimeslice counter: 0x%x!\n", (unsigned long long int)multitasking_timeslice_tick_count);
+    }
+    */
     tick_counter++;
     sys_timer_ms_fraction += ms_per_tick;
     int ms_added = floor(sys_timer_ms_fraction);
@@ -154,11 +160,11 @@ unsigned long long int get_sys_time_counter() {
 }
 
 void set_pit_reload_val(short reload_val) {
-    disable_interrupts();
+    system_disable_interrupts();
     io_outb(0x43, (3<<1) | (3<<3)); // set PIT command reg. to channel 0, sequential hi/lo byte access
     io_outb(0x40, (reload_val & 0xFF));
     io_outb(0x40, (reload_val >> 8)&0xFF);
-    enable_interrupts();
+    system_enable_interrupts();
 }
 
 void pit_initialize(short reload_val) {

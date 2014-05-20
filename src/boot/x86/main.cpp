@@ -6,6 +6,7 @@
 #include "arch/x86/multitask.h"
 #include "boot/multiboot.h"
 #include "core/paging.h"
+#include "core/scheduler.h"
 #include "device/pit.h"
 #include "device/serial.h"
 #include "device/pci.h"
@@ -29,16 +30,35 @@ void test_func(void* n) {
     terminal_writestring("atexit() works.\n");
 }
 
-bool strcmp(char* s1, char* s2) {
-    int i = 0;
+void test_process_1() {
     while(true) {
-        if(s1[i] != s2[i])
-            return false;
-        if(s1[i] == 0)
-            return true;
-        if(s2[i] == 0)
-            return true;
-        i++;
+        kprintf("Process 1!\n");
+    }
+    /*
+    kprintf("Press ENTER to continue...\n");
+    terminal_putchar('>');
+    while(true) {
+        int len;
+        char *line = ps2_keyboard_readline(&len);
+        if(strcmp(line, "exit", 0)) {
+            terminal_putchar('\n');
+            kfree(line);
+            //flush_serial_buffer(NULL);
+            break;
+        } else if(strcmp(line, "time", 0)) {
+            kprintf("Time since system startup: %u ticks.", (unsigned long long int)get_sys_time_counter());
+        } else {
+            kprintf(line, len);
+        }
+        kfree(line);
+        terminal_writestring("\n>");
+    }
+    */
+}
+
+void test_process_2() {
+    while(true) {
+        kprintf("Process 2!\n");
     }
 }
 
@@ -69,8 +89,14 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     terminal_writestring("Initializing PIT.\n");
     pit_initialize(PIT_DEFAULT_FREQ_DIVISOR);
     
-    terminal_writestring("Initializing ACPI.\n");
-    initialize_acpi();
+    kprintf("Initializing multitasking.\n");
+    process *proc1 = new process( (size_t)&test_process_1, false, 0 );
+    process *proc2 = new process( (size_t)&test_process_2, false, 0 );
+    initialize_multitasking( proc1 );
+    process_add_to_runqueue( proc2 );
+    
+    //terminal_writestring("Initializing ACPI.\n");
+    //initialize_acpi();
         
     // now initialize PCI
     // well, maybe later
@@ -113,29 +139,9 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     *pf_test = 5;
     kprintf("Memory read-back test: %u (should be 5)\n", (unsigned long long int)*pf_test);
     
-    kprintf("Initializing usermode.\n");
-    initialize_userspace();
+    kprintf("Setup complete, starting processes!\n");
+    multitasking_start_init();
     
-    kprintf("Press ENTER to continue...\n");
-    terminal_putchar('>');
-    while(true) {
-        int len;
-        char *line = ps2_keyboard_readline(&len);
-        if(strcmp(line, "exit")) {
-            terminal_putchar('\n');
-            kfree(line);
-            //flush_serial_buffer(NULL);
-            break;
-        } else if(strcmp(line, "time")) {
-            kprintf("Time since system startup: %u ticks.", (unsigned long long int)get_sys_time_counter());
-        } else {
-            kprintf(line, len);
-        }
-        kfree(line);
-        terminal_writestring("\n>");
-    }
-    
-    kprintf("Setup complete, halting!\n");
     unsigned long long int last_ticked = 0;
     //timer t(1000, true, true, NULL);
     while(true) {

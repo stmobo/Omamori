@@ -85,6 +85,31 @@ void memclr(void* dst, size_t len) {
         d[i] = 0;
 }
 
+void strcpy(char* dst, char* src, size_t len) {
+    int i=0;
+    while(true) {
+        dst[i] = src[i];
+        if( (src[i] == '\0') || ((len != 0) && (len == i) ) ) {
+            break;
+        }
+        i++;
+    }
+}
+
+bool strcmp(char* op1, char* op2, size_t len) {
+    int i=0;
+    while(true) {
+        if( op1[i] != op2[i] ) {
+            return false;
+        }
+        if( (op1[i] == '\0') || (op2[i] == '\0') || ((len != 0) && (len == i) ) ) {
+            break;
+        }
+        i++;
+    }
+    return true;
+}
+
 // memory search
 size_t memsrch(size_t start, size_t end, char *search_item, int len, size_t search_granularity) {
     for(size_t i=start;i<=end;i+=search_granularity) {

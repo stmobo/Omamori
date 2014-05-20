@@ -9,6 +9,8 @@ extern void io_outw(short, short);
 extern void io_outd(short, int);
 extern void io_wait();
 extern size_t strlen(char*);
+extern void strcpy(char*, char*, size_t);
+extern bool strcmp(char*, char*, size_t);
 extern int atexit(void(*)(void*), void*);
 extern void memcpy(void*, void*, size_t);
 extern void memset(void*, char, size_t);
@@ -28,9 +30,9 @@ extern int pow(int,int);
 #define system_halt asm volatile("cli\n\t"\
 "hlt" \
 );
-#define wait_for_interrupt() asm volatile("hlt" : : : "memory");
-#define disable_interrupts() asm volatile("cli" : : : "memory");
-#define enable_interrupts()  asm volatile("sti" : : : "memory");
+#define system_wait_for_interrupt() asm volatile("hlt" : : : "memory");
+#define system_disable_interrupts() asm volatile("cli" : : : "memory");
+#define system_enable_interrupts()  asm volatile("sti" : : : "memory");
 
 // #define DEBUG
 #define PCI_DEBUG

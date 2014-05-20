@@ -2,6 +2,7 @@
 #include "includes.h"
 #include "arch/x86/irq.h"
 #include "arch/x86/pic.h"
+#include "core/scheduler.h"
 #include "device/ps2_controller.h"
 #include "device/ps2_keyboard.h"
 #include "device/vga.h"

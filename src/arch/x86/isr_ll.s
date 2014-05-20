@@ -1,3 +1,7 @@
+.global multitasking_enabled
+.global multitasking_timeslice_reset_value
+.global multitasking_timeslice_tick_count
+
 # generic wrapper stuff
 _isr_call_cpp_func:
     # make sure we don't mess up any running programs
@@ -137,8 +141,31 @@ _isr_test:
     push $0x8D
     push $do_isr_test
     jmp _isr_call_cpp_func
-    
+
+# special treatment for this IRQ
 _isr_irq_0:
+    # decrement the task switch timer
+    push %eax
+    mov (multitasking_enabled), %eax
+    cmp $0, %eax
+    je .__isr_irq_0_no_multitasking
+    
+    mov (multitasking_timeslice_tick_count), %eax
+    # is it time to switch?
+    cmp $0, %eax
+    jne .__isr_irq_0_no_ctext_switch # do a "normal" irq call if it isn't
+    
+    mov (multitasking_timeslice_reset_value), %eax
+    mov %eax, (multitasking_timeslice_tick_count)
+    pop %eax
+    jmp __multitasking_kmode_entry # do note that __multitasking_kmode_entry calls the irq handler in our stead.
+    # not falling through -- __multitasking_kmode_entry does the iret itself
+    
+.__isr_irq_0_no_ctext_switch:
+    dec %eax
+    mov %eax, (multitasking_timeslice_tick_count) # store new tick count
+.__isr_irq_0_no_multitasking:
+    pop %eax
     push $0
     push $do_irq
     jmp _isr_call_cpp_func

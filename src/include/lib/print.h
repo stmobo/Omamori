@@ -1,6 +1,7 @@
 // print.h -- printing functions and stuff related to them
 #pragma once
 #include <stdarg.h>
+//#define ENABLE_SERIAL_LOGGING
 
 extern char* int_to_decimal(long long int);
 extern char* double_to_decimal(double);

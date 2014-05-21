@@ -48,3 +48,15 @@ void pic_set_mask(uint16_t mask) {
     io_outb(MASTER_PIC_BASE+1, master);
     io_outb(SLAVE_PIC_BASE+1, slave);
 }
+
+uint16_t pic_get_isr() {
+    io_outb(MASTER_PIC_BASE, PIC_CMD_READ_ISR);
+    io_outb(SLAVE_PIC_BASE, PIC_CMD_READ_ISR);
+    return ((io_inb(SLAVE_PIC_BASE) << 8) | io_inb(MASTER_PIC_BASE));
+}
+
+uint16_t pic_get_irr() {
+    io_outb(MASTER_PIC_BASE, PIC_CMD_READ_IRR);
+    io_outb(SLAVE_PIC_BASE, PIC_CMD_READ_IRR);
+    return ((io_inb(SLAVE_PIC_BASE) << 8) | io_inb(MASTER_PIC_BASE));
+}

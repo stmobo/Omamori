@@ -18,18 +18,17 @@ typedef struct event {
 } event;
 
 typedef struct process {
-    cpu_regs    regs;
-    cpu_regs    user_regs;
-    bool        switched_from_syscall;
-    uint32_t    id;
-    uint32_t    parent;
-    int         priority;
-    uint32_t    *process_pde;
-    page_frame  *frames_allocated;
-    vaddr_range vmem_allocator;
+    cpu_regs        regs;
+    cpu_regs        user_regs;
+    bool            switched_from_syscall;
+    uint32_t        id;
+    uint32_t        parent;
+    int             priority;
+    uint32_t        *process_pde;
+    vaddr_range     vmem_allocator;
     process_state   state;
-    char*       event_wait = NULL;
-    event*      event_data;
+    char*           event_wait = NULL;
+    event*          event_data;
     
     
     process( cpu_regs, int );
@@ -37,7 +36,7 @@ typedef struct process {
 } process;
 
 // simple FIFO process queue
-typedef class process_list {
+typedef class process_queue {
     process **queue;
     int length;
     int count;
@@ -47,9 +46,8 @@ typedef class process_list {
     process* remove();
     process* operator[](int);
     int get_count() { return this->count; };
-    process_list();
-} process_list;
-
+    process_queue();
+} process_queue;
 
 extern process *process_current;
 extern process **system_processes;
@@ -58,8 +56,8 @@ extern int process_count;
 extern void initialize_multitasking( process* );
 extern void multitasking_start_init();
 extern void process_scheduler();
-extern void process_queue_add( process*, int );
-extern process *shift_process_queue(process**, int);
 extern void send_event(event*);
 extern event* wait_for_event(const char*);
 extern void process_add_to_runqueue( process* );
+extern process* get_process_by_pid( int );
+extern void spawn_process( process* );

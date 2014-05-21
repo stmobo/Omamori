@@ -4,6 +4,7 @@
 #include "arch/x86/multitask.h"
 #include "arch/x86/table.h"
 #include "arch/x86/irq.h"
+#include "arch/x86/pic.h"
 #include "core/scheduler.h"
 
 // scratch space, do not use
@@ -133,22 +134,22 @@ uint32_t do_syscall() {
 }
 
 void do_context_switch(uint32_t syscall_n) {
-    kprintf("Context switch!\n");
+    //kprintf("Context switch!\n");
     if( (process_current == NULL) && (!starting_init_process) ) {
         // presumably, multitasking hasn't been set up yet, so just return
         return;
     }
     if(starting_init_process) {
-        kprintf("We're starting the first process. Skipping state saving.\n");
+        //kprintf("We're starting the first process. Skipping state saving.\n");
         active_tss.esp0 = process_current->regs.kernel_stack;
         active_tss.load_active();
         process_current->regs.eflags |= (1<<9);
         process_current->regs.load_to_active();
         starting_init_process = false;
-        kprintf("Now loading process context.\n");
+        //kprintf("Now loading process context.\n");
         return;
     }
-    if( syscall_num != 0 ) {
+    if( syscall_n != 0 ) {
         process_current->user_regs.load_from_active();
         // If we're preempted, then the syscall's context is saved.
         // We save active_regs in a special slot to ensure that we don't lose it.
@@ -165,6 +166,12 @@ void do_context_switch(uint32_t syscall_n) {
         multitasking_timeslice_tick_count = MULTITASKING_RUN_TIMESLICE;
         if( process_current->state == process_state::runnable )
             process_add_to_runqueue( process_current );
+        
+        uint16_t pic_isr = pic_get_isr();
+        if( pic_isr & 1 ) { // do IRQ0 code, but only if bit 0 of the collective ISR is set
+            do_irq( 0, process_current->regs.eip, process_current->regs.cs );
+        }
+        
         process_scheduler();
         
         if( process_current == NULL ) {
@@ -177,6 +184,9 @@ void do_context_switch(uint32_t syscall_n) {
         process_current->regs.eflags |= (1<<9); 
         process_current->regs.load_to_active();
     }
+    // reset various state on our way out
+    as_syscall = 0;
+    syscall_num = 0;
 }
 
 void initialize_multitasking(process *init) {
@@ -184,6 +194,8 @@ void initialize_multitasking(process *init) {
     active_tss.ss0 = GDT_KDATA_SEGMENT*0x08; // kernel-mode SS is always the kernel data segment
     active_tss.load_active();
     
+    init->id = 1;
+    init->parent = 0;
     process_current = init;
 }
 

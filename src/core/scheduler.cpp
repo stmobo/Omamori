@@ -16,10 +16,56 @@ process *process_current = NULL;
 process **system_processes = NULL;
 int process_count = 0;
 
-process_list run_queues[SCHEDULER_PRIORITY_LEVELS];
-process_list sleep_queue;
+uint32_t current_pid = 2; // 0 is reserved for the kernel (in the "parent" field only) and 1 is used for the initial process, which has a special startup sequence.
+bool pids_have_overflowed = false;
 
-void process_list::add(process* process_to_add) {
+process_queue run_queues[SCHEDULER_PRIORITY_LEVELS];
+process_queue sleep_queue;
+
+uint32_t allocate_new_pid() {
+    uint32_t ret = current_pid;
+    current_pid++;
+    if( current_pid == 0 ) { // overflow
+        current_pid = 777;
+        pids_have_overflowed = true;
+    }
+    if( pids_have_overflowed ) {
+        bool is_okay = false;
+        while( !is_okay ) {
+            is_okay = true;
+            for( int i=0;i<process_count;i++ ) {
+                if( (system_processes[i]->id) == ret ) {
+                    ret++;
+                    is_okay = false;
+                    break;
+                }
+            }
+        }
+    }
+    return ret;
+}
+
+process* get_process_by_pid( int pid ) {
+    for( int i=0;i<process_count;i++ ) {
+        if( system_processes[i]->id == pid ) {
+            return system_processes[i];
+        }
+    }
+    return NULL;
+}
+
+void spawn_process( process* to_add ) {
+    if( process_current ) {
+        to_add->parent = 0;
+    } else {
+        to_add->parent = process_current->id;
+    }
+    to_add->id = allocate_new_pid();
+    process_add_to_runqueue( to_add );
+    kprintf("Starting new process with ID: %u.", (unsigned long long int)to_add->id);
+}
+
+void process_queue::add(process* process_to_add) {
     if( this->count+1 > this->length ) {
         this->length += 1;
         process **new_queue = new process*[this->length];
@@ -35,7 +81,7 @@ void process_list::add(process* process_to_add) {
     this->count += 1;
 }
 
-process* process_list::remove() {
+process* process_queue::remove() {
     if((this->count <= 0) || (this->length <= 0)) {
         return NULL;
     }
@@ -47,14 +93,14 @@ process* process_list::remove() {
     return shift_out;
 }
 
-process* process_list::operator[]( int n ) {
+process* process_queue::operator[]( int n ) {
     if( (this->count < n) || (this->length < n) ) {
         return NULL;
     }
     return this->queue[n];
 }
 
-process_list::process_list() {
+process_queue::process_queue() {
     this->queue = NULL;
     this->length = 0;
     this->count = 0;
@@ -98,7 +144,7 @@ void process_scheduler() {
     for( int i=0;i<SCHEDULER_PRIORITY_LEVELS;i++ ) {
         if( run_queues[i].get_count() > 0 ) {
             current_priority = i;
-            kprintf("Scheduling process of priority %u.\n", (unsigned long long int)i);
+            //kprintf("Scheduling process of priority %u.\n", (unsigned long long int)i);
             break;
         }
     }
@@ -108,6 +154,7 @@ void process_scheduler() {
     }
     
     process_current = run_queues[current_priority].remove();
+    //kprintf("New pid=%u.\n", (unsigned long long int)process_current->id);
 }
 
 // caller is responsible for ensuring that the register values are correct!
@@ -122,6 +169,9 @@ process::process( size_t entry_point, bool is_usermode, int priority ) {
         panic("multitasking: failed to allocate new kernel stack for process!\n");
     }
     
+    this->id = 0;
+    this->parent = 0;
+    this->state = process_state::runnable;
     this->priority = priority;
     this->regs.eax = 0;
     this->regs.ebx = 0;

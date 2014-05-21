@@ -264,6 +264,11 @@ char *ksprintf(const char *str, ...) {
 // Print something to the screen, but take a va_list.
 void kprintf_varg(const char *str, va_list args) {
     char *o = ksprintf_varg( str, args );
+#ifdef ENABLE_SERIAL_LOGGING
+    if( serial_initialized ) {
+        serial_write( o );
+    }
+#endif
     return terminal_writestring( o );
 }
 

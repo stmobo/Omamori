@@ -34,7 +34,7 @@ void test_process_1() {
     volatile uint32_t loop_var = 0;
     while(true) {
         loop_var++;
-        kprintf("Process 1!\n");
+        //kprintf("Process 1!\n");
     }
     /*
     kprintf("Press ENTER to continue...\n");
@@ -62,7 +62,7 @@ void test_process_2() {
     volatile uint32_t loop_var = 0;
     while(true) {
         loop_var++;
-        kprintf("Process 2!\n");
+        //kprintf("Process 2!\n");
     }
 }
 
@@ -97,7 +97,7 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     process *proc1 = new process( (size_t)&test_process_1, false, 0 );
     process *proc2 = new process( (size_t)&test_process_2, false, 0 );
     initialize_multitasking( proc1 );
-    process_add_to_runqueue( proc2 );
+    spawn_process( proc2 );
     
     //terminal_writestring("Initializing ACPI.\n");
     //initialize_acpi();

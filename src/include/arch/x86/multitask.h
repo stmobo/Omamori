@@ -3,7 +3,7 @@
 #include "core/paging.h"
 
 #define UMODE_STACK_PAGES 2
-#define MULTITASKING_RUN_TIMESLICE      100
+#define MULTITASKING_RUN_TIMESLICE      50
 
 #define process_switch_immediate() syscall(0)
 

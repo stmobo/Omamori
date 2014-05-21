@@ -54,37 +54,52 @@ __multitasking_kmode_entry:
     mov %ebx, 52(%eax)
     
     # save EFLAGS first
-    mov 12(%esp), %ebx
+    mov 8(%esp), %ebx
     mov %ebx, 28(%eax)
     
     # make sure we don't get preempted
     cli
     
-    # save CS
-    mov 8(%esp), %ebx
-    mov %ebx, 40(%eax)
-    
-    # save other segment registers
+    # save data segment registers
     mov %ds, 42(%eax)
     mov %es, 44(%eax)
     mov %fs, 46(%eax)
     mov %gs, 48(%eax)
-    mov %ss, 50(%eax)
 
     # save EIP
-    mov 4(%esp), %ebx
+    mov (%esp), %ebx
     mov %ebx, 24(%eax)
     
+    # save CS
+    mov 4(%esp), %ebx
+    movw %bx, 40(%eax)
+    
     # save ESP (pre-interrupt)
+    # the method to save ESP / SS depends on what mode we were in pre-interrupt.
+    cmp $0x08, %bx
+    jne .__save_esp_umode
+    
+.__save_esp_kmode:
     mov %esp, %ebx
     add $12, %ebx
     mov %ebx, 32(%eax)
+    mov %ss, 50(%eax)
+    jmp .__save_esp_exit
+.__save_esp_umode:
+    # save SS
+    mov $0, %ebx
+    mov 12(%esp), %bx
+    mov %bx, 50(%eax)
     
-    mov $0x10, %eax
-    mov %eax, %ds
-    mov %eax, %es
-    mov %eax, %fs
-    mov %eax, %gs
+    # save ESP
+    mov 16(%esp), %ebx
+    mov %ebx, 32(%eax)
+.__save_esp_exit:
+    mov $0x10, %ax
+    mov %ax, %ds
+    mov %ax, %es
+    mov %ax, %fs
+    mov %ax, %gs
 
     mov (syscall_num), %ebx
     push %ebx
@@ -92,36 +107,6 @@ __multitasking_kmode_entry:
     call do_context_switch
     
     pop %ebx
-    
-    # clear syscall number / state
-    movl $0, (as_syscall)
-    movl $0, (syscall_num)
-    
-    # were we in a syscall to begin with?
-    # (i.e was syscall_num set to something?)
-    cmp $0, %ebx
-    jne __process_load_registers # if we were, then don't do IRQ0 code
-    
-    mov $reg_dump_area, %eax
-    
-    # push args for call to do_irq:
-    # CS, EIP and irq_num (in that order)
-    
-    # CS
-    mov $0, %ebx
-    mov 40(%eax), %bx
-    push %ebx
-    
-    # EIP
-    mov 24(%eax), %ebx
-    push %ebx
-    
-    # irq_num
-    pushl $0
-    
-    call do_irq
-    
-    add $12, %esp
     
 __process_load_registers:
     mov $reg_dump_area, %eax
@@ -159,8 +144,9 @@ __process_load_registers:
     # and fall through
 
 .__process_load_rest:
-    # load EFLAGS for iret (this will also reenable interrupts if they were before the context switch)
+    # load EFLAGS for iret (and reenable interrupts)
     mov 28(%eax), %ebx
+    or $0x200, %ebx
     push %ebx
     
     # load CS for iret
@@ -191,7 +177,7 @@ __process_load_registers:
     iret # this will load SS:ESP (if needed), EFLAGS, and CS:EIP for us
     
 # we can't rely on the iret push order here.
-# however, we can rely on a pushed EIP value at 4(%esp).
+# however, we can rely on a pushed EIP value at (%esp).
 __save_registers_non_int:
     mov %eax, (reg_dump_area)
     mov $reg_dump_area, %eax

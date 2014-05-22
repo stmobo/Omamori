@@ -138,17 +138,14 @@ void irq0_handler() {
     terminal_writestring("\nNew systimer:");
     terminal_writestring(int_to_decimal(sys_timer_ms));
     */
+    /*
     for(int i=0;i<active_timers.n_elements();i++) {
-        /*
-        terminal_writestring("\ni=");
-        terminal_writestring(int_to_decimal(i));
-        terminal_writestring("\n");
-        */
         if(active_timers[i]->in_use) {
             //terminal_writestring("hurrr");
             active_timers[i]->decrement(ms_added);
         }
     }
+    */
 }
 
 unsigned long long int get_sys_elapsed_time() {

@@ -128,8 +128,8 @@ uint32_t syscall(uint32_t syscall_num) {
 }
 
 uint32_t do_syscall() {
-    kprintf("Syscall!");
-    kprintf("Call number: 0x%x\n", (unsigned long long int)process_current->user_regs.eax);
+    //kprintf("Syscall!");
+    //kprintf("Call number: 0x%x\n", (unsigned long long int)process_current->user_regs.eax);
     return ~process_current->user_regs.eax;
 }
 
@@ -146,6 +146,7 @@ void do_context_switch(uint32_t syscall_n) {
         process_current->regs.eflags |= (1<<9);
         process_current->regs.load_to_active();
         starting_init_process = false;
+        multitasking_enabled = 1;
         //kprintf("Now loading process context.\n");
         return;
     }
@@ -205,7 +206,6 @@ void multitasking_start_init() {
     active_tss.load_active();
     
     //process_current->regs.load_to_active();
-    multitasking_enabled = 1;
     starting_init_process = true;
     kprintf("Switching to process.\n");
     process_switch_immediate();

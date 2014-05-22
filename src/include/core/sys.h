@@ -23,9 +23,9 @@ extern void* kernel_start_phys;
 extern uint64_t floor(double);
 extern uint64_t ceil(double);
 extern double fractional(double);
-extern uint64_t rdtsc();
-
 extern int pow(int,int);
+extern uint64_t rdtsc();
+extern bool interrupts_enabled();
 
 #define system_halt asm volatile("cli\n\t"\
 "hlt" \

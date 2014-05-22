@@ -1,11 +1,13 @@
 // sync.h
 #pragma once
+#include "includes.h"
 
 #define SPINLOCK_LOCKED_VALUE               0x0010CCED
 #define SPINLOCK_UNLOCKED_VALUE             0
 
 typedef class spinlock {
     uint32_t lock_value;
+    uint32_t locker;
     
     public:
     spinlock();
@@ -22,8 +24,13 @@ typedef class reentrant_mutex {
     public:
     int get_owner_uid();
     uint32_t get_lock_count();
+    
     void lock( int uid );
     void unlock( int uid );
+    
+    void lock();
+    void unlock();
+    
     reentrant_mutex();
 } mutex;
 

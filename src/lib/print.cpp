@@ -1,5 +1,8 @@
 #include "device/vga.h"
+#ifdef ENABLE_SERIAL_LOGGING
 #include "device/serial.h"
+#endif
+#include "lib/sync.h"
 #include <stdarg.h>
 
 const char* numeric_alpha = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -138,10 +141,7 @@ char *ksprintf_varg(const char* str, va_list args) {
                     signed long long int silli = va_arg(args, signed long long int);
                     char *str2 = int_to_decimal( silli );
                     if(silli < 0) {
-                        terminal_putchar('-');
-#ifdef PRINT_ECHO_TO_SERIAL
-                        serial_write( "-" );
-#endif
+                        str2 = concatentate_strings( "-", str2 );
                         silli *= -1;
                     }
                     char *out_copy = concatentate_strings( out, str2 );
@@ -261,22 +261,38 @@ char *ksprintf(const char *str, ...) {
     return out;
 }
 
+static spinlock __kprintf_varg_lock;
+
 // Print something to the screen, but take a va_list.
 void kprintf_varg(const char *str, va_list args) {
     char *o = ksprintf_varg( str, args );
+    __kprintf_varg_lock.lock();
 #ifdef ENABLE_SERIAL_LOGGING
     if( serial_initialized ) {
         serial_write( o );
     }
 #endif
-    return terminal_writestring( o );
+    terminal_writestring( o );
+    __kprintf_varg_lock.unlock();
 }
 
+static spinlock __kprintf_lock;
 // Print something to screen.
+// DO NOT CALL THIS FROM AN ISR!!!
 void kprintf(const char *str, ...) {
     va_list args;
     va_start(args, str);
-    kprintf_varg(str, args);
+    
+    char *o = ksprintf_varg( str, args );
+    __kprintf_lock.lock();
+#ifdef ENABLE_SERIAL_LOGGING
+    if( serial_initialized ) {
+        serial_write( o );
+    }
+#endif
+    terminal_writestring( o );
+    __kprintf_lock.unlock();
+    
     va_end(args);
 }
 

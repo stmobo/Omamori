@@ -179,9 +179,6 @@ page_frame* pageframe_allocate(int n_frames) {
         // also find out the remainder
         int o8_blocks = n_frames >> BUDDY_MAX_ORDER;
         int remainder = n_frames & ((1<<BUDDY_MAX_ORDER)-1); // % (1 << BUDDY_MAX_ORDER);
-#ifdef PAGING_DEBUG
-        kprintf("Allocating %u order %u blocks and %u remainder frames.\n", (unsigned long long int)o8_blocks, (unsigned long long int)BUDDY_MAX_ORDER, (unsigned long long int)remainder );
-#endif
         // now find the order of the remaining allocation
         int rem_order = 0;
         for(int i=0;i<=BUDDY_MAX_ORDER;i++) {
@@ -193,9 +190,6 @@ page_frame* pageframe_allocate(int n_frames) {
                 break;
             }
         }
-#ifdef PAGING_DEBUG
-        kprintf("Remainder block order is %u.\n", rem_order);
-#endif
         
         // the number of allocated frames is now ( o8_blocks * (1<<BUDDY_MAX_ORDER) ) + (1<<rem_order)
         int allocated_frames = ( o8_blocks * (1<<BUDDY_MAX_ORDER) ) + (1<<rem_order);
@@ -229,19 +223,8 @@ page_frame* pageframe_allocate(int n_frames) {
     }
     
     // Allocate one set of blocks.
-#ifdef PAGING_DEBUG
-    kprintf("Allocating order %u block.\n", ((unsigned long long int)order));
-#endif
-    
     for(int i=0;i<n_blocks[order];i++) {
-#ifdef PAGING_DEBUG
-        kprintf("Inspecting block ID: %u, begins at ID %u.\n", ((unsigned long long int)i), ((unsigned long long int)i*(1<<order)));
-#endif
         if( !pageframe_get_block_status(i, order) ) { // if the block we're not looking at is not allocated...
-#ifdef PAGING_DEBUG
-            kprintf("Allocating block ID: %u, order %u\n", ((unsigned long long int)i), ((unsigned long long int)order));
-            kprintf("Block starts at ID %u.\n", ((unsigned long long int)i*(1<<order)));
-#endif
             return pageframe_allocate_specific(i, order); // then allocate it.
         }
     }
@@ -396,7 +379,7 @@ void paging_set_pte(size_t vaddr, size_t paddr, uint16_t flags) {
         // okay, so there's already a mapping present for this page.
         // we need to swap it out, but we don't have a hard disk driver yet.
         // so right now we just exit noisily.
-        kprintf("paging: Attempted to map vaddr 0x%x when mapping already present!\n", (unsigned long long int)vaddr);
+        //kprintf("paging: Attempted to map vaddr 0x%x when mapping already present!\n", (unsigned long long int)vaddr);
         return; 
     }
     table[table_offset] = paddr | (flags & 0xFFF) | 1;
@@ -596,14 +579,7 @@ void paging_unmap_phys_address( size_t vaddr, int n_frames ) {
 
 void paging_handle_pagefault(char error_code, uint32_t cr2) {
     if( (error_code & 1) == 0 ) {
-#ifdef PAGEFAULT_DEBUG
-        if( (error_code & 0x4) == 0 ) {
-            kprintf("paging: kmode pagefault at vaddr 0x%x.\n", (unsigned long long int)cr2);
-        } else {
-            kprintf("paging: umode pagefault at vaddr 0x%x.\n", (unsigned long long int)cr2);
-        }
-#endif
-        page_frame *frame = pageframe_allocate(1);
+        page_frame *frame = pageframe_allocate(1); // hopefully this won't cause any errors, this function isn't reentrant
         if(frame == NULL) {
             panic("paging: No pageframes left to allocate!");
         }
@@ -612,9 +588,6 @@ void paging_handle_pagefault(char error_code, uint32_t cr2) {
             flags = 0x06;
         }
         paging_set_pte( (size_t)cr2, frame->address, flags ); // load vaddr to newly allocated page, with no flags except for PRESENT.
-#ifdef PAGEFAULT_DEBUG
-        kprintf("paging: mapped faulting address to paddr 0x%x.\n", (unsigned long long int)frame->address);
-#endif
     } else {
         // We're dealing with a protection violation.
         if( (error_code & 0x4) == 0 ) {
@@ -622,7 +595,7 @@ void paging_handle_pagefault(char error_code, uint32_t cr2) {
             panic("paging: kernel-mode memory protection violation at vaddr 0x%x.\n", (unsigned long long int)cr2);
         } else {
             // User mode exception.
-            kprintf("paging: user-mode memory protection violation at vaddr 0x%x.\n", (unsigned long long int)cr2);
+            //kprintf("paging: user-mode memory protection violation at vaddr 0x%x.\n", (unsigned long long int)cr2);
         }
     }
 }

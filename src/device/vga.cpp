@@ -1,9 +1,13 @@
 // most of this is derived from the tutorial on osdev.
 
+#include "includes.h"
+#include "lib/sync.h"
 #include "device/vga.h"
 #ifdef MIRROR_VGA_SERIAL
 #include "device/serial.h"
 #endif
+
+static spinlock __vga_write_lock;
 
 const size_t VGA_WIDTH = 80;
 const size_t VGA_HEIGHT = 24;
@@ -51,6 +55,7 @@ void terminal_setcolor(char color)
 // Positive values scroll down (adding new lines to the bottom); negative values do the inverse.
 void terminal_scroll(int num_rows)
 {
+    __vga_write_lock.lock();
     if(num_rows > 0) { // scroll down
         for(size_t y=0;y<VGA_HEIGHT-1;y++)
             for(size_t x=0;x<VGA_WIDTH;x++)
@@ -64,14 +69,17 @@ void terminal_scroll(int num_rows)
         for(size_t x=0;x<VGA_WIDTH;x++)
             terminal_buffer[x] = make_vgaentry(' ', make_color(COLOR_LIGHT_GREY, COLOR_BLACK));
     }
+    __vga_write_lock.unlock();
 }
  
 // terminal_putentryat - write a character to screen, with color and position attributes.
 // This function directly modifies the terminal buffer.
 void terminal_putentryat(char c, char color, size_t x, size_t y)
 {
+    __vga_write_lock.lock();
 	const size_t index = y * VGA_WIDTH + x;
 	terminal_buffer[index] = make_vgaentry(c, color);
+    __vga_write_lock.unlock();
 }
 
 // terminal_putchar - write a single character to screen
@@ -79,12 +87,14 @@ void terminal_putentryat(char c, char color, size_t x, size_t y)
 // '\n' characters are automatically used to scroll and start new lines.
 void terminal_putchar(char c)
 {
+    __vga_write_lock.lock();
     if(c=='\n') {
         terminal_column = 0;
         if ( ++terminal_row == VGA_HEIGHT ) {
             terminal_scroll(1);
             terminal_row = VGA_HEIGHT-1;
         }
+        __vga_write_lock.unlock();
         return;
     }
 	terminal_putentryat(c, terminal_color, terminal_column, terminal_row);
@@ -97,6 +107,7 @@ void terminal_putchar(char c)
             terminal_row = VGA_HEIGHT-1;
 		}
 	}
+    __vga_write_lock.unlock();
 #ifdef MIRROR_VGA_SERIAL
     char d[2];
     d[0] = c;

@@ -34,7 +34,7 @@ void test_process_1() {
     volatile uint32_t loop_var = 0;
     while(true) {
         loop_var++;
-        //kprintf("Process 1!\n");
+        kprintf("Process 1! loop_var = %u.\n", (unsigned long long int)loop_var);
     }
     /*
     kprintf("Press ENTER to continue...\n");
@@ -62,7 +62,7 @@ void test_process_2() {
     volatile uint32_t loop_var = 0;
     while(true) {
         loop_var++;
-        //kprintf("Process 2!\n");
+        kprintf("Process 2! loop_var = %u.\n", (unsigned long long int)loop_var);
     }
 }
 

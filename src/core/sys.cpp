@@ -149,3 +149,11 @@ uint64_t ceil(double n) {
 double fractional(double n) {
     return n - floor(n);
 }
+
+bool interrupts_enabled() {
+    uint32_t eflags;
+    asm volatile("pushf\n\t"
+    "pop %0\n\t"
+    : "=r"(eflags) : : "memory");
+    return ((eflags & (1<<9)) > 0);
+}

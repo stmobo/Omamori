@@ -108,13 +108,12 @@ extern "C" {
     }
      
     void *AcpiOsAllocate ( ACPI_SIZE Size ) {
-        char* ptr = kmalloc(Size);
-        return (void*)ptr;
+        return kmalloc(Size);
     }
     #define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsAllocate
     
     void AcpiOsFree (void *Memory) {
-        kfree((char*)Memory);
+        return kfree(Memory);
     }
     #define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsFree
 

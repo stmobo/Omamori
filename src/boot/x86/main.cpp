@@ -80,7 +80,7 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     gdt_init();
     idt_init();
     initialize_vmem_allocator();
-    k_heap_init(HEAP_START_ADDR);
+    k_heap_init();
     initialize_pageframes(mb_info);
     
     //system_halt;

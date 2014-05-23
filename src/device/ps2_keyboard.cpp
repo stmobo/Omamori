@@ -141,9 +141,9 @@ void ps2_keyboard_initialize() {
 }
 
 char* ps2_keyboard_readline(int *len) {
-    char* buf = kmalloc(HEAP_BLK_SIZE);
+    char* buf = (char*)kmalloc(HEAP_MEMBLOCK_SIZE);
     int bytes_recv = 0;
-    int buf_sz = HEAP_BLK_SIZE;
+    size_t buf_sz = HEAP_MEMBLOCK_SIZE;
     while(true) {
         ps2_keypress *kp = ps2_keyboard_get_keystroke();
         if(!kp->released) {
@@ -163,8 +163,8 @@ char* ps2_keyboard_readline(int *len) {
                 buf[bytes_recv] = kp->character;
                 terminal_putchar(kp->character);
                 if(bytes_recv > buf_sz) {
-                    buf_sz += HEAP_BLK_SIZE;
-                    char *buf2 = kmalloc(buf_sz);
+                    buf_sz += HEAP_MEMBLOCK_SIZE;
+                    char *buf2 = (char*)kmalloc(buf_sz);
                     for(int i=0;i<bytes_recv;i++)
                         buf2[i] = buf[i];
                     buf = buf2;

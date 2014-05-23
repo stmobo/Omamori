@@ -2,32 +2,35 @@
 #pragma once
 #include "includes.h"
 
-// size of a single block
-#define HEAP_BLK_SIZE           128
-// kernel heap start address
-#define HEAP_START_ADDR         ((size_t)&kernel_end+1) // do *not* set to 0x100000, that's where the kernel goes
-#define HEAP_MAGIC_NUMBER       0x414C4F43 // 'ALOC' in packed ascii
+#define PAGE_SIZE                       0x1000
+#define HEAP_MEMBLOCK_SIZE              32
+#define HEAP_PAGE_SET_SIZE              128
+// the order of 1 page set in the buddy allocator
+// this is equal to log2(HEAP_PAGE_SET_SIZE)
+#define HEAP_PAGE_SET_ORDER             7
+#define HEAP_SET_SIZE                   (PAGE_SIZE*HEAP_PAGE_SET_SIZE)
+#define HEAP_MAX_SETS                   1024
+#define HEAP_SET_UNALLOCATED            0xFFFFFFFF
+#define HEAP_SET0_START                 0xC0400000
+#define HEAP_INITIAL_SETS_LENGTH        0x400000
+// 1024 * 128 = 524288KB, or half of kernel space.
+#define HEAP_HEADER_STATUS_FREE         0xDEA110C8
+#define HEAP_HEADER_STATUS_USED         0xA110C8ED
+#define KMALLOC_RESTART_COUNT                    5
 
-//enables checking for double/invalid free:
-#define DYNMEM_CHECK_FREE_CALLS
+#define KMALLOC_NO_RESTART              0x00000001
+#define KMALLOC_RESTART_ONCE            0x00000002
+// High byte determines the amount of restarting
+#define KMALLOC_RESTART_MANY            (KMALLOC_RESTART_COUNT<<24) | 3
 
-struct k_heap_blk {
-    struct k_heap_blk  *next;
-    struct k_heap_blk  *prev;
-    bool                used;
-    uint32_t            magic; // magic number, don't actually modify this
-};
+typedef struct k_heap_header {
+    uint32_t status = HEAP_HEADER_STATUS_USED;
+    k_heap_header *next = NULL;
+} k_heap_header;
 
-typedef struct k_heap_blk k_heap_blk;
-
-struct k_heap {
-    k_heap_blk   *start;
-    k_heap_blk   *end;
-};
-
-typedef struct k_heap k_heap;
-
-extern void k_heap_init(size_t);
-extern char* kmalloc(size_t);
-extern void kfree(char*);
-extern void memblock_inspect();
+extern void k_heap_init();
+extern "C" {
+    extern void* kmalloc(size_t);
+    extern void kfree(void*);
+}
+extern void* kmalloc(size_t, unsigned int);

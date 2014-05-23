@@ -51,19 +51,19 @@ uint64_t rdtsc() {
 }
 
 void *operator new(size_t size) {
-    return (void*)kmalloc(size);
+    return kmalloc(size);
 }
 
 void *operator new[](size_t size) {
-    return (void*)kmalloc(size);
+    return kmalloc(size);
 }
 
 void operator delete(void* ptr) {
-    kfree((char*)ptr);
+    kfree(ptr);
 }
 
 void operator delete[](void* ptr) {
-    kfree((char*)ptr);
+    kfree(ptr);
 }
 
 void memcpy(void* dst, void* src, size_t len) {

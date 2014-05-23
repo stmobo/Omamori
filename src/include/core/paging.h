@@ -23,6 +23,8 @@
 #define PAGEFAULT_DEBUG
 
 #define HEAP_INITIAL_ALLOCATION     0x400000
+#define HEAP_INITIAL_PHYS_ADDR      0x401000
+#define HEAP_INITIAL_PT_ADDR        (HEAP_INITIAL_PHYS_ADDR+HEAP_INITIAL_ALLOCATION+0x1000)
 
 typedef struct memory_range {
     unsigned long long int base;
@@ -54,13 +56,13 @@ extern void initialize_vmem_allocator();
 extern void initialize_pageframes(multiboot_info_t*);
 extern bool pageframe_get_block_status(int,int);
 extern void pageframe_set_block_status(int,int,bool);
-extern size_t get_block_addr(int,int);
+extern size_t pageframe_get_block_addr(int,int);
 extern int pageframe_get_alloc_order(int);
 extern int pageframe_get_block_from_addr(size_t);
 extern page_frame* pageframe_allocate(int);
 extern page_frame* pageframe_allocate_at( size_t, int );
 extern page_frame* pageframe_allocate_specific(int,int);
-extern int pageframe_allocate_single();
+extern int pageframe_allocate_single(int);
 extern void pageframe_deallocate(page_frame*, int);
 extern void pageframe_restrict_range(size_t, size_t);
 extern inline void invalidate_tlb(size_t);

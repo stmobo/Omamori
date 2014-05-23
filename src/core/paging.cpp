@@ -33,8 +33,6 @@ One is the region from 0x10000 to kernel_end -- this is kernel code.
 We also need to keep the buddy maps for the frame allocator in memory for obvious reasons.
 */
 
-uint32_t pagedir[1024];
-
 unsigned long long int mem_avail_bytes;
 int mem_avail_kb;
 int num_pages;
@@ -49,9 +47,9 @@ int n_blocks[BUDDY_MAX_ORDER+1];
 vaddr_range k_vmem_linked_list;
 vaddr_range __k_vmem_allocate_start;
 
-uint32_t *page_directory;
-// instead of having a 1024-large array of pointers to the page tables,
-// we'll instead use the page tables themselves to determine what pages they're located in.
+bool pageframes_initialized = false;
+
+uint32_t initial_heap_pagetable[1024] __attribute__((aligned(0x1000)));
 
 static mutex __frame_allocator_lock;
 
@@ -299,8 +297,24 @@ void initialize_vmem_allocator() {
     
     __k_vmem_allocate_start.address = 0xC0400000+HEAP_INITIAL_ALLOCATION;
     __k_vmem_allocate_start.free = true;
-    __k_vmem_allocate_start.prev = NULL;
+    __k_vmem_allocate_start.prev = &k_vmem_linked_list;
     __k_vmem_allocate_start.next = NULL;
+    
+    // first off, map in initial_heap_pagetable.
+    // the PDE should already be there.
+    uint32_t *table = (uint32_t*)(0xFFC00000+(((size_t)(&initial_heap_pagetable[0])>>22)*0x1000));
+    table[ ((size_t)(&initial_heap_pagetable[0])>>12)&0x3FF ] = HEAP_INITIAL_PT_ADDR | 1;
+    invalidate_tlb( (size_t)&initial_heap_pagetable[0] );
+    
+    // map in initial_heap_pagetable as a page table
+    (*(uint32_t*)0xFFFFFC04) = (HEAP_INITIAL_PT_ADDR|1);
+    
+    // now actually map in the initial heap pages
+    for(int i=0;i<(HEAP_INITIAL_ALLOCATION/0x1000);i++) {
+        initial_heap_pagetable[i] = (HEAP_INITIAL_PHYS_ADDR+(i*0x1000)) | 1;
+        invalidate_tlb( 0xC0400000+(i*0x1000) );
+        //paging_set_pte( 0xC0400000+(i*0x1000), HEAP_INITIAL_PHYS_ADDR+(i*0x1000), 0 );
+    }
 }
 
 void initialize_pageframes(multiboot_info_t* mb_info) {
@@ -362,7 +376,9 @@ void initialize_pageframes(multiboot_info_t* mb_info) {
     }
     
     //pageframe_restrict_range( (size_t)&kernel_start_phys, (size_t)&kernel_end_phys );
+    pageframe_restrict_range( HEAP_INITIAL_PT_ADDR, HEAP_INITIAL_PT_ADDR+0xFFF );
     pageframe_restrict_range( 0, 0x400000 );
+    pageframe_restrict_range( HEAP_INITIAL_PHYS_ADDR, HEAP_INITIAL_PHYS_ADDR+HEAP_INITIAL_ALLOCATION );
     //k_vmem_alloc( 0xC0000000, 0xC0400000 );
     k_vmem_alloc( (size_t)buddy_maps, (size_t)(((size_t)buddy_maps)+((BUDDY_MAX_ORDER+1)*sizeof(size_t*))) );
     kprintf("Map of buddy maps begins at 0x%x and ends at 0x%x\n", (unsigned long long int)buddy_maps, (unsigned long long int)(((size_t)buddy_maps)+((BUDDY_MAX_ORDER+1)*sizeof(size_t*))) );
@@ -376,6 +392,7 @@ void initialize_pageframes(multiboot_info_t* mb_info) {
         kprintf("Buddy map for order %u begins at 0x%x and ends at 0x%x\n", (unsigned long long int)i, ((unsigned long long int)(buddy_maps[i])), (unsigned long long int)(((size_t)(buddy_maps[i]))+(sizeof(size_t)*num_blk_entries)) );
 #endif
     }
+    pageframes_initialized = true;
 }
 
 inline void invalidate_tlb(size_t address) {
@@ -607,13 +624,15 @@ void paging_unmap_phys_address( size_t vaddr, int n_frames ) {
 }
 
 // hopefully this is reentrant. Hopefully.
-int pageframe_allocate_single() {
+int pageframe_allocate_single(int order) {
     int frame_id = -1;
-    for(int i=0;i<n_blocks[0];i++) {
-        if( !pageframe_get_block_status(i, 0) ) {
-             if( !pageframe_get_block_status(i, 0) ) {
+    for(int i=0;i<n_blocks[order];i++) {
+        if( !pageframe_get_block_status(i, order) ) {
+             if( !pageframe_get_block_status(i, order) ) {
+                if(order != 0)
+                    recursive_mark_allocated((i<<1), (i<<1)+1, order-1, true);
                 int parent = i;
-                for(int j=0;j<=BUDDY_MAX_ORDER;j++) {
+                for(int j=order;j<=BUDDY_MAX_ORDER;j++) {
                     pageframe_set_block_status(parent, j, true);
                     parent >>= 1;
                 }
@@ -625,11 +644,21 @@ int pageframe_allocate_single() {
     return frame_id;
 }
 
+uint32_t panic_cr2;
 void paging_handle_pagefault(char error_code, uint32_t cr2) {
     if( (error_code & 1) == 0 ) {
+        if( !pageframes_initialized ) {
+            panic_cr2 = cr2;
+            terminal_writestring("paging: a page fault occured, but the allocator isn't ready yet!\n");
+            while(true) {
+                asm volatile("cli\n\t"
+                "hlt\n\t"
+                : : : "memory");
+            }
+        }
         // pageframe_allocate isn't reentrant, and can deadlock the system via kmalloc.
         // so, we have to allocate frames ourselves.
-        int frame_id = pageframe_allocate_single();
+        int frame_id = pageframe_allocate_single(0);
         if(frame_id == -1) {
             panic("paging: No pageframes left to allocate!");
         }

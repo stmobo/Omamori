@@ -218,7 +218,7 @@ process::process( size_t entry_point, bool is_usermode, int priority ) {
         for(int i=0;i<PROCESS_STACK_SIZE;i++) {
             paging_set_pte( stack_start + (i*0x1000), stack_frames[i].address, 0 );
         }
-        kfree( (char*)(stack_frames) );
+        kfree( stack_frames );
         
         size_t pde_page = k_vmem_alloc(2);
         size_t init_pt_page = pde_page+0x1000;

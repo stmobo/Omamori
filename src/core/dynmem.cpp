@@ -1,193 +1,200 @@
-// dynmem.cpp - kernel heap allocation
-// this is supposed to be available from early init on.
+// new_malloc.cpp
+// A newer malloc for a newer kernel.
+
 #include "includes.h"
-#include "core/sys.h"
+#include "core/paging.h"
 #include "core/dynmem.h"
-#include "device/vga.h"
-#include "lib/sync.h"
+#include "arch/x86/multitask.h"
+#include "arch/x86/irq.h"
 
-k_heap heap;
+k_heap_header *heap_start;
 
-static spinlock __dynmem_lock;
+size_t allocator_sets[HEAP_MAX_SETS];
 
-// k_heap_init - initialize the heap
-// This function creates the initial heap block struct, and also initializes the k_heap struct.
-void k_heap_init(size_t heap_addr) {
-    heap.start = (k_heap_blk*)heap_addr;
-    heap.end   = (k_heap_blk*)heap_addr;
-    heap.start->prev = NULL;
-    heap.start->next = NULL;
-    heap.start->used = false;
-    heap.start->magic = HEAP_MAGIC_NUMBER;
-}
-
-// k_heap_get - Get an entry in the linked list.
-// This function traverses the linked list, returning a pointer to the nth block.
-k_heap_blk* k_heap_get(int n) {
-    k_heap_blk* blk = heap.start;
-    for(int i=0;i<n;i++) {
-        blk = blk->next;
-    }
-    return blk;
-}
-
-// k_heap_add_at_offset - Add a new heap block
-// This function places a new heap block in memory, linked to an "origin" block.
-void k_heap_add_at_offset(k_heap_blk* origin_blk, int block_offset) {
-    __dynmem_lock.lock_cli();
-    k_heap_blk* blk = (k_heap_blk*)((size_t)origin_blk+(block_offset*HEAP_BLK_SIZE));
-    blk->prev = origin_blk;
-    blk->next = origin_blk->next;
-    blk->magic = HEAP_MAGIC_NUMBER;
-    
-    blk->prev->next = blk;
-    if(blk->next != NULL)
-        blk->next->prev = blk;
-    else
-        heap.end = blk;
-    __dynmem_lock.unlock_cli();
-}
-
-// k_heap_delete - Unlink a block
-// This function removes a block from the linked list, effectively "deleting" it.
-void k_heap_delete(k_heap_blk* blk) {
-    __dynmem_lock.lock_cli();
-    if(blk == NULL) {
-        panic("dynmem: Attempted to delete NULL block!");
-    }
-    if(blk->prev != NULL) {
-        blk->prev->next = blk->next;
-    } else {
-        return; // can't delete the first block
-    }
-    if(blk->next != NULL) {
-        blk->next->prev = blk->prev;
-    } else {
-        heap.end = blk->prev;
-    }
-    blk->next = NULL;
-    blk->prev = NULL;
-    blk->magic = 0;
-    blk->used = false;
-    __dynmem_lock.unlock_cli();
-}
-
-// k_heap_compress - Merge free blocks
-// This function "compresses" the linked list, consolidating as many adjacent free blocks as possible, to reduce fragmentation.
-int k_heap_compress() {
-    k_heap_blk* blk = heap.start;
-    k_heap_blk* next = NULL;
-    int blks_deleted = 0;
-    
-    __dynmem_lock.lock_cli();
-    while((blk != NULL) && (blk->next != NULL)) { // Don't compress the first or last block in the heap.
-        next = blk->next;
-        if(blk->prev != NULL) {
-            if(!blk->used && !blk->prev->used) { // If both the current block and the one before it are free...
-                // ...then _delete_ this block. 
-                k_heap_delete(blk);
-                blks_deleted++;
-            }
-        }
-        blk = next;
+void k_heap_init() {
+    // we already have a few allocator sets set aside for us by paging.cpp.
+    int n_initial_sets = HEAP_INITIAL_SETS_LENGTH  / HEAP_SET_SIZE;
+    for(int i=0;i<HEAP_MAX_SETS;i++) {
+        allocator_sets[i] = HEAP_SET_UNALLOCATED;
     }
     
-    if((heap.end->prev != NULL) && (!heap.end->prev->used)) {
-        k_heap_delete(heap.end);
-        blks_deleted++;
+    for(int i=0;i<n_initial_sets;i++) {
+        allocator_sets[i] = (HEAP_SET0_START+(i*HEAP_SET_SIZE));
     }
-    __dynmem_lock.unlock_cli();
-    return blks_deleted;
+    heap_start = (k_heap_header*)(allocator_sets[0]);
+    heap_start->status = HEAP_HEADER_STATUS_FREE;
 }
 
-// kmalloc - kernel memory allocator
-// This function returns a pointer to an arbitrary size block of memory.
-// we use a buddy allocation system across pages.
-
-char* kmalloc(size_t size) {
-    // iterate over every block in the heap list except for the last one
-    // and look for a block where the space between the block and the next in the list is at least size bytes...
-    // if we can't find one, extend the heap.
-    int n_blks = (size / HEAP_BLK_SIZE)+1;
-    char* ptr = NULL;
-    k_heap_blk* blk = heap.start;
-    __dynmem_lock.lock();
-    while(blk->next != NULL) {
-        if(!blk->used) {
-            int blk_sz = ((size_t)blk->next - (size_t)blk);
-            if( blk_sz-sizeof(k_heap_blk) >= size ) {
-                blk->used = true;
-                char* ptr = NULL;
-                if( (blk_sz / HEAP_BLK_SIZE) > n_blks ) {
-                    k_heap_add_at_offset(blk, n_blks);
-                    blk->next->used = false;
-                    ptr = (char*)((size_t)blk+sizeof(k_heap_blk)+1);
-                } else {
-                    ptr = (char*)((size_t)blk+sizeof(k_heap_blk)+1);
+void *kmalloc(size_t length, unsigned int flags) {
+    k_heap_header *current = heap_start;
+    int current_set = 0;
+    int next_set = 0;
+    size_t init_length = length;
+    if(length < HEAP_MEMBLOCK_SIZE)
+        length = HEAP_MEMBLOCK_SIZE;
+    // find the nearest multiple of the block size
+    length = ((length - (length % HEAP_MEMBLOCK_SIZE)) + HEAP_MEMBLOCK_SIZE);
+    if( length > HEAP_PAGE_SET_SIZE*PAGE_SIZE ) {
+        // allocate entire pages
+        int n_pages = ((length - (length % 0x1000))/0x1000)+1;
+        return (void*)k_vmem_alloc(n_pages);
+    }
+    while( current != NULL ) {
+        if( __sync_bool_compare_and_swap( &current->status, HEAP_HEADER_STATUS_FREE, HEAP_HEADER_STATUS_USED ) ) {
+            // using an atomic CAS both locks the block and saves us the trouble of marking it as "used" if we /do/ use it
+            if( current->next != NULL ) {
+                size_t block_len = (current->next - (current+sizeof(k_heap_header)));
+                for(int i=0;i<HEAP_MAX_SETS;i++) {
+                    if( (allocator_sets[i] <= (size_t)current->next) && ( (allocator_sets[i]+HEAP_SET_SIZE) < (size_t)current->next ) ) {
+                        next_set = i;
+                        break;
+                    }
                 }
-                break;
+                if( current_set != next_set ) {
+                    // this block and the next are on different sets
+                    // so we need to instead find the length to the end of the set
+                    size_t end_of_set = (allocator_sets[current_set]+HEAP_SET_SIZE)-1;
+                    block_len = (end_of_set - (size_t)current);
+                }
+                if( block_len < length ) { // can't use this block
+                    current->status = HEAP_HEADER_STATUS_FREE;
+                    // fall through
+                } else if( block_len >= length ) {
+                    if( (block_len - length) >= sizeof(k_heap_header)+HEAP_MEMBLOCK_SIZE ) { // can we put another block down?
+                        // okay, so we can
+                        // add another block
+                        k_heap_header *new_block = (k_heap_header*)((size_t)current+(length+sizeof(k_heap_header))+1);
+                        new_block->next = current->next;
+                        new_block->status = HEAP_HEADER_STATUS_FREE;
+                        current->next = new_block; // the new block isn't reachable until we do this
+                    }
+                    // otherwise, we can't, so we don't add a new block
+                    // (remember: current->status already == HEAP_HEADER_STATUS_USED)
+                    return (void*)((size_t)current+sizeof(k_heap_header)+1);
+                }
+            } else {
+                // okay so we're at the end of the list, and we need to add a new block
+                // where that block is is a matter of how far we are into the page
+                size_t end_of_set = (allocator_sets[current_set]+HEAP_SET_SIZE)-1;
+                size_t avail_len = (end_of_set - (size_t)current);
+                if( (avail_len > length) && ((avail_len - length) >= sizeof(k_heap_header)+HEAP_MEMBLOCK_SIZE) ) { // can we just put another block down?
+                    k_heap_header *new_block = (k_heap_header*)((size_t)current+(length+sizeof(k_heap_header))+1);
+                    new_block->next = NULL;
+                    new_block->status = HEAP_HEADER_STATUS_FREE;
+                    current->next = new_block;
+                    return (void*)((size_t)current+sizeof(k_heap_header)+1);
+                } else {
+                    // not enough space left on the current set
+                    // go to the next set
+                    current_set++;
+                    if(allocator_sets[current_set] == HEAP_SET_UNALLOCATED) {
+                        // the next set hasn't been allocated yet,
+                        // so allocate it.
+                        size_t new_set = k_vmem_alloc(HEAP_PAGE_SET_SIZE);
+                        // the pagefault handler may/may not be dependent on kmalloc.
+                        // we're not going to assume it isn't.
+                        int frame_id = pageframe_allocate_single(HEAP_PAGE_SET_ORDER);
+                        if(frame_id == -1) {
+                            panic("dynmem: no pageframes left for heap!\n");
+                        }
+                        
+                        for(int j=frame_id*HEAP_PAGE_SET_SIZE;j<((frame_id+1)*HEAP_PAGE_SET_SIZE);j++) { // for all j from 2^order to (2^(order+1))-1...
+                            size_t address = pageframe_get_block_addr(j, 0);
+                            size_t vaddr = new_set + (0x1000*(j - (frame_id*HEAP_PAGE_SET_SIZE)));
+                            paging_set_pte( vaddr, address, 0 );
+                        }
+                        allocator_sets[current_set] = new_set;
+                    }
+                    k_heap_header *set_start_block = (k_heap_header*)(allocator_sets[current_set]);
+                    set_start_block->status = HEAP_HEADER_STATUS_USED;
+                    
+                    k_heap_header *allocation_start_block = (k_heap_header*)(allocator_sets[current_set]+length+sizeof(k_heap_header)+1);
+                    allocation_start_block->status = HEAP_HEADER_STATUS_FREE;
+                    
+                    allocation_start_block->next = NULL;
+                    set_start_block->next = allocation_start_block;
+                    current->next = set_start_block;
+                    current->status = HEAP_HEADER_STATUS_FREE;
+                    return (void*)((size_t)set_start_block+sizeof(k_heap_header)+1);
+                }
             }
         }
-        blk = blk->next;
+        // if we couldn't lock the block, then we just fall through to the next block
+        current = current->next;
+        current_set = next_set;
     }
-    if(ptr == NULL) { // if we still haven't allocated memory, then make a new block.
-        k_heap_add_at_offset(heap.end, n_blks);
-        heap.end->prev->used = true;
-        ptr = (char*)((size_t)(heap.end->prev)+sizeof(k_heap_blk)+1);
+    // if we're here, then we tried to allocate the last block in the list while it was locked.
+    // if we can, try to restart the allocation after blocking for a bit.
+    if((flags & 3) == KMALLOC_RESTART_ONCE) {
+        process_switch_immediate();
+        return kmalloc(init_length, (flags & 0x00FFFFFC) | KMALLOC_NO_RESTART);
+    } else if( (flags & 3) == 3 ) { // KMALLOC_RESTART_MANY
+        char restart_count = (flags>>24) & 0xFF;
+        restart_count--;
+        if(restart_count > 0) {
+            process_switch_immediate();
+            return kmalloc(init_length, (flags & 0x00FFFFFF) | (restart_count<<24) | 3);
+        } else {
+            process_switch_immediate();
+            return kmalloc(init_length, (flags & 0x00FFFFFC) | KMALLOC_RESTART_ONCE);
+        }
     }
-    __dynmem_lock.unlock();
-    return ptr;
+    // if we can't block (or if we've simply retried too many times), then just give up.
+    return NULL;
 }
 
-// kfree - free memory block
-// This function frees a block of memory given by kmalloc(), allowing other kernel tasks to use it.
-void kfree(char* ptr) {
-    // given a pointer to a block of memory:
-    // find the header for that block of memory
-    // set the free bit
-    // compress the list
-    k_heap_blk *header_ptr = (k_heap_blk*)((size_t)(ptr-sizeof(k_heap_blk)-1));
-    __dynmem_lock.lock();
-#ifdef DYNMEM_CHECK_FREE_CALLS
-    if(header_ptr->magic == HEAP_MAGIC_NUMBER) {
-#endif
-        header_ptr->used = false;
-        if(header_ptr->prev != NULL) {
-            if( !(header_ptr->prev->used) ) {
-                // Just delete this block.
-                k_heap_delete(header_ptr);
-            } 
-        }
-        if(header_ptr->next != NULL) {
-            if( !(header_ptr->next->used) ) {
-                // Delete header_ptr->next.
-                k_heap_blk *next = header_ptr->next;
-                k_heap_delete(next);
-            }
-        }
-        
-        //k_heap_compress();
-#ifdef DYNMEM_CHECK_FREE_CALLS
+void *kmalloc(size_t length) {
+    if( in_irq_context ) {
+        return kmalloc(length, KMALLOC_NO_RESTART);
     } else {
-        // We're freeing an invalid pointer.
-        panic("dynmem: bad free() call -- could not find magic number\ndynmem: Pointer points to: 0x%x.\n", (unsigned long long int)((size_t)ptr) );
+        return kmalloc(length, KMALLOC_RESTART_ONCE);
     }
-#endif
-    __dynmem_lock.unlock();
 }
 
-// memblock_inspect - print linked list overview
-// This function traverses the list and prints debugging info (struct data members) to console.
-void memblock_inspect() {
-#ifdef DEBUG
-    k_heap_blk* blk = heap.start;
-    while((blk != NULL)) { // Don't compress the first or last block in the heap.
-        kprintf("Heap block located at 0x%x:\nblk->prev: 0x%x\nblk->next: 0x%x", (size_t)blk, (size_t)blk->prev, (size_t)blk->next);
-        if(blk->used)
-            terminal_writestring("\nBlock marked as \'used\'.\n");
-        else
-            terminal_writestring("\nBlock marked as \'free\'.\n");
-        blk = blk->next;
+void kfree(void* ptr) {
+    k_heap_header *header = (k_heap_header*)((size_t)ptr-sizeof(k_heap_header)-1);
+    if(header->status == HEAP_HEADER_STATUS_USED) {
+        k_heap_header *iterate = heap_start;
+        while( (iterate != NULL) && (iterate->next != header) )
+            iterate = iterate->next;
+        // iterate->next = header
+        // or iterate == NULL in which case we're trying to free an invalid (unreachable) block
+        if(iterate == NULL) {
+            panic("dynmem: attempted to free an unreachable block!");
+        }
+        if( __sync_bool_compare_and_swap( &header->next->status, HEAP_HEADER_STATUS_FREE, HEAP_HEADER_STATUS_USED ) ) {
+            // header->next is free
+            // delete header->next ( merge this block and the next )
+            k_heap_header *next = header->next;
+            header->next = next->next;
+            
+            next->status = 0;
+            next->next = NULL;
+        }
+        // else next is not free
+        
+        if( __sync_bool_compare_and_swap( &iterate->status, HEAP_HEADER_STATUS_FREE, HEAP_HEADER_STATUS_USED ) ) {
+            // iterate is free
+            // delete header ( merge the previous block and this one )
+            iterate->next = header->next;
+            
+            header->status = 0;
+            header->next = NULL;
+            
+            iterate->status = HEAP_HEADER_STATUS_FREE;
+            return;
+        }
+        // else iterate is not free
+        
+        iterate->next->status = HEAP_HEADER_STATUS_FREE;
+    } else {
+        // if we're here, then either the pointer we initially assigned was a page-level allocation...
+        // ...the pointer we were passed wasn't allocated with kmalloc at all...
+        // ...or we're freeing a pointer twice.
+        if( k_vmem_free((size_t)ptr) )
+            return; // if the pointer wasn't returned from k_vmem_alloc, then nothing happens.
+        // now we've ruled out the possibility of a page-level allocation
+        // so that means that this pointer is invalid.
+        panic("dynmem: attempted to free an invalid pointer!\nPointer points to: 0x%x.\n", (uint64_t)ptr);
     }
-#endif
 }

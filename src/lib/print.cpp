@@ -19,12 +19,12 @@ size_t strlen(char* str)
 
 char* int_to_octal(long long int n) {
     if(n == 0) {
-        char* mem = kmalloc(2);
+        char* mem = (char*)kmalloc(2);
         mem[0] = '0';
         mem[1] = '\0';
         return mem;
     }
-    char *ret = kmalloc(24);
+    char *ret = (char*)kmalloc(24);
     for(int i=0;i<22;i++) {
         if( (n >> ((21-i)*3)) == 0 ) {
             ret[i] = '\0';
@@ -38,7 +38,7 @@ char* int_to_octal(long long int n) {
 
 char* int_to_hex(long long int n) {
     if(n == 0) {
-        char* mem = kmalloc(2);
+        char* mem = (char*)kmalloc(2);
         mem[0] = '0';
         mem[1] = '\0';
         return mem;
@@ -50,7 +50,7 @@ char* int_to_hex(long long int n) {
             break;
         }
     }
-    char *ret = kmalloc(digits+1);
+    char *ret = (char*)kmalloc(digits+1);
     for(int i=0;i<digits;i++) {
         ret[(digits-i)-1] = numeric_alpha[ ( (n >> i*4)&0xF ) ];
     }
@@ -60,12 +60,12 @@ char* int_to_hex(long long int n) {
 
 char* int_to_bin(long long int n) {
     if(n == 0) {
-        char* mem = kmalloc(2);
+        char* mem = (char*)kmalloc(2);
         mem[0] = '0';
         mem[1] = '\0';
         return mem;
     }
-    char *ret = kmalloc(65);
+    char *ret = (char*)kmalloc(65);
     for(int i=0;i<64;i++) {
         ret[i] = numeric_alpha[ (n>>(63-i))&0x1 ];
     }
@@ -75,10 +75,10 @@ char* int_to_bin(long long int n) {
 
 // there is DEFINITELY a better way to do this.
 char* int_to_decimal(signed long long int n) {
-    int d = 0;
+    size_t d = 0;
     int n2 = n;
     if(n == 0) {
-        char* mem = kmalloc(2);
+        char* mem = (char*)kmalloc(2);
         mem[0] = '0';
         mem[1] = '\0';
         return mem;
@@ -89,7 +89,7 @@ char* int_to_decimal(signed long long int n) {
     }
     n2 = n;
     d++;
-    char* mem = kmalloc(d);
+    char* mem = (char*)kmalloc(d);
     for(int i=1;i<d;i++) {
         mem[(d-i)-1] = numeric_alpha[(n2%10)];
         n2 /= 10;
@@ -100,11 +100,11 @@ char* int_to_decimal(signed long long int n) {
 
 char *concatentate_strings(char* str1, char *str2) {
     int len = strlen(str1) + strlen(str2);
-    char *out = kmalloc(len + 2);
-    for(unsigned int i=0;i<strlen(str1);i++) {
+    char *out = (char*)kmalloc(len + 2);
+    for(size_t i=0;i<strlen(str1);i++) {
         out[i] = str1[i];
     }
-    for(unsigned int i=0;i<strlen(str2);i++) {
+    for(size_t i=0;i<strlen(str2);i++) {
         out[ i+strlen(str1) ] = str2[i];
     } 
     out[len+1] = '\0';
@@ -112,7 +112,7 @@ char *concatentate_strings(char* str1, char *str2) {
 }
 
 char *append_char(char* str1, char c) {
-    char *out = kmalloc( strlen(str1)+2 );
+    char *out = (char*)kmalloc( strlen(str1)+2 );
     for(unsigned int i=0;i<strlen(str1);i++) {
         out[i] = str1[i];
     }
@@ -123,7 +123,7 @@ char *append_char(char* str1, char c) {
 
 // Print to string
 char *ksprintf_varg(const char* str, va_list args) {
-    char *out = kmalloc(1);
+    char *out = (char*)kmalloc(1);
     out[0] = '\0';
     for( size_t i=0;i<strlen(const_cast<char*>(str));i++ ) {
         if( str[i] == '%' ) {
@@ -298,12 +298,21 @@ void kprintf(const char *str, ...) {
 }
 
 char *panic_str = NULL;
+bool double_panic = false;
 
 // Print "panic: mesg" and then hang.
 void panic(char *str, ...) {
     // Disable multitasking (and spinlocks too).
     multitasking_enabled = 0;
+    if(double_panic) { // triple panic / fault!
+        while(true) {
+            asm volatile("cli\n\t"
+            "hlt"
+            : : : "memory");
+        }
+    }
     if(panic_str != NULL) { // Don't panic WHILE panicking.
+        double_panic = true;
         terminal_writestring("panic: panicked while panicking!\n");
         terminal_writestring("first panic string: ");
         terminal_writestring(panic_str);
@@ -321,9 +330,9 @@ void panic(char *str, ...) {
         terminal_writestring("panic: ");
         terminal_writestring(o);
         va_end(args);
+        // Get a stack trace.
+        stack_trace_walk(0xFFFF);
     }
-    // Get a stack trace.
-    stack_trace_walk(0xFFFF);
     // Now halt.
     while(true) {
         asm volatile("cli\n\t"

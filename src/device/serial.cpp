@@ -8,10 +8,10 @@
 
 
 char input_buffer[SERIAL_BUFFER_SIZE];
-int input_length = 0;
+size_t input_length = 0;
 
 char output_buffer[SERIAL_BUFFER_SIZE];
-int output_length = 0;
+size_t output_length = 0;
 
 bool serial_initialized = false;
 
@@ -147,12 +147,12 @@ void serial_irq() {
 char* serial_read(int *ret_bytes) {
     if(input_length == 0) {
         while( (io_inb(COM1_BASE_PORT+LSR_OFFSET) & LSR_DATA_READY) == 0 )
-            wait_for_interrupt();
+            system_wait_for_interrupt();
     }
     
     serial_disable_interrupts();
     
-    char* ret = kmalloc(input_length);
+    char* ret = (char*)kmalloc(input_length);
     *ret_bytes = input_length;
     int old_i_len = input_length;
     int ctr = input_length;
@@ -171,10 +171,10 @@ void serial_write(char* data) {
     int len = strlen(data);
     //terminal_writestring("Entering serial_write.\n");
     while((output_length+len) > SERIAL_BUFFER_SIZE)
-        wait_for_interrupt();
+        system_wait_for_interrupt();
     /*
     while( (io_inb(COM1_BASE_PORT+LSR_OFFSET) & LSR_EMPTY_TRANS_HOLD) == 0 )
-        wait_for_interrupt();
+        system_wait_for_interrupt();
     */
     
     serial_disable_interrupts();
@@ -204,7 +204,7 @@ void initialize_serial(short base, short divisor) {
 
 void flush_serial_buffer(void* n) {
     while(output_length > 0) {
-        wait_for_interrupt();
+        system_wait_for_interrupt();
     }
 #ifdef DEBUG
     terminal_writestring("Serial buffers flushed.\n");

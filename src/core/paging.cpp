@@ -12,6 +12,7 @@
 #include "boot/multiboot.h"
 #include "core/paging.h"
 #include "device/vga.h"
+#include "lib/sync.h"
 
 /*
 My test system says:
@@ -44,11 +45,15 @@ int n_mem_ranges;
 memory_range* memory_ranges;
 size_t **buddy_maps;
 int n_blocks[BUDDY_MAX_ORDER+1];
+
 vaddr_range k_vmem_linked_list;
+vaddr_range __k_vmem_allocate_start;
 
 uint32_t *page_directory;
 // instead of having a 1024-large array of pointers to the page tables,
 // we'll instead use the page tables themselves to determine what pages they're located in.
+
+static mutex __frame_allocator_lock;
 
 size_t pageframe_get_block_addr(int blk_num, int order) {
     int zero_order_blk = blk_num*(1<<order);
@@ -131,6 +136,7 @@ void recursive_mark_allocated(int c1_index, int c2_index, signed int order, bool
 
 page_frame* pageframe_allocate_specific(int id, int order) {
     page_frame *frames = NULL;
+    __frame_allocator_lock.lock();
     if( !pageframe_get_block_status(id, order) ) {
         pageframe_set_block_status(id, order, true);
         recursive_mark_allocated((id<<1), (id<<1)+1, order-1, true);
@@ -158,6 +164,7 @@ page_frame* pageframe_allocate_specific(int id, int order) {
             k++;
         }
     }
+    __frame_allocator_lock.unlock();
     return frames;
 }
 
@@ -224,9 +231,11 @@ page_frame* pageframe_allocate(int n_frames) {
     
     // Allocate one set of blocks.
     for(int i=0;i<n_blocks[order];i++) {
+        __frame_allocator_lock.lock();
         if( !pageframe_get_block_status(i, order) ) { // if the block we're not looking at is not allocated...
             return pageframe_allocate_specific(i, order); // then allocate it.
         }
+        __frame_allocator_lock.unlock();
     }
     return NULL;
 }
@@ -236,6 +245,7 @@ page_frame* pageframe_allocate_at( size_t where, int n_frames ) {
     where &= 0xFFFFF000;
     int where_frame = pageframe_get_block_from_addr( where );
     page_frame *frames = (page_frame*)kmalloc(sizeof(page_frame)*n_frames);
+    __frame_allocator_lock.lock();
     if( frames != NULL ) {
         for(int i=0;i<n_frames;i++) {
             size_t paddr = where + (i*0x1000);
@@ -246,13 +256,16 @@ page_frame* pageframe_allocate_at( size_t where, int n_frames ) {
             }
         }
     }
+    __frame_allocator_lock.unlock();
     return frames;
 }
 
 void pageframe_deallocate_specific(int blk_num, int order) {
     if(order <= BUDDY_MAX_ORDER) {
+        __frame_allocator_lock.lock();
         pageframe_set_block_status(blk_num, order, false);
         if(!pageframe_get_block_status(pageframe_get_block_buddy(blk_num, order), order)) {
+            __frame_allocator_lock.unlock();
             return pageframe_deallocate_specific( ((unsigned int)blk_num) >> 1, order+1 );
         }
     }
@@ -276,6 +289,18 @@ void pageframe_restrict_range(size_t start_addr, size_t end_addr) {
             pageframe_allocate_specific(i, 0);
         }
     }
+}
+
+void initialize_vmem_allocator() {
+    k_vmem_linked_list.address = 0xC0400000;
+    k_vmem_linked_list.free = false;
+    k_vmem_linked_list.prev = NULL;
+    k_vmem_linked_list.next = &__k_vmem_allocate_start;
+    
+    __k_vmem_allocate_start.address = 0xC0400000+HEAP_INITIAL_ALLOCATION;
+    __k_vmem_allocate_start.free = true;
+    __k_vmem_allocate_start.prev = NULL;
+    __k_vmem_allocate_start.next = NULL;
 }
 
 void initialize_pageframes(multiboot_info_t* mb_info) {
@@ -336,14 +361,9 @@ void initialize_pageframes(multiboot_info_t* mb_info) {
         n_blocks[i] = num_blocks;
     }
     
-    k_vmem_linked_list.address = 0xC0000000;
-    k_vmem_linked_list.free = true;
-    k_vmem_linked_list.prev = NULL;
-    k_vmem_linked_list.next = NULL;
-    
     //pageframe_restrict_range( (size_t)&kernel_start_phys, (size_t)&kernel_end_phys );
     pageframe_restrict_range( 0, 0x400000 );
-    k_vmem_alloc( 0xC0000000, 0xC0400000 );
+    //k_vmem_alloc( 0xC0000000, 0xC0400000 );
     k_vmem_alloc( (size_t)buddy_maps, (size_t)(((size_t)buddy_maps)+((BUDDY_MAX_ORDER+1)*sizeof(size_t*))) );
     kprintf("Map of buddy maps begins at 0x%x and ends at 0x%x\n", (unsigned long long int)buddy_maps, (unsigned long long int)(((size_t)buddy_maps)+((BUDDY_MAX_ORDER+1)*sizeof(size_t*))) );
     // now go back and restrict these ranges of memory from paging
@@ -496,9 +516,11 @@ bool paging_vmem_free( vaddr_range *start, size_t address ) {
     while( current != NULL ) {
         if( current->address == address ) {
             current->free = true;
-            if( current->prev->free ) {
+            if( ( current->prev != NULL ) && current->prev->free ) {
                 current->prev->next = current->next;
-                current->next->prev = current->prev;
+                if( current->next ) {
+                    current->next->prev = current->prev;
+                }
                 
                 /*
                 current->next = NULL;
@@ -506,21 +528,28 @@ bool paging_vmem_free( vaddr_range *start, size_t address ) {
                 current->address = NULL;
                 current->free = false;
                 */
+                kprintf("paging_vmem_free: deleting current node in list.\n");
                 delete current;
-                return true;
-            } else if( current->next->free ) {
-                current->next->next->prev = current;
-                current->next = current->next->next;
-                
-                /*
-                current->next->next = NULL;
-                current->next->prev = NULL;
-                current->next->address = NULL;
-                current->next->free = false;
-                */
-                delete current->next;
-                return true;
+            } else if( ( current->next != NULL ) && current->next->free ) {
+                vaddr_range *next = current->next;
+                if(next) { // dunno why we need to do this
+                    if( next->next != NULL ) {
+                        next->next->prev = current;
+                    }
+                    current->next = next->next;
+                    
+                    /*
+                    current->next->next = NULL;
+                    current->next->prev = NULL;
+                    current->next->address = NULL;
+                    current->next->free = false;
+                    */
+                    kprintf("paging_vmem_free: deleting next node in list.\n");
+                    
+                    delete next;
+                }
             }
+            return true;
         }
         current = current->next;
     }
@@ -577,17 +606,38 @@ void paging_unmap_phys_address( size_t vaddr, int n_frames ) {
     k_vmem_free( vaddr );
 }
 
+// hopefully this is reentrant. Hopefully.
+int pageframe_allocate_single() {
+    int frame_id = -1;
+    for(int i=0;i<n_blocks[0];i++) {
+        if( !pageframe_get_block_status(i, 0) ) {
+             if( !pageframe_get_block_status(i, 0) ) {
+                int parent = i;
+                for(int j=0;j<=BUDDY_MAX_ORDER;j++) {
+                    pageframe_set_block_status(parent, j, true);
+                    parent >>= 1;
+                }
+                frame_id = i;
+                break;
+            }
+        }
+    }
+    return frame_id;
+}
+
 void paging_handle_pagefault(char error_code, uint32_t cr2) {
     if( (error_code & 1) == 0 ) {
-        page_frame *frame = pageframe_allocate(1); // hopefully this won't cause any errors, this function isn't reentrant
-        if(frame == NULL) {
+        // pageframe_allocate isn't reentrant, and can deadlock the system via kmalloc.
+        // so, we have to allocate frames ourselves.
+        int frame_id = pageframe_allocate_single();
+        if(frame_id == -1) {
             panic("paging: No pageframes left to allocate!");
         }
-        char flags = 0;
-        if( cr2 < PAGING_KERNEL_BASE_ADDR ) {
+        char flags = 0; // note that bit 1 (PRESENT bit) is implied
+        if( (error_code & 0x4) == 1 ) { // was the pagefault in user mode?
             flags = 0x06;
         }
-        paging_set_pte( (size_t)cr2, frame->address, flags ); // load vaddr to newly allocated page, with no flags except for PRESENT.
+        paging_set_pte( (size_t)cr2 & 0xFFFFF000, pageframe_get_block_addr(frame_id, 0), flags ); // load vaddr to newly allocated page
     } else {
         // We're dealing with a protection violation.
         if( (error_code & 0x4) == 0 ) {

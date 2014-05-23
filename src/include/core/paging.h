@@ -22,6 +22,8 @@
 //#define PAGING_DEBUG
 #define PAGEFAULT_DEBUG
 
+#define HEAP_INITIAL_ALLOCATION     0x400000
+
 typedef struct memory_range {
     unsigned long long int base;
     unsigned long long int end;
@@ -48,6 +50,7 @@ struct vaddr_range {
 
 typedef struct vaddr_range vaddr_range;
 
+extern void initialize_vmem_allocator();
 extern void initialize_pageframes(multiboot_info_t*);
 extern bool pageframe_get_block_status(int,int);
 extern void pageframe_set_block_status(int,int,bool);
@@ -57,6 +60,7 @@ extern int pageframe_get_block_from_addr(size_t);
 extern page_frame* pageframe_allocate(int);
 extern page_frame* pageframe_allocate_at( size_t, int );
 extern page_frame* pageframe_allocate_specific(int,int);
+extern int pageframe_allocate_single();
 extern void pageframe_deallocate(page_frame*, int);
 extern void pageframe_restrict_range(size_t, size_t);
 extern inline void invalidate_tlb(size_t);

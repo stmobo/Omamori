@@ -8,12 +8,16 @@
 typedef class spinlock {
     uint32_t lock_value;
     uint32_t locker;
+    bool int_status;
     
     public:
     spinlock();
-    uint32_t get_lock_value();
+    bool get_lock_status();
+    uint32_t get_lock_owner();
     void lock();
     void unlock();
+    void lock_cli();
+    void unlock_cli();
 } spinlock;
 
 typedef class reentrant_mutex {

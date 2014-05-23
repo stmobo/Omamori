@@ -4,8 +4,11 @@
 #include "core/sys.h"
 #include "core/dynmem.h"
 #include "device/vga.h"
+#include "lib/sync.h"
 
 k_heap heap;
+
+static spinlock __dynmem_lock;
 
 // k_heap_init - initialize the heap
 // This function creates the initial heap block struct, and also initializes the k_heap struct.
@@ -31,6 +34,7 @@ k_heap_blk* k_heap_get(int n) {
 // k_heap_add_at_offset - Add a new heap block
 // This function places a new heap block in memory, linked to an "origin" block.
 void k_heap_add_at_offset(k_heap_blk* origin_blk, int block_offset) {
+    __dynmem_lock.lock_cli();
     k_heap_blk* blk = (k_heap_blk*)((size_t)origin_blk+(block_offset*HEAP_BLK_SIZE));
     blk->prev = origin_blk;
     blk->next = origin_blk->next;
@@ -41,11 +45,13 @@ void k_heap_add_at_offset(k_heap_blk* origin_blk, int block_offset) {
         blk->next->prev = blk;
     else
         heap.end = blk;
+    __dynmem_lock.unlock_cli();
 }
 
 // k_heap_delete - Unlink a block
 // This function removes a block from the linked list, effectively "deleting" it.
 void k_heap_delete(k_heap_blk* blk) {
+    __dynmem_lock.lock_cli();
     if(blk == NULL) {
         panic("dynmem: Attempted to delete NULL block!");
     }
@@ -63,6 +69,7 @@ void k_heap_delete(k_heap_blk* blk) {
     blk->prev = NULL;
     blk->magic = 0;
     blk->used = false;
+    __dynmem_lock.unlock_cli();
 }
 
 // k_heap_compress - Merge free blocks
@@ -72,6 +79,7 @@ int k_heap_compress() {
     k_heap_blk* next = NULL;
     int blks_deleted = 0;
     
+    __dynmem_lock.lock_cli();
     while((blk != NULL) && (blk->next != NULL)) { // Don't compress the first or last block in the heap.
         next = blk->next;
         if(blk->prev != NULL) {
@@ -88,12 +96,14 @@ int k_heap_compress() {
         k_heap_delete(heap.end);
         blks_deleted++;
     }
-
+    __dynmem_lock.unlock_cli();
     return blks_deleted;
 }
 
 // kmalloc - kernel memory allocator
 // This function returns a pointer to an arbitrary size block of memory.
+// we use a buddy allocation system across pages.
+
 char* kmalloc(size_t size) {
     // iterate over every block in the heap list except for the last one
     // and look for a block where the space between the block and the next in the list is at least size bytes...
@@ -101,6 +111,7 @@ char* kmalloc(size_t size) {
     int n_blks = (size / HEAP_BLK_SIZE)+1;
     char* ptr = NULL;
     k_heap_blk* blk = heap.start;
+    __dynmem_lock.lock();
     while(blk->next != NULL) {
         if(!blk->used) {
             int blk_sz = ((size_t)blk->next - (size_t)blk);
@@ -124,6 +135,7 @@ char* kmalloc(size_t size) {
         heap.end->prev->used = true;
         ptr = (char*)((size_t)(heap.end->prev)+sizeof(k_heap_blk)+1);
     }
+    __dynmem_lock.unlock();
     return ptr;
 }
 
@@ -135,6 +147,7 @@ void kfree(char* ptr) {
     // set the free bit
     // compress the list
     k_heap_blk *header_ptr = (k_heap_blk*)((size_t)(ptr-sizeof(k_heap_blk)-1));
+    __dynmem_lock.lock();
 #ifdef DYNMEM_CHECK_FREE_CALLS
     if(header_ptr->magic == HEAP_MAGIC_NUMBER) {
 #endif
@@ -160,6 +173,7 @@ void kfree(char* ptr) {
         panic("dynmem: bad free() call -- could not find magic number\ndynmem: Pointer points to: 0x%x.\n", (unsigned long long int)((size_t)ptr) );
     }
 #endif
+    __dynmem_lock.unlock();
 }
 
 // memblock_inspect - print linked list overview

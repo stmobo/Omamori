@@ -1,8 +1,10 @@
+#include "arch/x86/multitask.h"
 #include "device/vga.h"
 #ifdef ENABLE_SERIAL_LOGGING
 #include "device/serial.h"
 #endif
 #include "lib/sync.h"
+#include "arch/x86/debug.h"
 #include <stdarg.h>
 
 const char* numeric_alpha = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -261,22 +263,21 @@ char *ksprintf(const char *str, ...) {
     return out;
 }
 
-static spinlock __kprintf_varg_lock;
-
+static spinlock __kprintf_lock;
+//static spinlock __kprintf_varg_lock;
 // Print something to the screen, but take a va_list.
 void kprintf_varg(const char *str, va_list args) {
     char *o = ksprintf_varg( str, args );
-    __kprintf_varg_lock.lock();
+    __kprintf_lock.lock();
 #ifdef ENABLE_SERIAL_LOGGING
     if( serial_initialized ) {
         serial_write( o );
     }
 #endif
     terminal_writestring( o );
-    __kprintf_varg_lock.unlock();
+    __kprintf_lock.unlock();
 }
 
-static spinlock __kprintf_lock;
 // Print something to screen.
 // DO NOT CALL THIS FROM AN ISR!!!
 void kprintf(const char *str, ...) {
@@ -300,6 +301,8 @@ char *panic_str = NULL;
 
 // Print "panic: mesg" and then hang.
 void panic(char *str, ...) {
+    // Disable multitasking (and spinlocks too).
+    multitasking_enabled = 0;
     if(panic_str != NULL) { // Don't panic WHILE panicking.
         terminal_writestring("panic: panicked while panicking!\n");
         terminal_writestring("first panic string: ");
@@ -319,6 +322,8 @@ void panic(char *str, ...) {
         terminal_writestring(o);
         va_end(args);
     }
+    // Get a stack trace.
+    stack_trace_walk(0xFFFF);
     // Now halt.
     while(true) {
         asm volatile("cli\n\t"

@@ -51,11 +51,11 @@ uint64_t rdtsc() {
 }
 
 void *operator new(size_t size) {
-    return kmalloc(size);
+    return (void*)kmalloc(size);
 }
 
 void *operator new[](size_t size) {
-    return kmalloc(size);
+    return (void*)kmalloc(size);
 }
 
 void operator delete(void* ptr) {

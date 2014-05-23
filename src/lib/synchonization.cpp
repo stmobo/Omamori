@@ -14,6 +14,7 @@ spinlock::spinlock() {
     this->lock_value = SPINLOCK_UNLOCKED_VALUE;
 }
 
+// Lock / Unlock, No interrupt disabling
 void spinlock::lock() {
     if(multitasking_enabled) { // No point in locking if we're the only thing running THIS early on
         if( (process_current == NULL) || (this->locker != process_current->id) ) { // don't lock if we've already locked this lock, but be safe about it
@@ -21,7 +22,6 @@ void spinlock::lock() {
                 process_switch_immediate();
                 //asm volatile("pause" : : : "memory");
             }
-        
             if( process_current != NULL ) {
                 this->locker = process_current->id;
             }
@@ -37,9 +37,43 @@ void spinlock::unlock() {
     }
 }
 
-uint32_t spinlock::get_lock_value() {
+// Lock / Unlock w/ interrupt disabling
+void spinlock::lock_cli() {
+    if(multitasking_enabled) { // No point in locking if we're the only thing running THIS early on
+        if( (process_current == NULL) || (this->locker != process_current->id) ) { // don't lock if we've already locked this lock, but be safe about it
+            while(!cas(&this->lock_value, SPINLOCK_UNLOCKED_VALUE, SPINLOCK_LOCKED_VALUE)) {
+                process_switch_immediate();
+                //asm volatile("pause" : : : "memory");
+            }
+        
+            if( process_current != NULL ) {
+                this->int_status = interrupts_enabled();
+                asm volatile("cli" : : : "memory");
+                this->locker = process_current->id;
+            }
+        }
+    }
+}
+
+void spinlock::unlock_cli() {
+    if(multitasking_enabled) {
+        asm volatile("" : : : "memory");
+        this->lock_value = SPINLOCK_UNLOCKED_VALUE;
+        this->locker = 0;
+        if(this->int_status) {
+            asm volatile("sti" : : : "memory");
+        }
+    }
+}
+
+bool spinlock::get_lock_status() {
     asm volatile("" : : : "memory");
-    return this->lock_value;
+    return (this->lock_value == SPINLOCK_LOCKED_VALUE);
+}
+
+uint32_t spinlock::get_lock_owner() {
+    asm volatile("" : : : "memory");
+    return this->locker;
 }
 
 reentrant_mutex::reentrant_mutex() {
@@ -50,32 +84,32 @@ reentrant_mutex::reentrant_mutex() {
 
 void reentrant_mutex::lock( int uid ) {
     if( multitasking_enabled ) { // don't screw up state if multitasking is not enabled
-        this->control_lock->lock();
+        this->control_lock->lock_cli();
         if( (this->uid == ~0) ){ // okay, it's not taken yet, acquire it
             this->uid = uid;
         } else {
-            this->control_lock->unlock();
+            this->control_lock->unlock_cli();
             while( true ) {
                 process_switch_immediate(); // go to sleep
-                this->control_lock->lock(); // okay, checking again
+                this->control_lock->lock_cli(); // okay, checking again
                 if( this->uid == ~0 ) { // is it still locked?
                     this->uid = uid; // okay it is, acquire it
                     break;
                 } else {
-                    this->control_lock->unlock(); // no, it's not, release and go to sleep again
+                    this->control_lock->unlock_cli(); // no, it's not, release and go to sleep again
                 }
             }
             // control_lock is LOCKED.
         }
         // this->uid == uid
         this->lock_count++;
-        this->control_lock->unlock();
+        this->control_lock->unlock_cli();
     }
 }
 
 void reentrant_mutex::unlock( int uid ) {
     if( multitasking_enabled ) {
-        this->control_lock->lock();
+        this->control_lock->lock_cli();
         if(this->uid == uid) {
             if( this->lock_count == 0 ) {
                 panic("sync: attempted to unlock mutex more times than it was acquired!");
@@ -85,7 +119,7 @@ void reentrant_mutex::unlock( int uid ) {
                 this->uid = ~0;
             }
         }
-        this->control_lock->unlock();
+        this->control_lock->unlock_cli();
     }
 }
 

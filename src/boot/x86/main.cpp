@@ -79,6 +79,7 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     terminal_writestring("Project Omamori now starting...\n");
     gdt_init();
     idt_init();
+    initialize_vmem_allocator();
     k_heap_init(HEAP_START_ADDR);
     initialize_pageframes(mb_info);
     
@@ -134,6 +135,13 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     size_t vmem_test = k_vmem_alloc( 5 );
     kprintf("Virtual allocation starts at address 0x%x.\n", (unsigned long long int)vmem_test);
     k_vmem_free( vmem_test );
+    
+    // Remap the VGA memory space.
+    // This way, an errant terminal_writestring doesn't bring down the entire system.
+    kprintf("Remapping VGA memory.\n");
+    size_t vga_vmem = k_vmem_alloc( 1 );
+    paging_set_pte( vga_vmem, 0xB8000, 0 );
+    terminal_buffer = (uint16_t*)vga_vmem;
     
     kprintf("Initializing PCI.\n");
     pci_check_bus(0);

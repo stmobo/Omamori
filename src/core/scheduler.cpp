@@ -69,10 +69,12 @@ void process_queue::add(process* process_to_add) {
     if( this->count+1 > this->length ) {
         this->length += 1;
         process **new_queue = new process*[this->length];
-        for(int i=0;i<this->count;i++) {
-            new_queue[i] = this->queue[i];
+        if( this->queue != NULL ) {
+            for(int i=0;i<this->count;i++) {
+                new_queue[i] = this->queue[i];
+            }
+            delete this->queue;
         }
-        delete this->queue;
         new_queue[this->length-1] = process_to_add;
         this->queue = new_queue;
     } else {
@@ -210,18 +212,45 @@ process::process( size_t entry_point, bool is_usermode, int priority ) {
             panic("multitasking: failed to allocate new page directory for process!\n");
         }
     } else {
-        this->regs.esp = (stack_start + (PROCESS_STACK_SIZE*0x1000))-4;
-        page_frame *stack_frames = pageframe_allocate(PROCESS_STACK_SIZE);
+        // Each process' stack runs from 0xBFFFFFFF to 0xBFFFB000 -- that's 16 KB.
+        this->regs.esp = (uint32_t)(0xC00000000-1); // let's just hope that we don't underrun the stack
+        page_frame *stack_frames = pageframe_allocate(PROCESS_STACK_SIZE+1); // frames for the stack and a frame for the process' initial page table (to map the stack with)
         for(int i=0;i<PROCESS_STACK_SIZE;i++) {
             paging_set_pte( stack_start + (i*0x1000), stack_frames[i].address, 0 );
         }
         kfree( (char*)(stack_frames) );
+        
+        size_t pde_page = k_vmem_alloc(2);
+        size_t init_pt_page = pde_page+0x1000;
+        page_frame *pde_frame = pageframe_allocate(1);
+        
+        if((pde_frame != NULL) && (pde_page != NULL)) {
+            paging_set_pte( pde_page, pde_frame->address, 0 );
+            paging_set_pte( init_pt_page, stack_frames[PROCESS_STACK_SIZE].address, 0 );
+            this->process_pde = (uint32_t*)pde_page;
+            uint32_t *stack_pt = (uint32_t*)init_pt_page;
+            for(int i=0;i<PROCESS_STACK_SIZE;i++) {
+                stack_pt[1023-i] = (uint32_t)stack_frames[i].address | 1;
+            }
+            
+            kprintf("Process PD mapped to vmem 0x%x / pmem 0x%x\n", (unsigned long long int)pde_page, (unsigned long long int)pde_frame->address);
+            
+            // map stuff into memory:
+            this->process_pde[0] = ((uint32_t)&PageTable0) | 1;
+            this->process_pde[767] = ((uint32_t)stack_frames[PROCESS_STACK_SIZE].address) | 1;
+            this->process_pde[768] = ((uint32_t)&PageTable768) | 1;
+            this->process_pde[1023] = ((uint32_t)pde_frame->address) | 1;
+            this->regs.cr3 = pde_frame->address;
+        } else {
+            panic("multitasking: failed to allocate new page directory for process!\n");
+        }
+        
         this->regs.cs = GDT_KCODE_SEGMENT*0x08;
         this->regs.ds = GDT_KDATA_SEGMENT*0x08;
         this->regs.es = GDT_KDATA_SEGMENT*0x08;
         this->regs.fs = GDT_KDATA_SEGMENT*0x08;
         this->regs.gs = GDT_KDATA_SEGMENT*0x08;
         this->regs.ss = GDT_KDATA_SEGMENT*0x08;
-        this->regs.cr3 = (size_t)&BootPD; // use kernel page structures for simplicity
+        //this->regs.cr3 = (size_t)&BootPD; // use kernel page structures for simplicity
     }
 }

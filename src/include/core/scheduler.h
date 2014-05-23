@@ -37,7 +37,7 @@ typedef struct process {
 
 // simple FIFO process queue
 typedef class process_queue {
-    process **queue;
+    process **queue = NULL;
     int length;
     int count;
     

@@ -10,6 +10,7 @@ stack_top:
 _start_kernel:
     # whoo kernel mode!
     movl $stack_top, %esp
+    mov $stack_top, %ebp
     
     # push multiboot struct addr / magic number
     push %eax

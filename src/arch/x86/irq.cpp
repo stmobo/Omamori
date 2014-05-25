@@ -10,17 +10,20 @@
 size_t irq_handlers[16] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };
 signed int waiting_for = -1;
 bool do_wait = false;
+bool in_irq_context = false;
 
 void do_irq(size_t irq_num, size_t eip, size_t cs) {
     /*
     if(irq_num == waiting_for)
         waiting_for = -1;
     */
+    in_irq_context = true;
     if(irq_handlers[irq_num] != 0) {
         void (*handler)(void) = (void(*)())irq_handlers[irq_num]; // jump to the stored function pointer...
         handler(); // ...and hope there's someone there to catch us.
     }
     pic_end_interrupt(irq_num);
+    in_irq_context = false;
     return;
 }
 
@@ -48,7 +51,7 @@ void block_for_irq(int irq) {
     set_all_irq_status(true);
     irq_set_mask(irq, false);
     while(true) {
-        wait_for_interrupt();
+        system_wait_for_interrupt();
         if(waiting_for == -1)
             break;
     }

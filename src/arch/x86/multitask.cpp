@@ -171,6 +171,7 @@ void do_context_switch(uint32_t syscall_n) {
         uint16_t pic_isr = pic_get_isr();
         if( pic_isr & 1 ) { // do IRQ0 code, but only if bit 0 of the collective ISR is set
             do_irq( 0, process_current->regs.eip, process_current->regs.cs );
+            in_irq_context = true;
         }
         
         process_scheduler();
@@ -184,6 +185,9 @@ void do_context_switch(uint32_t syscall_n) {
         active_tss.load_active();
         process_current->regs.eflags |= (1<<9); 
         process_current->regs.load_to_active();
+        if( pic_isr & 1 ) { // were we in IRQ context?
+            in_irq_context = false; // well, we're not going to be anymore after this
+        }
     }
     // reset various state on our way out
     as_syscall = 0;

@@ -7,6 +7,7 @@ extern "C" {
     extern bool irq_add_handler(int, size_t);
     extern bool irq_remove_handler(int);
     extern void block_for_irq(int);
+    extern bool in_irq_context;
 }
 
 extern void irq_set_mask(unsigned char,bool);

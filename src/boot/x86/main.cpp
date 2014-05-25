@@ -140,16 +140,18 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     // This way, an errant terminal_writestring doesn't bring down the entire system.
     kprintf("Remapping VGA memory.\n");
     size_t vga_vmem = k_vmem_alloc( 1 );
-    paging_set_pte( vga_vmem, 0xB8000, 0 );
+    paging_set_pte( vga_vmem, 0xB8000, 0x101 );
     terminal_buffer = (uint16_t*)vga_vmem;
+    kprintf("VGA buffer remapped to 0x%x.\n", (unsigned long long int)vga_vmem);
     
     kprintf("Initializing PCI.\n");
     pci_check_bus(0);
     
     kprintf("Initiating page fault!\n");
-    int *pf_test = (int*)(0xC0800000);
+    int *pf_test = (int*)(0xC0F00004);
     *pf_test = 5;
-    kprintf("Memory read-back test: %u (should be 5)\n", (unsigned long long int)*pf_test);
+    __sync_synchronize();
+    kprintf("Memory read-back test: %u (should be 5)\n", (unsigned long long int)*(int*)(0xC0F00004));
     
     kprintf("Setup complete, starting processes!\n");
     multitasking_start_init();

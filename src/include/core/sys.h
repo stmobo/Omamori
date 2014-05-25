@@ -1,5 +1,6 @@
 // various things that I can't really put anywhere else
 #pragma once
+#include "dynmem.h"
 
 extern char io_inb(short);
 extern short io_inw(short);
@@ -26,6 +27,25 @@ extern double fractional(double);
 extern int pow(int,int);
 extern uint64_t rdtsc();
 extern bool interrupts_enabled();
+
+template <class T>
+T* extend_n(T* alloc_to_extend, int n_elements, int desired_elements) {
+    if( n_elements > desired_elements )
+        return NULL;
+    T* new_alloc = (T*)kmalloc(sizeof(T)*desired_elements);
+    if( (alloc_to_extend != NULL) && (new_alloc != NULL) ) {
+        for(int i=0;i<n_elements;i++) {
+            new_alloc[i] = alloc_to_extend[i];
+        }
+        kfree(alloc_to_extend);
+    }
+    return new_alloc;
+}
+
+template <class T>
+T* extend(T* alloc_to_extend, int n_elements) {
+    return extend_n(alloc_to_extend, n_elements, n_elements+1);
+}
 
 #define system_halt asm volatile("cli\n\t"\
 "hlt" \

@@ -4,27 +4,39 @@
 # generic wrapper stuff
 _isr_call_cpp_func:
     # make sure we don't mess up any running programs
-    push %eax
-    push %ebx
-    push %ecx
-    push %edx
-    pushf
+    #-16:  Return EFLAGS
+    #-12:  Return CS
+    # -8:  Return EIP
+    # -4:  Exception number / error code
+    # ESP: Function address
     
-    movl 20(%esp), %eax # get func addr
-    movl 24(%esp), %ebx # get err code (ISR vector no. if no err code)
-    movl 28(%esp), %ecx # saved EIP
-    movl 32(%esp), %edx # saved CS
+    pusha
+    
+    # -48: EFLAGS
+    # -44: Return CS
+    # -40: Return Address
+    # -36: ErrCode
+    # -32: Exception Handler Address
+    # -28: EAX
+    # -24: ECX
+    # -20: EDX
+    # -16: EBX
+    # -12: ESP (pre-call)
+    # -8 : EBP
+    # -4 : ESI
+    # ESP: EDI
+    
+    movl 32(%esp), %eax # get func addr
+    movl 36(%esp), %ebx # get err code (ISR vector no. if no err code)
+    movl 40(%esp), %ecx # saved EIP
+    movl 44(%esp), %edx # saved CS
     push %edx
     push %ecx
     push %ebx
     call *%eax # call cpp handler func
     add $12, %esp
     
-    popf
-    pop %edx
-    pop %ecx
-    pop %ebx
-    pop %eax
+    popa
     add $8, %esp
     iret
     

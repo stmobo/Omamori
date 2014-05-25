@@ -6,10 +6,6 @@
 #include "core/scheduler.h"
 #include "core/paging.h"
 
-extern uint32_t *PageTable0;
-extern uint32_t *PageTable768;
-extern uint32_t *BootPD; // see early_boot.s
-
 // scheduling priorities have 0 as the highest priority
 
 process *process_current = NULL;
@@ -166,91 +162,250 @@ process::process( cpu_regs regs, int priority ) {
 }
 
 process::process( size_t entry_point, bool is_usermode, int priority ) {
-    size_t stack_start = k_vmem_alloc(PROCESS_STACK_SIZE);
-    if(stack_start == NULL) {
-        panic("multitasking: failed to allocate new kernel stack for process!\n");
-    }
+    if(this->address_space.ready) { // no point in setting anything else if the address space couldn't be allocated
+        this->id = 0;
+        this->parent = 0;
+        this->state = process_state::runnable;
+        this->priority = priority;
+        this->regs.eax = 0;
+        this->regs.ebx = 0;
+        this->regs.ecx = 0;
+        this->regs.edx = 0;
+        this->regs.esi = 0;
+        this->regs.edi = 0;
+        this->regs.eip = entry_point;
+        this->regs.eflags = (1<<9) | (1<<21); // Interrupt Flag and Identification Flag
+        this->regs.ebp = 0;
+        this->regs.esp = (0xC0000000-1);
     
-    this->id = 0;
-    this->parent = 0;
-    this->state = process_state::runnable;
-    this->priority = priority;
-    this->regs.eax = 0;
-    this->regs.ebx = 0;
-    this->regs.ecx = 0;
-    this->regs.edx = 0;
-    this->regs.esi = 0;
-    this->regs.edi = 0;
-    this->regs.eip = entry_point;
-    this->regs.eflags = (1<<9) | (1<<21); // Interrupt Flag and Identification Flag
-    this->regs.ebp = 0;
-    this->regs.kernel_stack = stack_start + (PROCESS_STACK_SIZE*0x1000);
-    if( is_usermode ){
-        this->regs.esp = (uint32_t)(0xC00000000-1); // if the stack is underrun, then a protection violation happens.
-        this->regs.cs = GDT_UCODE_SEGMENT*0x08;
-        this->regs.ds = GDT_UDATA_SEGMENT*0x08;
-        this->regs.es = GDT_UDATA_SEGMENT*0x08;
-        this->regs.fs = GDT_UDATA_SEGMENT*0x08;
-        this->regs.gs = GDT_UDATA_SEGMENT*0x08;
-        this->regs.ss = GDT_UDATA_SEGMENT*0x08;
-        
-        size_t pde_page = k_vmem_alloc(1);
-        page_frame *pde_frame = pageframe_allocate(1);
-        
-        if((pde_frame != NULL) && (pde_page != NULL)) {
-            paging_set_pte( pde_page, pde_frame->address, 0 );
-            this->process_pde = (uint32_t*)pde_page;
-            
-            kprintf("Process PD mapped to vmem 0x%x / pmem 0x%x\n", (unsigned long long int)pde_page, (unsigned long long int)pde_frame->address);
-            
-            // do kernel mapping:
-            this->process_pde[0] = ((uint32_t)&PageTable0) | 1; // Kernelmode, Read-Only, Present
-            this->process_pde[768] = ((uint32_t)&PageTable768) | 1; // Kernelmode, Read-Only, Present
-            this->process_pde[1023] = ((uint32_t)pde_frame->address) | 7; // bits: Usermode, Read/Write, Present
-            this->regs.cr3 = pde_frame->address;
-        } else {
-            panic("multitasking: failed to allocate new page directory for process!\n");
-        }
-    } else {
-        // Each process' stack runs from 0xBFFFFFFF to 0xBFFFB000 -- that's 16 KB.
-        this->regs.esp = (uint32_t)(0xC00000000-1); // let's just hope that we don't underrun the stack
-        page_frame *stack_frames = pageframe_allocate(PROCESS_STACK_SIZE+1); // frames for the stack and a frame for the process' initial page table (to map the stack with)
-        for(int i=0;i<PROCESS_STACK_SIZE;i++) {
-            paging_set_pte( stack_start + (i*0x1000), stack_frames[i].address, 0 );
-        }
-        kfree( stack_frames );
-        
-        size_t pde_page = k_vmem_alloc(2);
-        size_t init_pt_page = pde_page+0x1000;
-        page_frame *pde_frame = pageframe_allocate(1);
-        
-        if((pde_frame != NULL) && (pde_page != NULL)) {
-            paging_set_pte( pde_page, pde_frame->address, 0 );
-            paging_set_pte( init_pt_page, stack_frames[PROCESS_STACK_SIZE].address, 0 );
-            this->process_pde = (uint32_t*)pde_page;
-            uint32_t *stack_pt = (uint32_t*)init_pt_page;
-            for(int i=0;i<PROCESS_STACK_SIZE;i++) {
-                stack_pt[1023-i] = (uint32_t)stack_frames[i].address | 1;
+        if( is_usermode ){
+            size_t k_stack_start = mmap(4);
+            if( k_stack_start == NULL ) {
+                panic("multitasking: failed to allocate kernel stack frames for process!\n");
             }
             
-            kprintf("Process PD mapped to vmem 0x%x / pmem 0x%x\n", (unsigned long long int)pde_page, (unsigned long long int)pde_frame->address);
-            
-            // map stuff into memory:
-            this->process_pde[0] = ((uint32_t)&PageTable0) | 1;
-            this->process_pde[767] = ((uint32_t)stack_frames[PROCESS_STACK_SIZE].address) | 1;
-            this->process_pde[768] = ((uint32_t)&PageTable768) | 1;
-            this->process_pde[1023] = ((uint32_t)pde_frame->address) | 1;
-            this->regs.cr3 = pde_frame->address;
+            this->regs.kernel_stack = k_stack_start + (PROCESS_STACK_SIZE*0x1000);
+            this->regs.cs = GDT_UCODE_SEGMENT*0x08;
+            this->regs.ds = GDT_UDATA_SEGMENT*0x08;
+            this->regs.es = GDT_UDATA_SEGMENT*0x08;
+            this->regs.fs = GDT_UDATA_SEGMENT*0x08;
+            this->regs.gs = GDT_UDATA_SEGMENT*0x08;
+            this->regs.ss = GDT_UDATA_SEGMENT*0x08;
         } else {
-            panic("multitasking: failed to allocate new page directory for process!\n");
+            this->regs.kernel_stack = 0; // don't need to worry about TSS' esp0 / ss0 if this is a kmode process
+            this->regs.cs = GDT_KCODE_SEGMENT*0x08;
+            this->regs.ds = GDT_KDATA_SEGMENT*0x08;
+            this->regs.es = GDT_KDATA_SEGMENT*0x08;
+            this->regs.fs = GDT_KDATA_SEGMENT*0x08;
+            this->regs.gs = GDT_KDATA_SEGMENT*0x08;
+            this->regs.ss = GDT_KDATA_SEGMENT*0x08;
         }
-        
-        this->regs.cs = GDT_KCODE_SEGMENT*0x08;
-        this->regs.ds = GDT_KDATA_SEGMENT*0x08;
-        this->regs.es = GDT_KDATA_SEGMENT*0x08;
-        this->regs.fs = GDT_KDATA_SEGMENT*0x08;
-        this->regs.gs = GDT_KDATA_SEGMENT*0x08;
-        this->regs.ss = GDT_KDATA_SEGMENT*0x08;
-        //this->regs.cr3 = (size_t)&BootPD; // use kernel page structures for simplicity
+    
+        // Each process' stack runs from 0xBFFFFFFF to 0xBFFFC000 -- that's 0x3FFF bytes, or 1 byte shy of 16KB.
+        // kernel mapping (recursive mapping's done in the address_space constructor)
+        this->address_space.map_pde( 0, (size_t)&PageTable0, 1 );
+        this->address_space.map_pde( 768, (size_t)&PageTable768, 1 );
+        // map stack frames in
+        for(int i=0;i<PROCESS_STACK_SIZE;i++) {
+            this->address_space.map( ((0xC0000000-1)-(i*0x1000))&0xFFFFF000, 1 );
+            kprintf("Set PTE for 0x%x to 0x%x.\n", (unsigned long long int)(((0xC0000000-1)-(i*0x1000))&0xFFFFF000), (unsigned long long int)(this->address_space.get(((0xC0000000-1)-(i*0x1000))&0xFFFFF000)));
+        }
+        this->regs.cr3 = this->address_space.page_directory_physical;
+        kprintf("Loaded process CR3 as pmem 0x%x, vmem 0x%x.\n", (unsigned long long int)(this->regs.cr3), (unsigned long long int)(this->address_space.page_directory));
+    } else {
+        panic("multitasking: failed to initialize address space for process!\n");
     }
+}
+
+page_table::page_table() {
+    page_frame *frame = pageframe_allocate(1);
+    
+    if( frame != NULL ) {
+        this->ready = true;
+        this->paddr = frame->address;
+    }
+}
+
+page_table::~page_table() {
+    pageframe_deallocate_specific( pageframe_get_block_from_addr( this->paddr ), 0 );
+    if( this->map_addr != NULL ) {
+        this->unmap();
+    }
+    this->ready = false;
+}
+
+size_t page_table::map() {
+    size_t vaddr = k_vmem_alloc(1);
+    if( __sync_bool_compare_and_swap( &this->map_addr, NULL, vaddr ) ) {
+        system_disable_interrupts();
+        paging_set_pte(vaddr, this->paddr, 0);
+        system_enable_interrupts();
+        return vaddr;
+    }
+    k_vmem_free(vaddr);
+    return this->map_addr;
+}
+
+void page_table::unmap() {
+    bool int_on = interrupts_enabled();
+    system_disable_interrupts();
+    
+    if( this->map_addr != NULL ) {
+        paging_unset_pte( this->map_addr );
+        k_vmem_free( this->map_addr );
+        this->map_addr = NULL;
+    }
+    
+    if( int_on )
+        system_enable_interrupts();
+}
+
+address_space::address_space() {
+    page_frame *pd_frame = pageframe_allocate(1);
+    size_t pd_vaddr = k_vmem_alloc(1);
+    
+    if( (pd_frame != NULL) && (pd_vaddr != 0) ) {
+        paging_set_pte( pd_vaddr, pd_frame->address, 0 );
+        this->page_directory_physical = pd_frame->address;
+        this->page_directory = (uint32_t*)pd_vaddr;
+        this->page_directory[1023] = this->page_directory_physical | 1;
+        this->page_tables = NULL;
+        this->n_page_tables = 0;
+        this->ready = true;
+    }
+}
+
+address_space::~address_space() {
+    pageframe_deallocate_specific( pageframe_get_block_from_addr( this->page_directory_physical ), 0 );
+    k_vmem_free( (size_t)this->page_directory );
+    if( this->page_tables != NULL ) {
+        kfree(this->page_tables);
+        this->ready = false;
+    }
+}
+
+void address_space::unmap_pde( int table_no ) {
+    uint32_t *pde = (uint32_t*)((size_t)this->page_directory + (table_no*4));
+    (*pde) = 0;
+}
+
+void address_space::map_pde( int table_no, size_t paddr, int flags ) {
+    uint32_t *pde = (uint32_t*)((size_t)this->page_directory + (table_no*4));
+    (*pde) = paddr | flags;
+}
+
+bool address_space::map( size_t vaddr, int flags ) {
+    // map a given vaddr to an empty pageframe
+    page_frame *frame = pageframe_allocate(1);
+    if( frame != NULL ) {
+        return this->map( vaddr, frame->address, flags );
+    }
+    return false;
+}
+
+bool address_space::map( size_t vaddr, size_t paddr, int flags ) {
+    if(vaddr > 0xC0000000)
+        return false; // Can't map things into kernel space from here
+    flags &= 0xFFF;
+    vaddr &= 0xFFFFF000;
+    paddr &= 0xFFFFF000;
+    
+    int table_no = (vaddr >> 22);
+    int table_offset = (vaddr >> 12) & 0x3FF;
+    uint32_t *pde = (uint32_t*)((size_t)this->page_directory + (table_no*4));
+    page_table* pt = NULL;
+    //kprintf("address_space::map: checking for PDE at 0x%x.\n", (unsigned long long int)pde);
+    // first, check to see if there's an actual page table for the page we want to map in
+    // if not, then make a new one
+    // also, find the page table's corresponding descriptor object
+    if( ((*pde) & 1) == 0 ) {
+        page_table *new_pt = new page_table;
+        new_pt->pde_no = table_no;
+        this->page_tables = extend<page_table*>(this->page_tables, this->n_page_tables);
+        this->page_tables[this->n_page_tables] = new_pt;
+        this->n_page_tables++;
+        pt = new_pt;
+        (*pde) = new_pt->paddr | 1;
+    } else {
+        for(int i=0;i<this->n_page_tables;i++) {
+            if( this->page_tables[i]->pde_no == table_no ) {
+                pt = this->page_tables[i];
+                break;
+            }
+        }
+        if( pt == NULL ) {
+            // Remove the faulty PDE and retry the request
+            (*pde) = 0;
+            return this->map( vaddr, paddr, flags );
+        }
+    }
+    
+    uint32_t *table = (uint32_t*)pt->map();
+    //kprintf("address_space::map: Page table at 0x%x mapped to 0x%x.\n", (unsigned long long int)pt->paddr, (unsigned long long int)table);
+    table[table_offset] = paddr | flags;
+    pt->unmap();
+    return true;
+}
+
+void address_space::unmap( size_t vaddr ) {
+    if(vaddr > 0xC0000000)
+        return;
+    vaddr &= 0xFFFFF000;
+    
+    int table_no = (vaddr >> 22);
+    int table_offset = (vaddr >> 12) & 0x3FF;
+    uint32_t *pde = (uint32_t*)((size_t)this->page_directory + (table_no*4));
+    page_table* pt = NULL;
+
+    if( ((*pde) & 1) == 0 ) {
+        return;
+    } else {
+        for(int i=0;i<this->n_page_tables;i++) {
+            if( this->page_tables[i]->pde_no == table_no ) {
+                pt = this->page_tables[i];
+                break;
+            }
+        }
+        if( pt == NULL ) {
+            // The address is not even mapped in in the first place, but clear out the faulty PDE anyways
+            (*pde) = 0;
+            return;
+        }
+    }
+    
+    uint32_t *table = (uint32_t*)pt->map();
+    table[table_offset] = 0;
+    pt->unmap();
+}
+
+uint32_t address_space::get( size_t vaddr ) {
+    if(vaddr > 0xC0000000)
+        return 0; // Can't map things into kernel space from here
+    vaddr &= 0xFFFFF000;
+    
+    int table_no = (vaddr >> 22);
+    int table_offset = (vaddr >> 12) & 0x3FF;
+    uint32_t *pde = (uint32_t*)((size_t)this->page_directory + (table_no*4));
+    page_table* pt = NULL;
+
+    if( ((*pde) & 1) == 0 ) {
+        return 0;
+    } else {
+        for(int i=0;i<this->n_page_tables;i++) {
+            if( this->page_tables[i]->pde_no == table_no ) {
+                pt = this->page_tables[i];
+                break;
+            }
+        }
+        if( pt == NULL ) {
+            // The address is not even mapped in in the first place, but clear out the faulty PDE anyways
+            (*pde) = 0;
+            return 0;
+        }
+    }
+    
+    uint32_t *table = (uint32_t*)pt->map();
+    uint32_t ret = table[table_offset];
+    pt->unmap();
+    return ret;
 }

@@ -52,27 +52,51 @@ struct vaddr_range {
 
 typedef struct vaddr_range vaddr_range;
 
+// various asm-exported stuff
+extern uint32_t *PageTable0;
+extern uint32_t *PageTable768;
+extern uint32_t *BootPD; // see early_boot.s
+
+// initialization
 extern void initialize_vmem_allocator();
 extern void initialize_pageframes(multiboot_info_t*);
+
+// pageframe allocator stuff
 extern bool pageframe_get_block_status(int,int);
 extern void pageframe_set_block_status(int,int,bool);
 extern size_t pageframe_get_block_addr(int,int);
 extern int pageframe_get_alloc_order(int);
 extern int pageframe_get_block_from_addr(size_t);
+
+// pageframe allocation/deallocation functions
 extern page_frame* pageframe_allocate(int);
 extern page_frame* pageframe_allocate_at( size_t, int );
 extern page_frame* pageframe_allocate_specific(int,int);
 extern int pageframe_allocate_single(int);
 extern void pageframe_deallocate(page_frame*, int);
-extern void pageframe_restrict_range(size_t, size_t);
-extern inline void invalidate_tlb(size_t);
-extern void paging_set_pte(size_t, size_t, uint16_t);
-extern uint32_t paging_get_pte(size_t);
+extern void pageframe_deallocate_specific(int, int);
+
+// vmem allocation with arbitrary ranges
 extern size_t paging_vmem_alloc( vaddr_range*, size_t, int );
 extern size_t paging_vmem_alloc_specific( vaddr_range*, size_t, size_t );
 extern bool paging_vmem_free( vaddr_range*, size_t );
+
+// vmem allocation with the kernel allocator
 extern size_t k_vmem_alloc( int );
 extern size_t k_vmem_alloc( size_t, size_t );
 extern size_t k_vmem_free( size_t );
+
+// misc. pageframe allocator functions
+extern void pageframe_restrict_range(size_t, size_t);
+
+// page table modification functions
+extern inline void invalidate_tlb(size_t);
+extern void paging_set_pte(size_t, size_t, uint16_t);
+extern uint32_t paging_get_pte(size_t);
+extern void paging_unset_pte(size_t);
+
+// combination vmem/pmem allocation functions
 extern size_t paging_map_phys_address( size_t, int );
 extern void paging_unmap_phys_address( size_t, int );
+extern size_t mmap(int);
+extern void munmap(size_t);

@@ -17,18 +17,47 @@ typedef struct event {
     int  n_event_data = 0;
 } event;
 
+typedef struct page_table {
+    uint32_t paddr;
+    int      flags;
+    int      pde_no;
+    bool     ready = false;
+    
+    size_t map_addr;
+    
+    size_t map();
+    void unmap();
+    page_table();
+    ~page_table();
+} page_table;
+
+typedef struct address_space {
+    uint32_t   page_directory_physical; // paddr of the PD
+    uint32_t   *page_directory;         // a pointer to the PD's vaddr
+    page_table **page_tables;
+    int         n_page_tables;
+    bool        ready = false;
+    
+    void unmap_pde( int );
+    void map_pde( int, size_t, int );
+    bool map( size_t, int );
+    bool map( size_t, size_t, int );
+    void unmap( size_t );
+    uint32_t get( size_t );
+    address_space();
+    ~address_space();
+} process_address_space;
+
 typedef struct process {
-    cpu_regs        regs;
-    cpu_regs        user_regs;
-    bool            switched_from_syscall;
-    uint32_t        id;
-    uint32_t        parent;
-    int             priority;
-    uint32_t        *process_pde;
-    vaddr_range     vmem_allocator;
-    process_state   state;
-    char*           event_wait = NULL;
-    event*          event_data;
+    cpu_regs                 regs;
+    cpu_regs                 user_regs;
+    uint32_t                 id;
+    uint32_t                 parent;
+    int                      priority;
+    process_address_space    address_space;
+    process_state            state;
+    char*                    event_wait = NULL;
+    event*                   event_data;
     
     
     process( cpu_regs, int );

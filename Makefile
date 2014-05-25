@@ -35,9 +35,9 @@ LINK_ORDER_MID   := $(filter-out $(LINK_ORDER_FIRST) $(LINK_ORDER_LAST), $(OBJ_F
 # remap stuff to use our cross-compiler
 AS       := $(HOME)/opt/cross/bin/i686-elf-as
 CC       := $(HOME)/opt/cross/bin/i686-elf-gcc
-CCFLAGS  := -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/acpica -std=gnu99 -ffreestanding -O2 -Wall -Wextra -Wno-unused-parameter
+CCFLAGS  := -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/acpica -std=gnu99 -ffreestanding -g -O2 -Wall -Wextra -Wno-unused-parameter
 CXX      := $(HOME)/opt/cross/bin/i686-elf-g++
-CXXFLAGS := -MMD -I$(INCLUDE_DIR) -ffreestanding -O2 -g -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-conversion-null -Wno-write-strings -fno-exceptions -fno-rtti -std=c++11
+CXXFLAGS := -MMD -I$(INCLUDE_DIR) -ffreestanding -g -O2 -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-conversion-null -Wno-write-strings -fno-exceptions -fno-rtti -std=c++11
 LD       := $(HOME)/opt/cross/bin/i686-elf-gcc
 LDFLAGS  := -ffreestanding -g -O2 -nostdlib
 
@@ -49,10 +49,12 @@ omamori.iso: omamori.elf
 		
 omamori.elf: $(OBJ_FILES)
 		@$(LD) -T $(MAIN_SRC)/linker.ld $(LDFLAGS) -o ./omamori.elf $(LINK_ORDER_FIRST) $(LINK_ORDER_MID) $(LINK_ORDER_LAST) -lgcc
+		@mv omamori.elf omamori_embedded_debug.elf
+		@$(HOME)/opt/cross/bin/i686-elf-objcopy -S omamori_embedded_debug.elf omamori.elf
 
 $(C_OBJ_FILES): $(MAIN_OBJ)/%.o : $(MAIN_SRC)/%.c
 		@$(CC) $(CCFLAGS) -c $< -o $@
-        
+		
 $(CPP_OBJ_FILES): $(MAIN_OBJ)/%.o : $(MAIN_SRC)/%.cpp
 		@$(CXX) $(CXXFLAGS) -c $< -o $@
 	
@@ -64,10 +66,9 @@ clean:
 		@$(RM) $(DEP_FILES)
 		@$(RM) omamori.iso
 		@$(RM) omamori.elf
-        
+		
 debug: omamori.elf
-		@objcopy --only-keep-debug omamori.elf omamori.sym
-		@objcopy --strip-debug omamori.elf
-		@readelf -s omamori.sym | sort -k 2,2 > ./symbols
+		@$(HOME)/opt/cross/bin/i686-elf-objcopy --only-keep-debug omamori_embedded_debug.elf omamori.sym
+		@$(HOME)/opt/cross/bin/i686-elf-readelf -s omamori.sym | sort -k 2,2 > ./symbols
 		
 .PHONY: clean debug

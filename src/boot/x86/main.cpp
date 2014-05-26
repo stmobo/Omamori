@@ -95,13 +95,13 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     pit_initialize(PIT_DEFAULT_FREQ_DIVISOR);
     
     kprintf("Initializing multitasking.\n");
-    process *proc1 = new process( (size_t)&test_process_1, false, 0 );
-    process *proc2 = new process( (size_t)&test_process_2, false, 0 );
+    process *proc1 = new process( (size_t)&test_process_1, false, 0, NULL, 0 );
+    process *proc2 = new process( (size_t)&test_process_2, false, 0, NULL, 0 );
     initialize_multitasking( proc1 );
     spawn_process( proc2 );
     
-    //terminal_writestring("Initializing ACPI.\n");
-    //initialize_acpi();
+    terminal_writestring("Initializing ACPI.\n");
+    initialize_acpi();
         
     // now initialize PCI
     // well, maybe later

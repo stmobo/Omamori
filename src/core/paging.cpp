@@ -54,7 +54,7 @@ uint32_t initial_heap_pagetable[1024] __attribute__((aligned(0x1000)));
 
 static mutex __frame_allocator_lock;
 
-uint32_t global_kernel_page_directory[256]; // spans PDE nos. 
+uint32_t global_kernel_page_directory[256]; // spans PDE nos. 768 - 1023
 
 size_t pageframe_get_block_addr(int blk_num, int order) {
     int zero_order_blk = blk_num*(1<<order);

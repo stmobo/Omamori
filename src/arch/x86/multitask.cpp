@@ -194,6 +194,13 @@ void do_context_switch(uint32_t syscall_n) {
     syscall_num = 0;
 }
 
+void process_exec_complete( uint32_t return_value ) {
+    process_current->state = process_state::dead;
+    process_current->return_value = return_value;
+    process_switch_immediate();
+    panic("Reached end of process execution but still going on!\n");
+}
+
 void initialize_multitasking(process *init) {
     active_tss.esp0 = 0;
     active_tss.ss0 = GDT_KDATA_SEGMENT*0x08; // kernel-mode SS is always the kernel data segment

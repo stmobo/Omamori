@@ -7,6 +7,8 @@
 .global __multitasking_kmode_entry
 .global do_context_switch
 .global __usermode_jump
+.global __process_execution_complete
+.global process_exec_complete
 
 #typedef struct cpu_regs {
 #    uint32_t eax;     // 0
@@ -220,3 +222,14 @@ __save_registers_non_int:
     
     ret
     
+# all we need to do here is keep %eax around for safekeeping
+# and clean up the two arguments we've pushed onto the call stack.
+__process_execution_complete:
+    add $8, %esp
+    push %eax
+    call process_exec_complete
+    pop %eax
+    
+    # We are not supposed to get here.
+    cli
+    hlt

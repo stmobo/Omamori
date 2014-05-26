@@ -6,9 +6,15 @@
 // stack size in pages
 #define PROCESS_STACK_SIZE              4
 
+extern "C" {
+    extern void process_exec_complete(uint32_t);
+    extern void __process_execution_complete(void);
+}
+
 enum struct process_state {
     runnable,
     waiting,
+    dead,
 };
 
 typedef struct event {
@@ -40,7 +46,7 @@ typedef struct address_space {
     
     void unmap_pde( int );
     void map_pde( int, size_t, int );
-    bool map( size_t, int );
+    bool map_new( size_t, int );
     bool map( size_t, size_t, int );
     void unmap( size_t );
     uint32_t get( size_t );
@@ -56,12 +62,14 @@ typedef struct process {
     int                      priority;
     process_address_space    address_space;
     process_state            state;
+    uint32_t                 return_value;
     char*                    event_wait = NULL;
-    event*                   event_data;
+    event*                   event_data = NULL;
     
-    
+    ~process();
     process( cpu_regs, int );
-    process( size_t, bool, int );
+    process( size_t entry_point, bool is_usermode, int priority, void* args, int n_args );
+    process( size_t entry_point, bool is_usermode, int priority ) : process( entry_point, is_usermode, priority, NULL, 0 ) {};
 } process;
 
 // simple FIFO process queue

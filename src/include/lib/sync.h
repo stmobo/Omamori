@@ -29,6 +29,9 @@ typedef class reentrant_mutex {
     int get_owner_uid();
     uint32_t get_lock_count();
     
+    bool trylock( int uid );
+    bool trylock( );
+    
     void lock( int uid );
     void unlock( int uid );
     
@@ -46,8 +49,9 @@ typedef class semaphore {
     public:
     uint32_t get_count();
     uint32_t get_max_count();
+    bool try_acquire( uint32_t count );
     void acquire( uint32_t count );
-    void release( uint32_t count );
+    bool release( uint32_t count );
     semaphore();
     semaphore(uint32_t);
     semaphore(uint32_t,uint32_t);

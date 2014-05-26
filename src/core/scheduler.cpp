@@ -120,6 +120,7 @@ void send_event(event *ev) {
 event* wait_for_event(const char* event_name) {
     if( process_current != NULL ) {
         process_current->state = process_state::waiting;
+        process_current->event_wait = new char[strlen(const_cast<char*>(event_name))];
         strcpy( process_current->event_wait, const_cast<char*>(event_name), 0 );
         sleep_queue.add( process_current );
         process_switch_immediate();
@@ -161,7 +162,16 @@ process::process( cpu_regs regs, int priority ) {
     this->priority = priority;
 }
 
-process::process( size_t entry_point, bool is_usermode, int priority ) {
+process::~process() {
+    if( this->event_wait != NULL ) {
+        delete[] this->event_wait;
+    }
+    if( this->event_data != NULL ) {
+        delete this->event_data;
+    }
+}
+
+process::process( size_t entry_point, bool is_usermode, int priority, void* args, int n_args ) {
     if(this->address_space.ready) { // no point in setting anything else if the address space couldn't be allocated
         this->id = 0;
         this->parent = 0;
@@ -176,7 +186,6 @@ process::process( size_t entry_point, bool is_usermode, int priority ) {
         this->regs.eip = entry_point;
         this->regs.eflags = (1<<9) | (1<<21); // Interrupt Flag and Identification Flag
         this->regs.ebp = 0;
-        this->regs.esp = (0xC0000000-1);
     
         if( is_usermode ){
             size_t k_stack_start = mmap(4);
@@ -207,11 +216,17 @@ process::process( size_t entry_point, bool is_usermode, int priority ) {
         this->address_space.map_pde( 768, (size_t)&PageTable768, 1 );
         // map stack frames in
         for(int i=0;i<PROCESS_STACK_SIZE;i++) {
-            this->address_space.map( ((0xC0000000-1)-(i*0x1000))&0xFFFFF000, 1 );
-            kprintf("Set PTE for 0x%x to 0x%x.\n", (unsigned long long int)(((0xC0000000-1)-(i*0x1000))&0xFFFFF000), (unsigned long long int)(this->address_space.get(((0xC0000000-1)-(i*0x1000))&0xFFFFF000)));
+            this->address_space.map_new( ((0xC0000000-1)-(i*0x1000))&0xFFFFF000, 1 );
         }
+        uint32_t stack_phys_page = this->address_space.get( 0xBFFFF000 );
+        uint32_t* tmp_stack_page = (uint32_t*)k_vmem_alloc(1);
+        paging_set_pte( (size_t)tmp_stack_page, stack_phys_page, 0 );
+        tmp_stack_page[1023] = n_args;
+        tmp_stack_page[1022] = (uint32_t)args;
+        tmp_stack_page[1021] = (uint32_t)&__process_execution_complete;
+        paging_unset_pte( (size_t)tmp_stack_page );
+        this->regs.esp = 0xBFFFFFF3; // 0xC0000000 - 1 - 4 - 4 - 4
         this->regs.cr3 = this->address_space.page_directory_physical;
-        kprintf("Loaded process CR3 as pmem 0x%x, vmem 0x%x.\n", (unsigned long long int)(this->regs.cr3), (unsigned long long int)(this->address_space.page_directory));
     } else {
         panic("multitasking: failed to initialize address space for process!\n");
     }
@@ -276,10 +291,24 @@ address_space::address_space() {
 }
 
 address_space::~address_space() {
-    pageframe_deallocate_specific( pageframe_get_block_from_addr( this->page_directory_physical ), 0 );
-    k_vmem_free( (size_t)this->page_directory );
-    if( this->page_tables != NULL ) {
-        kfree(this->page_tables);
+    if(this->ready) {
+        pageframe_deallocate_specific( pageframe_get_block_from_addr( this->page_directory_physical ), 0 );
+        k_vmem_free( (size_t)this->page_directory );
+        if( this->page_tables != NULL ) {
+            for(int i=0;i<this->n_page_tables;i++) {
+                uint32_t *pt = (uint32_t*)this->page_tables[i]->map();
+                for(int j=0;j<1024;j++) {
+                    size_t paddr = pt[i] & 0xFFFFF000;
+                    if( paddr != 0 ) {
+                        int frameID = pageframe_get_block_from_addr( paddr );
+                        pageframe_deallocate_specific( frameID, 0 );
+                    }
+                }
+                this->page_tables[i]->unmap();
+                delete (this->page_tables[i]);
+            }
+            kfree(this->page_tables);
+        }
         this->ready = false;
     }
 }
@@ -294,7 +323,7 @@ void address_space::map_pde( int table_no, size_t paddr, int flags ) {
     (*pde) = paddr | flags;
 }
 
-bool address_space::map( size_t vaddr, int flags ) {
+bool address_space::map_new( size_t vaddr, int flags ) {
     // map a given vaddr to an empty pageframe
     page_frame *frame = pageframe_allocate(1);
     if( frame != NULL ) {
@@ -374,6 +403,10 @@ void address_space::unmap( size_t vaddr ) {
     }
     
     uint32_t *table = (uint32_t*)pt->map();
+    int block_addr = pageframe_get_block_from_addr( table[table_offset] & 0xFFFFF000 );
+    if( block_addr != -1 ) {
+        pageframe_deallocate_specific(block_addr, 0);
+    }
     table[table_offset] = 0;
     pt->unmap();
 }

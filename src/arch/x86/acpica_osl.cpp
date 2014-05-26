@@ -10,6 +10,7 @@ extern "C" {
 }
 #include "arch/x86/irq.h"
 #include "core/paging.h"
+#include "core/scheduler.h"
 #include "device/pit.h"
 #include "device/pci.h"
 #include "device/vga.h"
@@ -42,9 +43,10 @@ extern "C" {
     ACPI_PHYSICAL_ADDRESS AcpiOsGetRootPointer()
     {
         ACPI_SIZE Ret = 0;
-        size_t search_addr = 0;
+        size_t search_addr = 0x1000;
         //AcpiFindRootPointer(&Ret);
         // Search the entire lower 4MB of memory.
+        // except for the first 4KB.
         while(true) {
             char *data = (char*)search_addr;
             if( data[0] == rdsp_magic[0] ) {
@@ -77,10 +79,10 @@ extern "C" {
                             oem_id[i] = rdsp->oem_id[i];
                         }
                         oem_id[6] = '\0';
-                        kprintf("acpi: oem_id: %s\n", oem_id);
-                        kprintf("acpi: revision: 0x%x\n", (uint8_t)rdsp->revision);
-                        kprintf("acpi: rdst_addr: 0x%x\n",(uint32_t)rdsp->rdst_addr);
-                        kprintf("acpi: checksum: 0x%x\n", (uint8_t)rdsp->checksum);
+                        kprintf("acpi: oem_id: %s\n", (uint64_t)oem_id);
+                        kprintf("acpi: revision: 0x%x\n", (uint64_t)rdsp->revision);
+                        kprintf("acpi: rdst_addr: 0x%x\n",(uint64_t)rdsp->rdst_addr);
+                        kprintf("acpi: checksum: 0x%x\n", (uint64_t)rdsp->checksum);
                         return search_addr;
                     }
                 }
@@ -156,8 +158,6 @@ extern "C" {
     }
     
     BOOLEAN AcpiOsWritable(void *Memory, ACPI_SIZE Length) {
-        return TRUE; // if we're in kmode, then the page should be writable with no exceptions afaik
-        /*
         if( Length & 0xFFF ) {
             Length += 0x1000;
         }
@@ -165,12 +165,11 @@ extern "C" {
         int n_pages = Length / 0x1000;
         for(int i=0;i<n_pages;i++) {
             uint32_t pte = paging_get_pte( ((size_t)Memory)+(i*0x1000) );
-            if((pte & 2) == 0) { //
+            if(pte == 0) {
                 return FALSE;
             }
         }
         return TRUE;
-        */
     }
     
     /*
@@ -178,21 +177,42 @@ extern "C" {
      */
     
     ACPI_STATUS AcpiOsCreateLock(ACPI_SPINLOCK *OutHandle) {
-        return AE_OK;
+        if( OutHandle == NULL )
+            return AE_BAD_PARAMETER;
+        spinlock *lock = new spinlock;
+        if( lock != NULL ) {
+            (*OutHandle) = (void*)lock;
+            return AE_OK;
+        }
+        return AE_NO_MEMORY;
     }
     #define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsCreateLock
 
     ACPI_CPU_FLAGS AcpiOsAcquireLock(ACPI_SPINLOCK Handle) {
+        if( Handle == NULL )
+            return 0;
+        //kprintf("acpi_osl: Acquiring spinlock!");
+        spinlock *lock = (spinlock*)Handle;
+        lock->lock_cli();
         return 0;
     }
     #define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsAcquireLock
 
     void AcpiOsReleaseLock(ACPI_SPINLOCK Handle, ACPI_CPU_FLAGS Flags) {
+        if( Handle == NULL )
+            return;
+        //kprintf("acpi_osl: Releasing spinlock!");
+        spinlock *lock = (spinlock*)Handle;
+        lock->unlock_cli();
         return;
     }
     #define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsReleaseLock
 
     void AcpiOsDeleteLock(ACPI_SPINLOCK Handle) {
+        if( Handle == NULL )
+            return;
+        spinlock *lock = (spinlock*)Handle;
+        delete lock;
         return;
     }
     #define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsDeleteLock
@@ -202,18 +222,56 @@ extern "C" {
      */
     
     ACPI_STATUS AcpiOsCreateMutex(ACPI_MUTEX *OutHandle) {
-        return AE_OK;
+        if( OutHandle == NULL )
+            return AE_BAD_PARAMETER;
+        mutex *lock = new mutex;
+        if( lock != NULL ) {
+            (*OutHandle) = (void*)lock;
+            return AE_OK;
+        }
+        return AE_NO_MEMORY;
     }
     
     void AcpiOsDeleteMutex(ACPI_MUTEX Handle) {
+        if( Handle == NULL )
+            return;
+        mutex *lock = (mutex*)Handle;
+        delete lock;
         return;
     }
     
     ACPI_STATUS AcpiOsAcquireMutex(ACPI_MUTEX Handle, UINT16 Timeout) {
+        if( Handle == NULL )
+            return AE_BAD_PARAMETER;
+        //kprintf("acpi_osl: Acquiring mutex!");
+        mutex *lock = (mutex*)Handle;
+        uint64_t sys_time = get_sys_time_counter();
+        if( Timeout == 0 ) {
+            if( lock->trylock() )
+                return AE_OK;
+            return AE_TIME;
+        }
+        if( Timeout == 0xFFFF ) {
+            lock->lock();
+            return AE_OK;
+        }
+        while(true) {
+            if( lock->trylock() )
+                return AE_OK;
+            process_switch_immediate();
+            if( get_sys_time_counter() - sys_time >= Timeout ) {
+                return AE_TIME;
+            }
+        }
         return AE_OK;
     }
     
     void AcpiOsReleaseMutex(ACPI_MUTEX Handle) {
+        if( Handle == NULL )
+            return;
+        //kprintf("acpi_osl: Unlocking mutex!");
+        mutex *lock = (mutex*)Handle;
+        lock->unlock();
         return;
     }
     
@@ -222,19 +280,58 @@ extern "C" {
      */
      
     ACPI_STATUS AcpiOsCreateSemaphore(UINT32 MaxUnits, UINT32 InitialUnits, ACPI_SEMAPHORE *OutHandle) {
-        return AE_OK;
+        if( OutHandle == NULL )
+            return AE_BAD_PARAMETER;
+        semaphore *sema = new semaphore(InitialUnits, MaxUnits);
+        if( sema != NULL ) {
+            (*OutHandle) = (void*)sema;
+            return AE_OK;
+        }
+        return AE_NO_MEMORY;
     }
      
     ACPI_STATUS AcpiOsDeleteSemaphore(ACPI_SEMAPHORE Handle) {
+        if( Handle == NULL )
+            return AE_BAD_PARAMETER;
+        semaphore *sema =(semaphore*)Handle;
+        delete sema;
         return AE_OK;
     }
      
     ACPI_STATUS AcpiOsWaitSemaphore(ACPI_SEMAPHORE Handle, UINT32 Units, UINT16 Timeout) {
+        if( Handle == NULL )
+            return AE_BAD_PARAMETER;
+        //kprintf("acpi_osl: Waiting for semaphore!\n");
+        semaphore *lock =(semaphore*)Handle;
+        uint64_t sys_time = get_sys_time_counter();
+        if( Timeout == 0 ) {
+            if( lock->try_acquire( Units ) )
+                return AE_OK;
+            return AE_TIME;
+        }
+        if( Timeout == 0xFFFF ) {
+            lock->try_acquire( Units );
+            return AE_OK;
+        }
+        while(true) {
+            if( lock->try_acquire( Units ) )
+                return AE_OK;
+            process_switch_immediate();
+            if( get_sys_time_counter() - sys_time >= Timeout ) {
+                return AE_TIME;
+            }
+        }
         return AE_OK;
     }
      
     ACPI_STATUS AcpiOsSignalSemaphore(ACPI_SEMAPHORE Handle, UINT32 Units) {
-        return AE_OK;
+        if( Handle == NULL )
+            return AE_BAD_PARAMETER;
+        //kprintf("acpi_osl: Signaling semaphore!\n");
+        semaphore *sema =(semaphore*)Handle;
+        if( sema->release( Units ) )
+            return AE_OK;
+        return AE_LIMIT;
     }
      
     /*
@@ -261,15 +358,27 @@ extern "C" {
     
     
     /*
-     * Multitasking stubs
+     * Multitasking
      */
      
+    process **acpi_threads = NULL;
+    int n_acpi_threads = 0;
     ACPI_THREAD_ID AcpiOsGetThreadId() {
-        return 0;
+        return process_current->id;
     }
     
     ACPI_STATUS AcpiOsExecute(uint32_t Type, void *Function, void *Context) {
-        return AE_OK;
+        if( Function == NULL )
+            return AE_BAD_PARAMETER;
+        process *proc = new process( (size_t)Function, false, 1, Context, 0 );
+        if( proc ) {
+            spawn_process( proc );
+            acpi_threads = extend<process*>(acpi_threads, n_acpi_threads);
+            acpi_threads[n_acpi_threads] = proc;
+            n_acpi_threads++;
+            return AE_OK;
+        }
+        return AE_ERROR;
     }
     
     void AcpiOsSleep(UINT64 Milliseconds) {
@@ -280,10 +389,24 @@ extern "C" {
     }
     
     void AcpiOsStall(UINT32 Microseconds) {
+        int n_io_waits = (Microseconds / 60)+1;
+        for( int i=0;i<=n_io_waits;i++ ) {
+            io_wait();
+        }
         return;
     }
     
     void AcpiOsWaitEventsComplete() {
+        bool should_keep_waiting = false;
+        while(!should_keep_waiting) {
+            for(int i=0;i<n_acpi_threads;i++) {
+                if(acpi_threads[i]->state != process_state::dead) {
+                    should_keep_waiting = true;
+                    break;
+                }
+            }
+            process_switch_immediate();
+        }
         return;
     }
     

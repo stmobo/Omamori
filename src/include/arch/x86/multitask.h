@@ -40,6 +40,8 @@ extern "C" {
     extern cpu_regs active_regs;
     extern void __syscall_entry(void);
     extern void __ctext_switch_entry(void);
+    extern void process_exec_complete(uint32_t);
+    extern void __process_execution_complete(void);
 }
 
 extern void usermode_jump( size_t, size_t );

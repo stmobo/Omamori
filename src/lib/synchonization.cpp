@@ -82,10 +82,32 @@ reentrant_mutex::reentrant_mutex() {
     this->lock_count = 0;
 }
 
+bool reentrant_mutex::trylock( int uid ) {
+    if( multitasking_enabled ) {
+        this->control_lock->lock_cli();
+        if( (this->uid == ~0) || (this->uid == uid) ){
+            this->uid = uid;
+            this->lock_count++;
+            this->control_lock->unlock_cli();
+            return true;
+        }
+        this->control_lock->unlock_cli();
+        return false;
+    }
+    return true;
+}
+
+bool reentrant_mutex::trylock() {
+    if( process_current != NULL) {
+        return this->trylock( process_current->id );
+    }
+    return false;
+}
+
 void reentrant_mutex::lock( int uid ) {
     if( multitasking_enabled ) { // don't screw up state if multitasking is not enabled
         this->control_lock->lock_cli();
-        if( (this->uid == ~0) ){ // okay, it's not taken yet, acquire it
+        if( (this->uid == ~0) || (this->uid == uid) ){ // okay, it's not taken yet (or we've already taken it), acquire it
             this->uid = uid;
         } else {
             this->control_lock->unlock_cli();
@@ -162,16 +184,34 @@ semaphore::semaphore(uint32_t count, uint32_t max) {
 }
 
 
-void semaphore::release(uint32_t count) {
-    this->control_lock->lock();
+bool semaphore::release(uint32_t count) {
+    this->control_lock->lock_cli();
     
     // make sure we don't attempt to increment the count past what it's supposed to be
     if( (this->max_count == 0) || ((this->count + count) <= this->max_count) ) {
         this->count += count;
+        return true;
     }
     
-    
-    this->control_lock->unlock();
+    this->control_lock->unlock_cli();
+    return false;
+}
+
+bool semaphore::try_acquire(uint32_t count) {
+    if( !(this->max_count == 0) && (count > this->max_count) ) {
+        return false;
+    }
+    if( multitasking_enabled ) {
+        this->control_lock->lock_cli();
+        if( this->count >= count ) {
+            this->count -= count;
+            this->control_lock->unlock_cli();
+            return true;
+        }
+        this->control_lock->unlock_cli();
+        return false;
+    }
+    return true;
 }
 
 void semaphore::acquire(uint32_t count) {
@@ -179,15 +219,17 @@ void semaphore::acquire(uint32_t count) {
     if( !(this->max_count == 0) && (count > this->max_count) ) {
         return;
     }
-    while(true) {
-        this->control_lock->lock();
-        if( this->count >= count ) {
-            this->count -= count;
-            this->control_lock->unlock();
-            break;
+    if( multitasking_enabled ) {
+        while(true) {
+            this->control_lock->lock_cli();
+            if( this->count >= count ) {
+                this->count -= count;
+                this->control_lock->unlock_cli();
+                break;
+            }
+            this->control_lock->unlock_cli();
+            process_switch_immediate();
         }
-        this->control_lock->unlock();
-        asm volatile("pause" : : : "memory");
     }
 }
 

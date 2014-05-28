@@ -2,6 +2,7 @@
 #include "includes.h"
 #include "arch/x86/multitask.h"
 #include "device/pit.h"
+#include "lib/vector.h"
 
 #define SCHEDULER_PRIORITY_LEVELS       16
 // stack size in pages
@@ -21,24 +22,24 @@ enum struct process_state {
 };
 
 typedef struct page_table {
-    uint32_t paddr;
-    int      flags;
-    int      pde_no;
+    uint32_t paddr = NULL;
+    int      flags = 0;
+    int      pde_no = -1;
     bool     ready = false; // is true if the constructor was able to allocate all required resources.
     
-    size_t map_addr;
+    size_t map_addr = NULL;
     
     size_t map();   // this function allocates a page of virtual memory to use for modifying the page table.
     void unmap();   // this function deallocates the page allocated earlier with map_addr.
     page_table();   // Allocates space for the page table.
     ~page_table();  // Deallocates space for the page table.
-} page_table;
+} page_table; 
 
 typedef struct address_space {
-    uint32_t   page_directory_physical; // paddr of the PD
-    uint32_t   *page_directory;         // a pointer to the PD's vaddr
-    page_table **page_tables;
-    int         n_page_tables;
+    uint32_t   page_directory_physical = NULL; // paddr of the PD
+    uint32_t   *page_directory = NULL;         // a pointer to the PD's vaddr
+    page_table **page_tables = NULL;
+    int         n_page_tables = 0;
     bool        ready = false;
     
     void unmap_pde( int );
@@ -65,6 +66,7 @@ typedef struct process {
     cpu_regs                 user_regs;
     uint32_t                 id;
     uint32_t                 parent;
+    const char*              name;
     uint32_t                 flags;
     int                      priority;
     process_address_space    address_space;
@@ -75,9 +77,8 @@ typedef struct process {
     vector<message*>         message_queue;
     
     ~process();
-    process( cpu_regs, int );
-    process( size_t entry_point, bool is_usermode, int priority, void* args, int n_args );
-    process( size_t entry_point, bool is_usermode, int priority ) : process( entry_point, is_usermode, priority, NULL, 0 ) {};
+    process( cpu_regs, int, const char* );
+    process( size_t entry_point, bool is_usermode, int priority, const char* name, void* args, int n_args );
     
     bool send_message( message );
     
@@ -124,3 +125,7 @@ extern void process_scheduler();
 extern void process_add_to_runqueue( process* );
 extern process* get_process_by_pid( int );
 extern void spawn_process( process*, bool=true );
+
+extern "C" {
+    extern void process_switch_immediate();
+}

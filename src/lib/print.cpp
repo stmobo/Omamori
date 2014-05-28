@@ -161,6 +161,43 @@ char *ksprintf_varg(const char* str, va_list args) {
                     i++;
                     break;
                 }
+                case 'p':
+                    {
+                        void *ptr = va_arg(args, void*);
+                        char *upper = int_to_hex( reinterpret_cast<size_t>(ptr) );
+                        for(int i=0;i<16;i++) {
+                            switch(upper[i]) {
+                                case 'A':
+                                    upper[i] = 'a';
+                                    break;
+                                case 'B':
+                                    upper[i] = 'b';
+                                    break;
+                                case 'C':
+                                    upper[i] = 'c';
+                                    break;
+                                case 'D':
+                                    upper[i] = 'd';
+                                    break;
+                                case 'E':
+                                    upper[i] = 'e';
+                                    break;
+                                case 'F':
+                                    upper[i] = 'f';
+                                    break;
+                                default:
+                                    break;
+                            }
+                            if(upper[i] == 0) {
+                                break;
+                            }
+                        }
+                        char *out_copy = concatentate_strings( out, upper );
+                        kfree(out);
+                        out = out_copy;
+                        i++;
+                        break;
+                    }
                 case 'x':
                     {
                         char *upper = int_to_hex( va_arg(args, long long int) );
@@ -263,7 +300,7 @@ char *ksprintf(const char *str, ...) {
     return out;
 }
 
-static spinlock __kprintf_lock;
+spinlock __kprintf_lock;
 //static spinlock __kprintf_varg_lock;
 // Print something to the screen, but take a va_list.
 void kprintf_varg(const char *str, va_list args) {

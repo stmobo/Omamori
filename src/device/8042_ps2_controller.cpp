@@ -74,14 +74,19 @@ int port1_buffer_length = 0;
 int port2_buffer_length = 0;
 
 unsigned char ps2_receive_byte(bool port2) {
+    //kprintf("ps2_receive_byte: checking/waiting for data...\n");
     irq1_buffer_fill.acquire(1);
     irq1_buffer_mutex.lock();
     
+    //kprintf("ps2_receive_byte: there's something here!\n");
     // get data
     uint8_t data = port1_input_buffer[--port1_buffer_length];
+    if( port1_buffer_length <= 0 )
+        port1_buffer_length = 255;
     
     irq1_buffer_mutex.unlock();
     irq1_buffer_empty.release(1);
+    //kprintf("ps2_receive_byte: got data 0x%x.\n", (unsigned long long int)data);
     
     return data;
 }
@@ -90,7 +95,7 @@ unsigned char delayed_handler_data = 0;
 void irq1_delayed_handler() {
     while(true) {
 #ifdef DEBUG
-        kprintf("IRQ 1! Data=0x%x\n", data);
+        kprintf("IRQ 1! Data=0x%x\n", delayed_handler_data);
 #endif
         
         irq1_buffer_empty.acquire(1);
@@ -102,11 +107,13 @@ void irq1_delayed_handler() {
             
         irq1_buffer_mutex.unlock();
         irq1_buffer_fill.release(1);
-            
+        
+        /*
         message msg;
         msg.message_name = "ps2_data_port1";
-        msg.data = (void*)port1_buffer_length;
+        msg.data = (void*)delayed_handler_data;
         send_message_all( msg );
+        */
         process_current->state = process_state::waiting;
         process_switch_immediate();
     }
@@ -255,7 +262,7 @@ void ps2_controller_init() {
     kprintf("Port 2 ident: 0x%x\n", port2_ident);
 #endif 
     // Prepare the SLIH.
-    irq1_handler_process = new process( (size_t)&irq1_delayed_handler, false, 0, NULL, 0 );
+    irq1_handler_process = new process( (size_t)&irq1_delayed_handler, false, 0, "irq1_handler_process",NULL, 0 );
     spawn_process( irq1_handler_process, false ); // don't immediately schedule the process to run
     
     // Now enable interrupts.

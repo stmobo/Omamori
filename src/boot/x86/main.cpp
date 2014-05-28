@@ -104,7 +104,7 @@ void kernel_init(multiboot_info_t* mb_info, unsigned int magic) {
         n_constructors_called++;
     }
     kprintf("Called %u global constructors.\n", (unsigned long long int)n_constructors_called);
-    system_halt
+    //system_halt
 }
 
 void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
@@ -126,8 +126,8 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     pit_initialize(PIT_DEFAULT_FREQ_DIVISOR);
     
     kprintf("Initializing multitasking.\n");
-    process *proc1 = new process( (size_t)&test_process_1, false, 0, NULL, 0 );
-    //process *proc2 = new process( (size_t)&test_process_2, false, 0, NULL, 0 );
+    process *proc1 = new process( (size_t)&test_process_1, false, 0, "test_process_1", NULL, 0 );
+    //process *proc2 = new process( (size_t)&test_process_2, false, 0, "test_process_2", NULL, 0 );
     initialize_multitasking( proc1 );
     //spawn_process( proc2 );
         

@@ -18,7 +18,6 @@ SECTIONS
     }
 
 	/* All other symbols should be linked to the kernel base address, but *placed* from 0x100000. */
-	/* fixme: we map the kernel 1mb below where the linker expects it to go. */
 	. = 0xC0105000;
 
 	.text ALIGN(4K) : AT(ADDR(.text) - 0xC0000000)

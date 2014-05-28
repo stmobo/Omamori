@@ -21,9 +21,10 @@ typedef class spinlock {
 } spinlock;
 
 typedef class reentrant_mutex {
-    spinlock *control_lock;
-    uint32_t lock_count;
-    int uid;
+    spinlock control_lock;
+    uint32_t lock_count = 0;
+    int      uid = -1;
+    uint64_t mutex_id = ~0;
     
     public:
     int get_owner_uid();
@@ -43,9 +44,10 @@ typedef class reentrant_mutex {
 } mutex;
 
 typedef class semaphore {
-    spinlock *control_lock;
+    spinlock control_lock;
     uint32_t count;
     uint32_t max_count;
+    uint64_t semaphore_id = ~0;
     
     public:
     uint32_t get_count();

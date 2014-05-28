@@ -5,8 +5,6 @@
 #define UMODE_STACK_PAGES 2
 #define MULTITASKING_RUN_TIMESLICE      50
 
-#define process_switch_immediate() syscall(0)
-
 typedef struct cpu_regs {
     uint32_t eax;     // 0
     uint32_t ebx;     // 4

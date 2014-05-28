@@ -127,6 +127,10 @@ uint32_t syscall(uint32_t syscall_num) {
     return ret_val;
 }
 
+void process_switch_immediate() {
+    syscall(0);
+}
+
 uint32_t do_syscall() {
     //kprintf("Syscall!");
     //kprintf("Call number: 0x%x\n", (unsigned long long int)process_current->user_regs.eax);
@@ -170,7 +174,7 @@ void do_context_switch(uint32_t syscall_n) {
         
         uint16_t pic_isr = pic_get_isr();
         if( pic_isr & 1 ) { // do IRQ0 code, but only if bit 0 of the collective ISR is set
-            do_irq( 0, process_current->regs.eip, process_current->regs.cs );
+            do_irq( 0, process_current->regs.eip, process_current->regs.cs ); // do_irq sends an EOI, so we don't need to do it ourselves.
             in_irq_context = true;
         }
         

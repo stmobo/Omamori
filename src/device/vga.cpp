@@ -76,10 +76,10 @@ void terminal_scroll(int num_rows)
 // This function directly modifies the terminal buffer.
 void terminal_putentryat(char c, char color, size_t x, size_t y)
 {
-    __vga_write_lock.lock();
+    //__vga_write_lock.lock();
 	const size_t index = y * VGA_WIDTH + x;
 	terminal_buffer[index] = make_vgaentry(c, color);
-    __vga_write_lock.unlock();
+    //__vga_write_lock.unlock();
 }
 
 // terminal_putchar - write a single character to screen
@@ -124,10 +124,12 @@ void terminal_putchar(char c)
 // this function prints a line of text to screen, wrapping and scrolling if necessary.
 void terminal_writestring(char* data)
 {
+    __vga_write_lock.lock();
 	size_t datalen = strlen(data);
 	for ( size_t i = 0; i < datalen; i++ ) {
 		terminal_putchar(data[i]);
     }
+    __vga_write_lock.unlock();
 #ifdef MIRROR_VGA_SERIAL
     if(serial_initialized) {
         serial_write(data);

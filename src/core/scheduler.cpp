@@ -60,7 +60,7 @@ void spawn_process( process* to_add, bool sched_immediate ) {
     system_processes.add( to_add );
     if( sched_immediate )
         process_add_to_runqueue( to_add );
-    kprintf("Starting new process with ID: %u.", (unsigned long long int)to_add->id);
+    kprintf("Starting new process with ID: %u (%s).", (unsigned long long int)to_add->id, to_add->name);
 }
 
 void process_queue::add(process* process_to_add) {
@@ -121,6 +121,7 @@ void process_add_to_runqueue( process* process_to_add ) {
 }
 
 void process_scheduler() {
+    asm volatile("cli" : : : "memory");
     int current_priority = -1;
     for( int i=0;i<SCHEDULER_PRIORITY_LEVELS;i++ ) {
         if( run_queues[i].get_count() > 0 ) {
@@ -130,7 +131,11 @@ void process_scheduler() {
         }
     }
     if(current_priority == -1) {
-        system_wait_for_interrupt();
+        kprintf("scheduler: no available processes left, sleeping.\n");
+        multitasking_enabled = false; // don't jump to the context switch handler on IRQ0
+        asm volatile("sti" : : : "memory"); // make sure we actually can wake up from this
+        system_wait_for_interrupt(); // sleep for a bit
+        multitasking_enabled = true;
         return process_scheduler();
     }
     
@@ -148,13 +153,16 @@ void process_scheduler() {
 int send_message_all( message msg ) {
     int processes_notified = 0;
     for(int i=0;i<system_processes.length();i++) {
-        if( system_processes[i]->send_message(msg) ) {
-            processes_notified++;
+        if( system_processes[i] ) {
+            if( system_processes[i]->send_message(msg) ) {
+                processes_notified++;
+            }
         }
     }
     return processes_notified;
 }
 
+// yes, you have to delete the returned pointer.
 message *get_latest_message() {
     return process_current->message_queue.remove();
 }
@@ -175,7 +183,7 @@ message *wait_for_message( int n_filter_options, ... ) {
     va_end(args);
     
     return wait_for_message();
-}
+} 
 
 void process::set_message_filter_varg( int n_filter_options, va_list args ) {
     this->wait_events.clear();
@@ -272,17 +280,23 @@ process::~process() {
 }
 
 // caller is responsible for ensuring that the register values are correct!
-process::process( cpu_regs regs, int priority ) {
+process::process( cpu_regs regs, int priority, const char* name ) {
     this->regs = regs;
     this->priority = priority;
+    this->name = name;
 }
 
-process::process( size_t entry_point, bool is_usermode, int priority, void* args, int n_args ) {
+// notes for debugging:
+// the stack PDE (and the kernel PDE) should start at vaddr 0xFFFFFBFC.
+// the stack page table should start at vaddr 0xFFEFF000.
+// the kernel page table should start at vaddr 0xFFF00000.
+process::process( size_t entry_point, bool is_usermode, int priority, const char* name, void* args, int n_args ) {
     if(this->address_space.ready) { // no point in setting anything else if the address space couldn't be allocated
         this->id = 0;
         this->parent = 0;
         this->state = process_state::runnable;
         this->priority = priority;
+        this->name = name;
         this->regs.eax = 0;
         this->regs.ebx = 0;
         this->regs.ecx = 0;
@@ -291,7 +305,7 @@ process::process( size_t entry_point, bool is_usermode, int priority, void* args
         this->regs.edi = 0;
         this->regs.eip = entry_point;
         this->regs.eflags = (1<<9) | (1<<21); // Interrupt Flag and Identification Flag
-    
+        
         if( is_usermode ){
             size_t k_stack_start = mmap(4);
             if( k_stack_start == NULL ) {
@@ -322,10 +336,15 @@ process::process( size_t entry_point, bool is_usermode, int priority, void* args
         this->address_space.map_pde( 768, (size_t)&PageTable768, 1 );
         // map stack frames in
         for(int i=0;i<PROCESS_STACK_SIZE;i++) {
-            this->address_space.map_new( ((0xC0000000-1)-(i*0x1000))&0xFFFFF000, 1 );
+            kprintf("multitasking: mapping in stack page for new process: 0x%x\n", (unsigned long long int)(((0xC0000000-1)-(i*0x1000))&0xFFFFF000));
+            if(!this->address_space.map_new( ((0xC0000000-1)-(i*0x1000))&0xFFFFF000, 1 ))
+                panic("multitasking: failed to initialize stack frames for process!");
         }
-        uint32_t stack_phys_page = this->address_space.get( 0xBFFFF000 );
+        uint32_t stack_phys_page = this->address_space.get( 0xBFFFF000 ) & 0xFFFFF000;
         uint32_t* tmp_stack_page = (uint32_t*)k_vmem_alloc(1);
+        if( stack_phys_page == NULL )
+            panic("multitasking: failed to initialize stack frames!");
+        kprintf("multitasking: process stack starts at paddr 0x%x.\n", (unsigned long long int)stack_phys_page);
         paging_set_pte( (size_t)tmp_stack_page, stack_phys_page, 0 );
         tmp_stack_page[1022] = n_args;
         tmp_stack_page[1021] = (uint32_t)args;
@@ -345,6 +364,7 @@ page_table::page_table() {
     if( frame != NULL ) {
         this->ready = true;
         this->paddr = frame->address;
+        kprintf("New page table initialized at address 0x%x.\n", (uint64_t)this->paddr);
     }
 }
 
@@ -358,6 +378,8 @@ page_table::~page_table() {
 
 size_t page_table::map() {
     size_t vaddr = k_vmem_alloc(1);
+    if( vaddr == NULL )
+        return NULL;
     if( __sync_bool_compare_and_swap( &this->map_addr, NULL, vaddr ) ) {
         system_disable_interrupts();
         paging_set_pte(vaddr, this->paddr, 0);
@@ -455,9 +477,14 @@ bool address_space::map( size_t vaddr, size_t paddr, int flags ) {
     // if not, then make a new one
     // also, find the page table's corresponding descriptor object
     if( ((*pde) & 1) == 0 ) {
+        //kprintf("address_space::map - Creating new page table.\n");
         page_table *new_pt = new page_table;
+        if( !new_pt->ready )
+            return false;
         new_pt->pde_no = table_no;
         this->page_tables = extend<page_table*>(this->page_tables, this->n_page_tables);
+        if( !page_tables )
+            return false;
         this->page_tables[this->n_page_tables] = new_pt;
         this->n_page_tables++;
         pt = new_pt;
@@ -477,10 +504,15 @@ bool address_space::map( size_t vaddr, size_t paddr, int flags ) {
     }
     
     uint32_t *table = (uint32_t*)pt->map();
-    //kprintf("address_space::map: Page table at 0x%x mapped to 0x%x.\n", (unsigned long long int)pt->paddr, (unsigned long long int)table);
-    table[table_offset] = paddr | flags;
-    pt->unmap();
-    return true;
+    if( table ) {
+        //kprintf("address_space::map: Page table at 0x%x mapped to 0x%x.\n", (unsigned long long int)pt->paddr, (unsigned long long int)table);
+        //kprintf("address_space::map: mapping v0x%x -> p0x%x.\n", (unsigned long long int)vaddr, (unsigned long long int)paddr );
+        kprintf("address_space::map: table=0x%p, table_offset=%u\n", table, (unsigned long long int)table_offset );
+        table[table_offset] = paddr | flags;
+        pt->unmap();
+        return true;
+    }
+    return false;
 }
 
 void address_space::unmap( size_t vaddr ) {
@@ -529,6 +561,7 @@ uint32_t address_space::get( size_t vaddr ) {
     page_table* pt = NULL;
 
     if( ((*pde) & 1) == 0 ) {
+        //kprintf("address_space::get: could not find PDE.\n");
         return 0;
     } else {
         for(int i=0;i<this->n_page_tables;i++) {
@@ -539,13 +572,20 @@ uint32_t address_space::get( size_t vaddr ) {
         }
         if( pt == NULL ) {
             // The address is not even mapped in in the first place, but clear out the faulty PDE anyways
+            //kprintf("address_space::get: could not find PDE (removed faulty PDE).\n");
             (*pde) = 0;
             return 0;
         }
     }
     
     uint32_t *table = (uint32_t*)pt->map();
-    uint32_t ret = table[table_offset];
-    pt->unmap();
-    return ret;
+    if( table ) {
+        //kprintf("address_space::get: table=0x%p, table_offset=%u\n", table, (unsigned long long int)table_offset );
+        uint32_t ret = table[table_offset] & 0xFFFFF000;
+        //kprintf("address_space::get: mapping seems to be v0x%x -> p0x%x.\n", (unsigned long long int)vaddr, (unsigned long long int)ret );
+        pt->unmap();
+        return ret;
+    }
+    kprintf("address_space::get: could not map page table to active memory.\n");
+    return 0;
 }

@@ -30,8 +30,8 @@ CRTBEGIN_OBJ  :=  $(shell $(CC) $(CFLAGS) -print-file-name=crtbegin.o)
 CRTEND_OBJ    :=  $(shell $(CC) $(CFLAGS) -print-file-name=crtend.o)
 
 # generate a link order
-LINK_ORDER_FIRST := $(CRTBEGIN_OBJ) $(CRTEND_OBJ) $(MAIN_OBJ)/boot/x86/early_boot.o $(MAIN_OBJ)/arch/x86/crti.o $(MAIN_OBJ)/boot/x86/boot.o $(MAIN_OBJ)/arch/x86/isr_ll.o $(MAIN_OBJ)/core/sys.o $(MAIN_OBJ)/arch/x86/sys_ll.o
-LINK_ORDER_LAST  := $(MAIN_OBJ)/boot/x86/main.o $(MAIN_OBJ)/arch/x86/crtn.o
+LINK_ORDER_FIRST := $(MAIN_OBJ)/arch/x86/crti.o $(CRTBEGIN_OBJ) $(MAIN_OBJ)/boot/x86/early_boot.o $(MAIN_OBJ)/boot/x86/boot.o $(MAIN_OBJ)/arch/x86/isr_ll.o $(MAIN_OBJ)/core/sys.o $(MAIN_OBJ)/arch/x86/sys_ll.o
+LINK_ORDER_LAST  := $(MAIN_OBJ)/boot/x86/main.o $(CRTEND_OBJ) $(MAIN_OBJ)/arch/x86/crtn.o
 LINK_ORDER_MID   := $(filter-out $(LINK_ORDER_FIRST) $(LINK_ORDER_LAST), $(OBJ_FILES))
 
 # remap stuff to use our cross-compiler
@@ -41,8 +41,7 @@ CCFLAGS  := -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/acpica -std=gnu99 -ffreestanding -
 CXX      := $(HOME)/opt/cross/bin/i686-elf-g++
 CXXFLAGS := -MMD -I$(INCLUDE_DIR) -ffreestanding -g -O2 -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-conversion-null -Wno-write-strings -fno-exceptions -fno-rtti -fno-omit-frame-pointer -std=c++11
 LD       := $(HOME)/opt/cross/bin/i686-elf-gcc
-LDFLAGS  := -ffreestanding -g -O2 -nostdlib
-LDLIBS   := -lgcc
+LDFLAGS  := -ffreestanding -g -O2
 
 all: omamori.iso
 
@@ -51,7 +50,7 @@ omamori.iso: omamori.elf
 		@grub-mkrescue -o omamori.iso $(ISO_DIR) > /dev/null 2>&1
 		
 omamori.elf: $(OBJ_FILES)
-		@$(LD) -T $(MAIN_SRC)/linker.ld $(LDFLAGS) $(LDLIBS) -o ./omamori.elf $(LINK_ORDER_FIRST) $(LINK_ORDER_MID) $(LINK_ORDER_LAST)
+		@$(LD) -T $(MAIN_SRC)/linker.ld $(LDFLAGS) -o ./omamori.elf $(LINK_ORDER_FIRST) $(LINK_ORDER_MID) $(LINK_ORDER_LAST) -nostdlib -lgcc
 		@mv omamori.elf omamori_embedded_debug.elf
 		@$(HOME)/opt/cross/bin/i686-elf-objcopy -S omamori_embedded_debug.elf omamori.elf
 

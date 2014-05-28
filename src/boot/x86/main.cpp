@@ -71,6 +71,12 @@ void test_process_2() {
     }
 }
 
+__attribute__ ((constructor)) void test_constructor() {
+    kprintf("Yes, global constructors *should* be called.\n");
+}
+
+extern void* __CTOR_LIST__;
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -85,8 +91,19 @@ void kernel_init(multiboot_info_t* mb_info, unsigned int magic) {
     initialize_pageframes(mb_info);
     
     // do global constructor setup
-    kprintf("Calling global constructors.");
-    _init();
+    kprintf("Calling global constructors.\n");
+    size_t *current = (size_t*)((size_t)&__CTOR_LIST__+4); // skip the first function pointer
+    int n_constructors_called = 1;
+    while(true) {
+        if(*current == 0)
+            break;
+        //kprintf("Calling constructor %u at address 0x%x.\n", (unsigned long long int)n_constructors_called, ((unsigned long long int)*current) );
+        void(*func)(void) = (void(*)(void))(*current);
+        func();
+        current++;
+        n_constructors_called++;
+    }
+    kprintf("Called %u global constructors.\n", (unsigned long long int)n_constructors_called);
     system_halt
 }
 

@@ -87,7 +87,7 @@ reentrant_mutex::~reentrant_mutex() {
 }
 
 reentrant_mutex::reentrant_mutex() {
-    //kprintf("Initializing mutex.\n");
+    kprintf("Initializing mutex.\n");
     this->control_lock = new spinlock;
     if( this->control_lock == NULL ) {
         panic("mutex: could not initialize control lock!");
@@ -184,7 +184,7 @@ semaphore::~semaphore() {
 }
 
 semaphore::semaphore() {
-    //kprintf("Initializing semaphore.\n");
+    kprintf("Initializing semaphore.\n");
     this->count = 0;
     this->max_count = 0;
     this->control_lock = new spinlock;
@@ -194,7 +194,7 @@ semaphore::semaphore() {
 }
 
 semaphore::semaphore(uint32_t max) {
-    //kprintf("Initializing semaphore.\n");
+    kprintf("Initializing semaphore.\n");
     this->count = max;
     this->max_count = max;
     this->control_lock = new spinlock;
@@ -204,7 +204,7 @@ semaphore::semaphore(uint32_t max) {
 }
 
 semaphore::semaphore(uint32_t count, uint32_t max) {
-    //kprintf("Initializing semaphore.\n");
+    kprintf("Initializing semaphore.\n");
     this->count = count;
     this->max_count = max;
     this->control_lock = new spinlock;

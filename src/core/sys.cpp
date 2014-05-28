@@ -162,18 +162,40 @@ bool interrupts_enabled() {
  * 64bit integer routines
  */
  
-inline unsigned long long __udivti3( unsigned long long dividend, unsigned long long divisor ) {
+// 64-bit combined division / modulo operation
+unsigned long long __udivmoddi4( uint64_t dividend, uint64_t divisor, uint64_t *remainder ) {
+    if( divisor == 0 ) {
+        return 5/(uint32_t)divisor;
+    }
+    
+    // push the divisor all the way to the left
+    uint64_t bit_to_add = 1;
     uint64_t quotient = 0;
-    asm volatile("mov %0, %%edx\n\t"
-                 "mov %1, %%eax\n\t"
-                 "idiv %%ecx\n\t"
-                 "mov %%eax, %0\n\t"
-                 "mov %%edx, %1\n\t"
-                 : "=g"(q32), "=g"(r32) : "g"(n_hi), "g"(n_lo), "c"(d32) : "%eax", "%edx", "memory");
+    while( (divisor&(1<<63)) != 0 ) {
+        divisor <<= 1;
+        bit_to_add <<= 1;
+    }
+    
+    while( bit_to_add > 0 ) {
+        if( divisor <= dividend ) {
+            dividend -= divisor;
+            quotient += bit_to_add;
+        }
+        divisor >>= 1;
+        bit_to_add >>= 1;
+    }
+    
+    if( *remainder != NULL )
+        (*remainder) = dividend;
+    return quotient;
+} 
+
+unsigned long long __udivdi3( uint64_t dividend, uint64_t divisor ) {
+    return __udivmoddi4( dividend, divisor, NULL );
 }
 
-inline unsigned long long __udivmodti4( unsigned long long dividend, unsigned long long divisor, unsigned long long *remainder ) {
-}
-
-inline unsigned long long __umodti3( unsigned long long dividend, unsigned long long divisor ) {
+unsigned long long __umoddi3( uint64_t dividend, uint64_t divisor ) {
+    uint64_t ret = 0;
+    __udivmoddi4( dividend, divisor, &ret );
+    return ret;
 }

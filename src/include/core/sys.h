@@ -27,6 +27,11 @@ extern double fractional(double);
 extern int pow(int,int);
 extern uint64_t rdtsc();
 extern bool interrupts_enabled();
+extern "C" {
+    extern uint64_t __udivmoddi4( uint64_t, uint64_t, uint64_t* );
+    extern uint64_t __udivdi3( uint64_t, uint64_t );
+    extern uint64_t __umoddi3( uint64_t, uint64_t );
+}
 
 #define get_return_address(var) asm volatile("mov 4(%%ebp), %0" : "=r"(var) : : "memory");
 

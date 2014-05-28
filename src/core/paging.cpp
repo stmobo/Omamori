@@ -375,7 +375,9 @@ void initialize_pageframes(multiboot_info_t* mb_info) {
     buddy_maps = (size_t**)kmalloc((BUDDY_MAX_ORDER+1)*sizeof(size_t*));
     for(int i=0;i<=BUDDY_MAX_ORDER;i++) {
         int block_size = 1024*pow(2, i+2);
-        int num_blocks = mem_avail_bytes / block_size;
+        int num_blocks = ((uint32_t)mem_avail_bytes) / block_size;
+        // since this is a 32-bit system, we can assume that mem_avail_bytes can be casted to a uint32_t without
+        // a loss in precision.
         int num_blk_entries = num_blocks / 8;
 #ifdef PAGING_DEBUG
         kprintf("Allocating space for %u order %u blocks.\n", num_blocks, i);
@@ -394,7 +396,9 @@ void initialize_pageframes(multiboot_info_t* mb_info) {
     // now go back and restrict these ranges of memory from paging
     for(int i=0;i<=BUDDY_MAX_ORDER;i++) {
         int block_size = 1024*pow(2, i+2);
-        int num_blocks = mem_avail_bytes / block_size;
+        int num_blocks = ((uint32_t)mem_avail_bytes) / block_size;
+        // since this is a 32-bit system, we can assume that mem_avail_bytes can be casted to a uint32_t without
+        // a loss in precision.
         int num_blk_entries = num_blocks / 8;
         k_vmem_alloc( (size_t)(buddy_maps[i]), (size_t)(((size_t)(buddy_maps[i]))+(sizeof(size_t)*num_blk_entries)) );
 #ifdef PAGING_DEBUG

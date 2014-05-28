@@ -330,8 +330,8 @@ void panic(char *str, ...) {
         terminal_writestring("panic: ");
         terminal_writestring(o);
         va_end(args);
-        // Get a stack trace.
-        stack_trace_walk(0xFFFF);
+        // (don't) Get a stack trace.
+        //stack_trace_walk(7);
     }
     // Now halt.
     while(true) {

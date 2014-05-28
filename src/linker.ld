@@ -50,3 +50,4 @@ SECTIONS
    kernel_end = .;
    kernel_end_phys = (. - 0xC0000000);
 }
+__CTOR_LIST__ = ADDR(.ctors);

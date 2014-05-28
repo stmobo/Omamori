@@ -19,9 +19,8 @@ uint32_t *get_caller_ebp(uint32_t *current_ebp) {
 }
 
 void stack_trace_walk(int max_levels) {
-    uint32_t *ebp = 0;
+    uint32_t *ebp = get_current_ebp();
     int stack_level = 0;
-    asm volatile("mov %%ebp, %0" : "=r"(ebp) : : "memory");
     kprintf("Retrieving stack trace, current EBP: 0x%x.\n", (uint64_t)ebp);
     while(stack_level <= max_levels) {
         if(ebp == NULL) {

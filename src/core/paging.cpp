@@ -727,6 +727,10 @@ void paging_handle_pagefault(char error_code, uint32_t cr2, uint32_t eip, uint32
                 : : : "memory");
             }
         }
+        if( cr2 < 0x1000 ) { // invalid address-- first page is not and never should be mapped (NULL address page)
+            panic("paging: invalid memory access (possible NULL pointer dereference?)\nAccessed address: 0x%x\nEIP=0x%x\nCS=0x%x",
+            (unsigned long long int)cr2, (unsigned long long int)eip, (unsigned long long int)cs);
+        }
         //kprintf("Page fault!\n");
         //kprintf("CR2: 0x%x\n", (unsigned long long int)cr2);
         if( cr2 >= 0xC0000000 ) {
@@ -744,6 +748,8 @@ void paging_handle_pagefault(char error_code, uint32_t cr2, uint32_t eip, uint32
                         // we just loaded the page table holding the faulting entry.
                         // so just return now.
                         in_pagefault = false;
+                        panic_ins = 0;
+                        panic_cr2 = 0;
                         return;
                     }
                 } else {
@@ -775,6 +781,8 @@ void paging_handle_pagefault(char error_code, uint32_t cr2, uint32_t eip, uint32
                 // there's already a mapping present for this page.
                 // we need to evict something, but since we don't have mass-storage drivers yet...
                 in_pagefault = false;
+                panic_ins = 0;
+                panic_cr2 = 0;
                 return; 
             }
             

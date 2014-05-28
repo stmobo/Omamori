@@ -157,3 +157,23 @@ bool interrupts_enabled() {
     : "=r"(eflags) : : "memory");
     return ((eflags & (1<<9)) > 0);
 }
+
+/*
+ * 64bit integer routines
+ */
+ 
+inline unsigned long long __udivti3( unsigned long long dividend, unsigned long long divisor ) {
+    uint64_t quotient = 0;
+    asm volatile("mov %0, %%edx\n\t"
+                 "mov %1, %%eax\n\t"
+                 "idiv %%ecx\n\t"
+                 "mov %%eax, %0\n\t"
+                 "mov %%edx, %1\n\t"
+                 : "=g"(q32), "=g"(r32) : "g"(n_hi), "g"(n_lo), "c"(d32) : "%eax", "%edx", "memory");
+}
+
+inline unsigned long long __udivmodti4( unsigned long long dividend, unsigned long long divisor, unsigned long long *remainder ) {
+}
+
+inline unsigned long long __umodti3( unsigned long long dividend, unsigned long long divisor ) {
+}

@@ -24,11 +24,13 @@ ASM_FILES := $(shell find $(SRC_DIRS) -type f -name *.s)
 C_OBJ_FILES   :=  $(subst src/,obj/,$(patsubst %.c, %.o, $(C_FILES)))
 CPP_OBJ_FILES :=  $(subst src/,obj/,$(patsubst %.cpp, %.o, $(CPP_FILES)))
 ASM_OBJ_FILES :=  $(subst src/,obj/,$(patsubst %.s, %.o, $(ASM_FILES)))
-OBJ_FILES     := $(ASM_OBJ_FILES) $(C_OBJ_FILES) $(CPP_OBJ_FILES)
-DEP_FILES     := $(patsubst %.cpp, %.d, $(CPP_FILES))
+OBJ_FILES     :=  $(ASM_OBJ_FILES) $(C_OBJ_FILES) $(CPP_OBJ_FILES)
+DEP_FILES     :=  $(patsubst %.cpp, %.d, $(CPP_FILES))
+CRTBEGIN_OBJ  :=  $(shell $(CC) $(CFLAGS) -print-file-name=crtbegin.o)
+CRTEND_OBJ    :=  $(shell $(CC) $(CFLAGS) -print-file-name=crtend.o)
 
 # generate a link order
-LINK_ORDER_FIRST := /root/opt/cross/lib/gcc/i686-elf/4.8.2/crtbegin.o /root/opt/cross/lib/gcc/i686-elf/4.8.2/crtend.o $(MAIN_OBJ)/boot/x86/early_boot.o $(MAIN_OBJ)/arch/x86/crti.o $(MAIN_OBJ)/boot/x86/boot.o $(MAIN_OBJ)/arch/x86/isr_ll.o $(MAIN_OBJ)/core/sys.o $(MAIN_OBJ)/arch/x86/sys_ll.o
+LINK_ORDER_FIRST := $(CRTBEGIN_OBJ) $(CRTEND_OBJ) $(MAIN_OBJ)/boot/x86/early_boot.o $(MAIN_OBJ)/arch/x86/crti.o $(MAIN_OBJ)/boot/x86/boot.o $(MAIN_OBJ)/arch/x86/isr_ll.o $(MAIN_OBJ)/core/sys.o $(MAIN_OBJ)/arch/x86/sys_ll.o
 LINK_ORDER_LAST  := $(MAIN_OBJ)/boot/x86/main.o $(MAIN_OBJ)/arch/x86/crtn.o
 LINK_ORDER_MID   := $(filter-out $(LINK_ORDER_FIRST) $(LINK_ORDER_LAST), $(OBJ_FILES))
 
@@ -40,6 +42,7 @@ CXX      := $(HOME)/opt/cross/bin/i686-elf-g++
 CXXFLAGS := -MMD -I$(INCLUDE_DIR) -ffreestanding -g -O2 -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-conversion-null -Wno-write-strings -fno-exceptions -fno-rtti -fno-omit-frame-pointer -std=c++11
 LD       := $(HOME)/opt/cross/bin/i686-elf-gcc
 LDFLAGS  := -ffreestanding -g -O2 -nostdlib
+LDLIBS   := -lgcc
 
 all: omamori.iso
 
@@ -48,7 +51,7 @@ omamori.iso: omamori.elf
 		@grub-mkrescue -o omamori.iso $(ISO_DIR) > /dev/null 2>&1
 		
 omamori.elf: $(OBJ_FILES)
-		@$(LD) -T $(MAIN_SRC)/linker.ld $(LDFLAGS) -o ./omamori.elf $(LINK_ORDER_FIRST) $(LINK_ORDER_MID) $(LINK_ORDER_LAST) -lgcc
+		@$(LD) -T $(MAIN_SRC)/linker.ld $(LDFLAGS) $(LDLIBS) -o ./omamori.elf $(LINK_ORDER_FIRST) $(LINK_ORDER_MID) $(LINK_ORDER_LAST)
 		@mv omamori.elf omamori_embedded_debug.elf
 		@$(HOME)/opt/cross/bin/i686-elf-objcopy -S omamori_embedded_debug.elf omamori.elf
 

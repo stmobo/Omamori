@@ -407,17 +407,19 @@ extern "C" {
     }
     
     void AcpiOsWaitEventsComplete() {
-        bool should_keep_waiting = false;
-        while(!should_keep_waiting) {
+        bool all_processes_dead = false;
+        while(!all_processes_dead) {
+            all_processes_dead = true;
             for(int i=0;i<n_acpi_threads;i++) {
                 if(acpi_threads[i]->state != process_state::dead) {
-                    should_keep_waiting = true;
+                    all_processes_dead = false;
                     break;
                 }
             }
+            if( all_processes_dead )
+                return;
             process_switch_immediate();
         }
-        return;
     }
     
     /*

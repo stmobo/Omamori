@@ -43,6 +43,7 @@ __syscall_entry:
     
 __multitasking_kmode_entry:
     # we are working off of esp0 / ss0 in active_tss.
+    # or the process' old stack, but either way we're in a kernel-mode stack
     mov %eax, (reg_dump_area)
     mov $reg_dump_area, %eax
     # save "easy" registers

@@ -31,6 +31,18 @@ void test_func(void* n) {
 }
 
 void test_process_1() {
+    terminal_writestring("Initializing ACPI.\n");
+    initialize_acpi();
+    
+    kprintf("Initializing PS/2 controller.\n");
+    ps2_controller_init();
+    
+    kprintf("Initializing PS/2 keyboard.\n");
+    ps2_keyboard_initialize();
+    
+    kprintf("Initializing PCI.\n");
+    pci_check_bus(0);
+    
     kprintf("Press ENTER to continue...\n");
     terminal_putchar('>');
     while(true) {
@@ -62,12 +74,8 @@ void test_process_2() {
 #if defined(__cplusplus)
 extern "C" {
 #endif
-void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
-{
-    char *test;
-    int test2 = 0x12345678;
-    page_frame* framez;
-    page_frame* framez2;
+extern void _init(void);
+void kernel_init(multiboot_info_t* mb_info, unsigned int magic) {
     terminal_initialize();
     terminal_writestring("Project Omamori now starting...\n");
     gdt_init();
@@ -75,6 +83,19 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     initialize_vmem_allocator();
     k_heap_init();
     initialize_pageframes(mb_info);
+    
+    // do global constructor setup
+    kprintf("Calling global constructors.");
+    _init();
+    system_halt
+}
+
+void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
+{
+    char *test;
+    int test2 = 0x12345678;
+    page_frame* framez;
+    page_frame* framez2;
     
     //system_halt;
     kprintf("Kernel begins at physical address 0x%x, corresponding to pageframe ID %u.\n", (unsigned long long int)(&kernel_start_phys), (unsigned long long int)(pageframe_get_block_from_addr( (size_t)&kernel_start_phys )) );
@@ -92,9 +113,6 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     //process *proc2 = new process( (size_t)&test_process_2, false, 0, NULL, 0 );
     initialize_multitasking( proc1 );
     //spawn_process( proc2 );
-    
-    terminal_writestring("Initializing ACPI.\n");
-    initialize_acpi();
         
     // now initialize PCI
     // well, maybe later
@@ -118,12 +136,6 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     //block_for_interrupt(1);
     kprintf("Time since system startup: %u ticks.", (unsigned long long int)get_sys_time_counter());
     
-    kprintf("Initializing PS/2 controller.\n");
-    ps2_controller_init();
-    
-    kprintf("Initializing PS/2 keyboard.\n");
-    ps2_keyboard_initialize();
-    
     kprintf("Testing kernel vmem allocation.\n");
     size_t vmem_test = k_vmem_alloc( 5 );
     kprintf("Virtual allocation starts at address 0x%x.\n", (unsigned long long int)vmem_test);
@@ -136,9 +148,6 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     paging_set_pte( vga_vmem, 0xB8000, 0x101 );
     terminal_buffer = (uint16_t*)vga_vmem;
     kprintf("VGA buffer remapped to 0x%x.\n", (unsigned long long int)vga_vmem);
-    
-    kprintf("Initializing PCI.\n");
-    pci_check_bus(0);
     
     kprintf("Initiating page fault!\n");
     int *pf_test = (int*)(0xC0F00004);

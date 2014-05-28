@@ -3,23 +3,19 @@
 #include "includes.h"
 #include "arch/x86/irq.h"
 #include "arch/x86/pic.h"
+#include "core/scheduler.h"
 #include "device/vga.h"
 #include "device/pit.h"
 #include "device/ps2_controller.h"
-#include "core/scheduler.h"
-
-unsigned char port1_input_buffer[256];
-unsigned char port2_input_buffer[256];
-
-// Points to the next EMPTY area (port1_input_buffer[port1_buffer_length] == <undefined>!)
-int port1_buffer_length = 0;
-int port2_buffer_length = 0;
+#include "lib/sync.h"
 
 bool port1_status = false;
 bool port2_status = false;
 
 uint16_t port1_ident = 0;
 uint16_t port2_ident = 0;
+
+process *irq1_handler_process = NULL;
 
 // Screw the PS2 controller. Seriously.
 // Why don't you support interrupt-driven sending?!
@@ -67,68 +63,59 @@ unsigned char ps2_wait_for_input() {
     return data;
 }
 
+unsigned char port1_input_buffer[256];
+unsigned char port2_input_buffer[256];
+
+mutex     irq1_buffer_mutex;
+semaphore irq1_buffer_fill(0,256);
+semaphore irq1_buffer_empty(256,256);
+
+int port1_buffer_length = 0;
+int port2_buffer_length = 0;
+
 unsigned char ps2_receive_byte(bool port2) {
+    irq1_buffer_fill.acquire(1);
+    irq1_buffer_mutex.lock();
+    
+    // get data
+    uint8_t data = port1_input_buffer[--port1_buffer_length];
+    
+    irq1_buffer_mutex.unlock();
+    irq1_buffer_empty.release(1);
+    
+    return data;
+}
+
+unsigned char delayed_handler_data = 0;
+void irq1_delayed_handler() {
     while(true) {
-        event *ps2_data = wait_for_event("ps2_data");
-        ps2_event_data *ev_dat = (ps2_event_data*)ps2_data->event_data[0];
-        if(ev_dat->port2 == port2) {
-            uint8_t data = ev_dat->data;
-            delete ev_dat;
-            delete ps2_data;
-            return data;
-        }
+#ifdef DEBUG
+        kprintf("IRQ 1! Data=0x%x\n", data);
+#endif
+        
+        irq1_buffer_empty.acquire(1);
+        irq1_buffer_mutex.lock();
+        
+        port1_input_buffer[port1_buffer_length++] = delayed_handler_data;
+        if(port1_buffer_length > 255)
+            port1_buffer_length = 0;
+            
+        irq1_buffer_mutex.unlock();
+        irq1_buffer_fill.release(1);
+            
+        message msg;
+        msg.message_name = "ps2_data_port1";
+        msg.data = (void*)port1_buffer_length;
+        send_message_all( msg );
+        process_current->state = process_state::waiting;
+        process_switch_immediate();
     }
-    /*
-    if(!port2) {
-        while(port1_buffer_length <= 0)
-            wait_for_interrupt();
-        unsigned char byte = port1_input_buffer[0];
-        for(int i=0;i<port1_buffer_length;i++) {
-            port1_input_buffer[i] = port1_input_buffer[i+1];
-        }
-        port1_input_buffer[port1_buffer_length-1] = 0;
-        port1_buffer_length--;
-        return byte;
-    } else {
-        while(port2_buffer_length <= 0)
-            wait_for_interrupt();
-        unsigned char byte = port2_input_buffer[0];
-        for(int i=0;i<port2_buffer_length;i++) {
-            port2_input_buffer[i] = port2_input_buffer[i+1];
-        }
-        port2_input_buffer[port2_buffer_length-1] = 0;
-        port2_buffer_length--;
-        return byte;
-    }
-    */
 }
 
 void irq1_handler() {
-    unsigned char data = io_inb(0x60);
-#ifdef DEBUG
-    kprintf("IRQ 1! Data=0x%x\n", data);
-#endif
-    port1_input_buffer[port1_buffer_length] = data;
-    port1_buffer_length++;
-    if(port1_buffer_length > 255)
-        port1_buffer_length = 0;
-        
-    event *n_ev = new event;
-    ps2_event_data *n_ev_data = new ps2_event_data;
-    
-    n_ev->event_type = "ps2_data";
-    n_ev->n_event_data = 1;
-    n_ev->event_data = new void*[1];
-    
-    n_ev_data->data = data;
-    n_ev_data->port2 = false;
-    
-    n_ev->event_data[0] = (void*)n_ev_data;
-    
-    send_event(n_ev);
-    
-    delete n_ev_data;
-    delete n_ev;
+    delayed_handler_data = io_inb(0x60);
+    irq1_handler_process->state = process_state::runnable;
+    process_add_to_runqueue( irq1_handler_process ); // schedule the SLIH to run.
 }
 
 void irq12_handler() {
@@ -266,7 +253,10 @@ void ps2_controller_init() {
 #ifdef DEBUG
     kprintf("Port 1 ident: 0x%x\n", port1_ident);
     kprintf("Port 2 ident: 0x%x\n", port2_ident);
-#endif
+#endif 
+    // Prepare the SLIH.
+    irq1_handler_process = new process( (size_t)&irq1_delayed_handler, false, 0, NULL, 0 );
+    spawn_process( irq1_handler_process, false ); // don't immediately schedule the process to run
     
     // Now enable interrupts.
     irq_add_handler( 1, (size_t)&irq1_handler );

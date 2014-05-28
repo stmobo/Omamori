@@ -6,6 +6,8 @@ stack_top:
 
 .section .text, "ax"
 .global _start_kernel
+.global kernel_init
+.global kernel_main
 .type _start_kernel, @function
 _start_kernel:
     # whoo kernel mode!
@@ -17,7 +19,9 @@ _start_kernel:
     add $0xC0000000, %ebx
     push %ebx
     
+    call kernel_init
     call kernel_main
+    
     pop %ebx
     pop %eax
     

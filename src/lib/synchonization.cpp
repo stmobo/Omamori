@@ -14,10 +14,12 @@ spinlock::spinlock() {
     this->lock_value = SPINLOCK_UNLOCKED_VALUE;
 }
 
+// granted, this "spinlock" isn't really a spinlock at all, but this is a single-processor OS, so...
+
 // Lock / Unlock, No interrupt disabling
 void spinlock::lock() {
     if(multitasking_enabled) { // No point in locking if we're the only thing running THIS early on
-        if( (process_current == NULL) || (this->locker != process_current->id) ) { // don't lock if we've already locked this lock, but be safe about it
+        if( (process_current != NULL) && (this->locker != process_current->id) ) { // don't lock if we've already locked this lock, but be safe about it
             while(!cas(&this->lock_value, SPINLOCK_UNLOCKED_VALUE, SPINLOCK_LOCKED_VALUE)) {
                 process_switch_immediate();
                 //asm volatile("pause" : : : "memory");
@@ -38,9 +40,13 @@ void spinlock::unlock() {
 }
 
 // Lock / Unlock w/ interrupt disabling
+uint32_t retaddr_panic;
 void spinlock::lock_cli() {
-    if(multitasking_enabled) { // No point in locking if we're the only thing running THIS early on
-        if( (process_current == NULL) || (this->locker != process_current->id) ) { // don't lock if we've already locked this lock, but be safe about it
+    if( this == NULL ) {
+        panic("lock_cli: this==NULL!\n");
+    }
+    if (multitasking_enabled && (process_current != NULL) ) {
+        if( this->locker != process_current->id ) {
             while(!cas(&this->lock_value, SPINLOCK_UNLOCKED_VALUE, SPINLOCK_LOCKED_VALUE)) {
                 process_switch_immediate();
                 //asm volatile("pause" : : : "memory");
@@ -76,8 +82,16 @@ uint32_t spinlock::get_lock_owner() {
     return this->locker;
 }
 
+reentrant_mutex::~reentrant_mutex() {
+    delete this->control_lock;
+}
+
 reentrant_mutex::reentrant_mutex() {
+    //kprintf("Initializing mutex.\n");
     this->control_lock = new spinlock;
+    if( this->control_lock == NULL ) {
+        panic("mutex: could not initialize control lock!");
+    }
     this->uid = ~0;
     this->lock_count = 0;
 }
@@ -165,22 +179,38 @@ int reentrant_mutex::get_owner_uid() {
     return this->uid;
 }
 
+semaphore::~semaphore() {
+    delete this->control_lock;
+}
+
 semaphore::semaphore() {
+    //kprintf("Initializing semaphore.\n");
     this->count = 0;
     this->max_count = 0;
     this->control_lock = new spinlock;
+    if( this->control_lock == NULL ) {
+        panic("semaphore: could not initialize control lock!");
+    }
 }
 
 semaphore::semaphore(uint32_t max) {
+    //kprintf("Initializing semaphore.\n");
     this->count = max;
     this->max_count = max;
     this->control_lock = new spinlock;
+    if( this->control_lock == NULL ) {
+        panic("semaphore: could not initialize control lock!");
+    }
 }
 
 semaphore::semaphore(uint32_t count, uint32_t max) {
+    //kprintf("Initializing semaphore.\n");
     this->count = count;
     this->max_count = max;
     this->control_lock = new spinlock;
+    if( this->control_lock == NULL ) {
+        panic("semaphore: could not initialize control lock!");
+    }
 }
 
 
@@ -221,6 +251,9 @@ void semaphore::acquire(uint32_t count) {
     }
     if( multitasking_enabled ) {
         while(true) {
+            if(this->control_lock == NULL) {
+                panic("semaphore: lock not initialized?!\n");
+            }
             this->control_lock->lock_cli();
             if( this->count >= count ) {
                 this->count -= count;

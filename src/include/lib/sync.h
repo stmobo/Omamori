@@ -38,6 +38,7 @@ typedef class reentrant_mutex {
     void lock();
     void unlock();
     
+    ~reentrant_mutex();
     reentrant_mutex();
 } mutex;
 
@@ -52,6 +53,7 @@ typedef class semaphore {
     bool try_acquire( uint32_t count );
     void acquire( uint32_t count );
     bool release( uint32_t count );
+    ~semaphore();
     semaphore();
     semaphore(uint32_t);
     semaphore(uint32_t,uint32_t);

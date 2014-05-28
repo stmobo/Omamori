@@ -5,12 +5,12 @@
 #include "arch/x86/multitask.h"
 #include "core/scheduler.h"
 #include "core/paging.h"
+#include "device/pit.h"
 
 // scheduling priorities have 0 as the highest priority
 
 process *process_current = NULL;
-process **system_processes = NULL;
-int process_count = 0;
+vector<process*> system_processes;
 
 uint32_t current_pid = 2; // 0 is reserved for the kernel (in the "parent" field only) and 1 is used for the initial process, which has a special startup sequence.
 bool pids_have_overflowed = false;
@@ -29,7 +29,7 @@ uint32_t allocate_new_pid() {
         bool is_okay = false;
         while( !is_okay ) {
             is_okay = true;
-            for( int i=0;i<process_count;i++ ) {
+            for( int i=0;i<system_processes.length();i++ ) {
                 if( (system_processes[i]->id) == ret ) {
                     ret++;
                     is_okay = false;
@@ -42,22 +42,24 @@ uint32_t allocate_new_pid() {
 }
 
 process* get_process_by_pid( int pid ) {
-    for( int i=0;i<process_count;i++ ) {
-        if( system_processes[i]->id == pid ) {
+    for( int i=0;i<system_processes.length();i++ ) {
+        if( (system_processes[i]) && (system_processes[i]->id == pid) ) {
             return system_processes[i];
         }
     }
     return NULL;
 }
 
-void spawn_process( process* to_add ) {
+void spawn_process( process* to_add, bool sched_immediate ) {
     if( process_current ) {
         to_add->parent = 0;
     } else {
         to_add->parent = process_current->id;
     }
     to_add->id = allocate_new_pid();
-    process_add_to_runqueue( to_add );
+    system_processes.add( to_add );
+    if( sched_immediate )
+        process_add_to_runqueue( to_add );
     kprintf("Starting new process with ID: %u.", (unsigned long long int)to_add->id);
 }
 
@@ -79,16 +81,21 @@ void process_queue::add(process* process_to_add) {
     this->count += 1;
 }
 
-process* process_queue::remove() {
-    if((this->count <= 0) || (this->length <= 0)) {
+process* process_queue::remove( int n ) {
+    if((this->count <= n) || (this->length <= n)) {
         return NULL;
     }
-    process *shift_out = this->queue[0];
-    for(int i=0;i<(this->count-1);i++) {
+    process *shift_out = this->queue[n];
+    for(int i=n;i<(this->count-1);i++) {
         this->queue[i] = this->queue[i+1];
     }
+    this->queue[(this->count)-1] = NULL;
     this->count -= 1;
     return shift_out;
+}
+
+process* process_queue::remove() {
+    return this->remove(0);
 }
 
 process* process_queue::operator[]( int n ) {
@@ -102,31 +109,6 @@ process_queue::process_queue() {
     this->queue = NULL;
     this->length = 0;
     this->count = 0;
-}
-
-void send_event(event *ev) {
-    for(int i=0;i<sleep_queue.get_count();i++) {
-        process *iter = sleep_queue.remove();
-        if( strcmp(iter->event_wait, const_cast<char*>(ev->event_type), 0) ) {
-            iter->event_data = new event;
-            *(iter->event_data) = *ev;
-            process_add_to_runqueue(iter);
-        } else {
-            sleep_queue.add(iter);
-        }
-    }
-}
-
-event* wait_for_event(const char* event_name) {
-    if( process_current != NULL ) {
-        process_current->state = process_state::waiting;
-        process_current->event_wait = new char[strlen(const_cast<char*>(event_name))];
-        strcpy( process_current->event_wait, const_cast<char*>(event_name), 0 );
-        sleep_queue.add( process_current );
-        process_switch_immediate();
-        return process_current->event_data;
-    }
-    return NULL;
 }
 
 void process_add_to_runqueue( process* process_to_add ) {
@@ -153,22 +135,146 @@ void process_scheduler() {
     }
     
     process_current = run_queues[current_priority].remove();
+    if( process_current->state == process_state::dead ) {
+        if( process_current->flags & PROCESS_FLAGS_DELETE_ON_EXIT ) {
+            delete process_current;
+            process_current = NULL;
+        }
+        return process_scheduler();
+    }
     //kprintf("New pid=%u.\n", (unsigned long long int)process_current->id);
+}
+
+int send_message_all( message msg ) {
+    int processes_notified = 0;
+    for(int i=0;i<system_processes.length();i++) {
+        if( system_processes[i]->send_message(msg) ) {
+            processes_notified++;
+        }
+    }
+    return processes_notified;
+}
+
+message *get_latest_message() {
+    return process_current->message_queue.remove();
+}
+
+message *wait_for_message() {
+    while( process_current->message_queue.length() == 0 ) {
+        process_switch_immediate();
+    }
+    return process_current->message_queue.remove();
+}
+
+message *wait_for_message( int n_filter_options, ... ) {
+    va_list args;
+    va_start(args, n_filter_options);
+    
+    process_current->set_message_filter_varg( n_filter_options, args );
+    
+    va_end(args);
+    
+    return wait_for_message();
+}
+
+void process::set_message_filter_varg( int n_filter_options, va_list args ) {
+    this->wait_events.clear();
+    for(int i=0;i<n_filter_options;i++) {
+        const char* next = va_arg(args, const char*);
+        this->wait_events.add( next );
+    }
+}
+
+void process::set_message_filter( int n_filter_options, ... ) {
+    va_list args;
+    va_start(args, n_filter_options);
+    
+    this->set_message_filter_varg( n_filter_options, args );
+    
+    va_end(args);
+}
+
+void process::add_to_message_filter_varg( int n_filter_options, va_list args ) {
+    for(int i=0;i<n_filter_options;i++) {
+        const char* next = va_arg(args, const char*);
+        this->wait_events.add( next );
+    }
+}
+
+void process::add_to_message_filter( int n_filter_options, ... ) {
+    va_list args;
+    va_start(args, n_filter_options);
+    
+    this->add_to_message_filter_varg( n_filter_options, args );
+    
+    va_end(args);
+}
+
+void process::remove_from_message_filter_varg( int n_filter_options, va_list args ) {
+    for(int i=0;i<n_filter_options;i++) {
+        const char* filter = va_arg(args, const char*);
+        for( int j=0;j<this->wait_events.length();j++ ) {
+            if( this->wait_events[j] != NULL ) {
+                if( strcmp( const_cast<char*>(this->wait_events[j]), const_cast<char*>(filter) ) ) {
+                    this->wait_events.remove( j );
+                }
+            }
+        }
+    }
+}
+
+void process::remove_from_message_filter( int n_filter_options, ... ) {
+    va_list args;
+    va_start(args, n_filter_options);
+    
+    this->remove_from_message_filter_varg( n_filter_options, args );
+    
+    va_end(args);
+}
+
+// note: this seems *very* inefficient, maybe change it?
+// an enum of possible event values, maybe?
+bool process::send_message( message msg ) {
+    if( (this->state == process_state::waiting) || (this->state == process_state::runnable) ) {
+        for(int i=0;i<this->wait_events.length();i++) {
+            if( this->wait_events[i] != NULL ) {
+                if( strcmp( const_cast<char*>(this->wait_events[i]), const_cast<char*>(msg.message_name) ) ) {
+                    message *copy = new message;
+                    copy->message_name = msg.message_name;
+                    copy->data = msg.data;
+                    this->message_queue.add(copy);
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+message::message() {
+    this->timestamp = get_sys_time_counter();
+}
+
+process::~process() {
+    if( this->id != 0 ) {
+        for( int i=0;i<system_processes.length();i++ ) {
+            if( (system_processes[i] != NULL) && (system_processes[i]->id == this->id) ) {
+                system_processes.set( i, NULL );
+                break;
+            }
+        }
+        for( int i=0;i<run_queues[this->priority].get_count();i++ ) {
+            if( run_queues[this->priority][i]->id == this->id ) {
+                run_queues[this->priority].remove(i);
+            }
+        }
+    }
 }
 
 // caller is responsible for ensuring that the register values are correct!
 process::process( cpu_regs regs, int priority ) {
     this->regs = regs;
     this->priority = priority;
-}
-
-process::~process() {
-    if( this->event_wait != NULL ) {
-        delete[] this->event_wait;
-    }
-    if( this->event_data != NULL ) {
-        delete this->event_data;
-    }
 }
 
 process::process( size_t entry_point, bool is_usermode, int priority, void* args, int n_args ) {
@@ -185,7 +291,6 @@ process::process( size_t entry_point, bool is_usermode, int priority, void* args
         this->regs.edi = 0;
         this->regs.eip = entry_point;
         this->regs.eflags = (1<<9) | (1<<21); // Interrupt Flag and Identification Flag
-        this->regs.ebp = 0;
     
         if( is_usermode ){
             size_t k_stack_start = mmap(4);
@@ -211,6 +316,7 @@ process::process( size_t entry_point, bool is_usermode, int priority, void* args
         }
     
         // Each process' stack runs from 0xBFFFFFFF to 0xBFFFC000 -- that's 0x3FFF bytes, or 1 byte shy of 16KB.
+        
         // kernel mapping (recursive mapping's done in the address_space constructor)
         this->address_space.map_pde( 0, (size_t)&PageTable0, 1 );
         this->address_space.map_pde( 768, (size_t)&PageTable768, 1 );
@@ -221,11 +327,12 @@ process::process( size_t entry_point, bool is_usermode, int priority, void* args
         uint32_t stack_phys_page = this->address_space.get( 0xBFFFF000 );
         uint32_t* tmp_stack_page = (uint32_t*)k_vmem_alloc(1);
         paging_set_pte( (size_t)tmp_stack_page, stack_phys_page, 0 );
-        tmp_stack_page[1023] = n_args;
-        tmp_stack_page[1022] = (uint32_t)args;
-        tmp_stack_page[1021] = (uint32_t)&__process_execution_complete;
+        tmp_stack_page[1022] = n_args;
+        tmp_stack_page[1021] = (uint32_t)args;
+        tmp_stack_page[1020] = (uint32_t)&__process_execution_complete;
         paging_unset_pte( (size_t)tmp_stack_page );
-        this->regs.esp = 0xBFFFFFF3; // 0xC0000000 - 1 - 4 - 4 - 4
+        this->regs.ebp = 0xBFFFFFF0; // 0xC0000000 - 1 - 4 - 4 - 4 - 4 
+        this->regs.esp = 0xBFFFFFF0; // 0xC0000000 - 1 - 4 - 4 - 4 - 4
         this->regs.cr3 = this->address_space.page_directory_physical;
     } else {
         panic("multitasking: failed to initialize address space for process!\n");

@@ -165,7 +165,7 @@ void do_context_switch(uint32_t syscall_n) {
         process_current->regs.load_from_active();
         // reschedule to run
         multitasking_timeslice_tick_count = MULTITASKING_RUN_TIMESLICE;
-        if( process_current->state == process_state::runnable )
+        if( (process_current != NULL) && (process_current->state == process_state::runnable) )
             process_add_to_runqueue( process_current );
         
         uint16_t pic_isr = pic_get_isr();

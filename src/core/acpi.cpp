@@ -1,7 +1,6 @@
 // acpi.cpp -- Non-OSL stuff related to ACPI
-
 #include "includes.h"
-#include "arch/x86/acpi.h"
+#include "core/acpi.h"
 
 void initialize_acpi() {
     ACPI_STATUS err = AE_OK;

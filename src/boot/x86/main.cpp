@@ -1,9 +1,9 @@
 #include "includes.h"
-#include "arch/x86/acpi.h"
 #include "arch/x86/irq.h"
 #include "arch/x86/pic.h"
 #include "arch/x86/table.h"
 #include "arch/x86/multitask.h"
+#include "core/acpi.h"
 #include "boot/multiboot.h"
 #include "core/paging.h"
 #include "core/scheduler.h"
@@ -31,12 +31,6 @@ void test_func(void* n) {
 }
 
 void test_process_1() {
-    volatile uint32_t loop_var = 0;
-    while(true) {
-        loop_var++;
-        kprintf("Process 1! loop_var = %u.\n", (unsigned long long int)loop_var);
-    }
-    /*
     kprintf("Press ENTER to continue...\n");
     terminal_putchar('>');
     while(true) {
@@ -55,7 +49,6 @@ void test_process_1() {
         kfree(line);
         terminal_writestring("\n>");
     }
-    */
 }
 
 void test_process_2() {
@@ -67,7 +60,7 @@ void test_process_2() {
 }
 
 #if defined(__cplusplus)
-extern "C"
+extern "C" {
 #endif
 void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
 {
@@ -96,9 +89,9 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     
     kprintf("Initializing multitasking.\n");
     process *proc1 = new process( (size_t)&test_process_1, false, 0, NULL, 0 );
-    process *proc2 = new process( (size_t)&test_process_2, false, 0, NULL, 0 );
+    //process *proc2 = new process( (size_t)&test_process_2, false, 0, NULL, 0 );
     initialize_multitasking( proc1 );
-    spawn_process( proc2 );
+    //spawn_process( proc2 );
     
     terminal_writestring("Initializing ACPI.\n");
     initialize_acpi();
@@ -172,3 +165,7 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     //while(true)
     //    asm volatile( "hlt\n\t" : : : "memory");
 }
+
+#if defined(__cplusplus)
+}
+#endif

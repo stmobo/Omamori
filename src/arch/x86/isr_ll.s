@@ -9,27 +9,30 @@ _isr_call_cpp_func:
     # -8:  Return EIP
     # -4:  Exception number / error code
     # ESP: Function address
+    push %ebp
+    mov %esp, %ebp
     
     pusha
     
-    # -48: EFLAGS
-    # -44: Return CS
-    # -40: Return Address
-    # -36: ErrCode
-    # -32: Exception Handler Address
-    # -28: EAX
-    # -24: ECX
-    # -20: EDX
-    # -16: EBX
-    # -12: ESP (pre-call)
-    # -8 : EBP
-    # -4 : ESI
-    # ESP: EDI
+    # -52: EFLAGS
+    # -48: Return CS
+    # -44: Return Address
+    # -40: ErrCode
+    # -36: Exception Handler Address
+    # -32: EAX
+    # -28: ECX
+    # -24: EDX
+    # -20: EBX
+    # -16: ESP (pre-call)
+    # -12 : EBP
+    # -8 : ESI
+    # -4: EDI
+    # ESP: EBP (old)
     
-    movl 32(%esp), %eax # get func addr
-    movl 36(%esp), %ebx # get err code (ISR vector no. if no err code)
-    movl 40(%esp), %ecx # saved EIP
-    movl 44(%esp), %edx # saved CS
+    movl 36(%esp), %eax # get func addr
+    movl 40(%esp), %ebx # get err code (ISR vector no. if no err code)
+    movl 44(%esp), %ecx # saved EIP
+    movl 48(%esp), %edx # saved CS
     push %edx
     push %ecx
     push %ebx
@@ -37,6 +40,7 @@ _isr_call_cpp_func:
     add $12, %esp
     
     popa
+    pop %ebp
     add $8, %esp
     iret
     
@@ -49,7 +53,7 @@ _isr_call_cpp_func:
 #
 # %esp will be pointing to either the saved EIP or to the error code, if given.
     
-_isr_div_zero:   
+_isr_div_zero:
     push $0
     push $do_isr_div_zero
     jmp _isr_call_cpp_func

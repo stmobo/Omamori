@@ -2,11 +2,21 @@
 
 #include "includes.h"
 extern "C" {
+    #include "acpica/acconfig.h"
+    #include "acpica/acmacros.h"
     #include "acpica/platform/acenv.h"
     #include "acpica/actypes.h"
-    #include "acpica/accommon.h"
     #include "acpica/acexcep.h"
-    #include "acpica/acpixf.h"
+    #include "acpica/acrestyp.h"
+    #include "acpica/acoutput.h"
+    #include "acpica/acpixf.h"    
+    #include "acpica/actbl.h"
+    #include "acpica/aclocal.h"
+    #include "acpica/acobject.h"
+    #include "acpica/acstruct.h"
+    #include "acpica/acglobal.h"
+    #include "acpica/achware.h"
+    #include "acpica/acutils.h"
 }
 #include "arch/x86/irq.h"
 #include "core/paging.h"

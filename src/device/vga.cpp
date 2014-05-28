@@ -122,8 +122,7 @@ void terminal_putchar(char c)
  
 // terminal_writestring - print a string to screen
 // this function prints a line of text to screen, wrapping and scrolling if necessary.
-// The "extern C" form of this function is meant to be callable from assembly code if necessary.
-extern "C" void terminal_writestring(char* data)
+void terminal_writestring(char* data)
 {
 	size_t datalen = strlen(data);
 	for ( size_t i = 0; i < datalen; i++ ) {

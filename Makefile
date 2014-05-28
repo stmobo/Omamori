@@ -35,9 +35,9 @@ LINK_ORDER_MID   := $(filter-out $(LINK_ORDER_FIRST) $(LINK_ORDER_LAST), $(OBJ_F
 # remap stuff to use our cross-compiler
 AS       := $(HOME)/opt/cross/bin/i686-elf-as
 CC       := $(HOME)/opt/cross/bin/i686-elf-gcc
-CCFLAGS  := -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/acpica -std=gnu99 -ffreestanding -g -O2 -Wall -Wextra -Wno-unused-parameter
+CCFLAGS  := -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/acpica -std=gnu99 -ffreestanding -g -O2 -Wall -Wextra -Wno-unused-parameter -fno-omit-frame-pointer -fno-strict-aliasing
 CXX      := $(HOME)/opt/cross/bin/i686-elf-g++
-CXXFLAGS := -MMD -I$(INCLUDE_DIR) -ffreestanding -g -O2 -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-conversion-null -Wno-write-strings -fno-exceptions -fno-rtti -std=c++11
+CXXFLAGS := -MMD -I$(INCLUDE_DIR) -ffreestanding -g -O2 -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-conversion-null -Wno-write-strings -fno-exceptions -fno-rtti -fno-omit-frame-pointer -std=c++11
 LD       := $(HOME)/opt/cross/bin/i686-elf-gcc
 LDFLAGS  := -ffreestanding -g -O2 -nostdlib
 

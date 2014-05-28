@@ -26,6 +26,6 @@ extern void pci_write_config_8(char, char, char, char, uint8_t);
 extern void pci_write_config_16(char, char, char, char, uint16_t);
 extern void pci_write_config_32(char, char, char, char, uint32_t);
 
-extern void pci_read_config_8(char, char, char, char);
-extern void pci_read_config_16(char, char, char, char);
-extern void pci_read_config_32(char, char, char, char);
+extern uint8_t pci_read_config_8(char, char, char, char);
+extern uint16_t pci_read_config_16(char, char, char, char);
+extern uint32_t pci_read_config_32(char, char, char, char);

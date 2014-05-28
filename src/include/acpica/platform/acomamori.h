@@ -119,18 +119,17 @@
 /* Common (in-kernel/user-space) ACPICA configuration */
 
 // dunno what to #define it as, so i'll just set it to a random integer
-#define ACPI_MUTEX_TYPE             0xF0F0F0F0
+#define ACPI_MUTEX_TYPE             ACPI_OSL_MUTEX
 
 #define ACPI_CACHE_T                ACPI_MEMORY_LIST
 #define ACPI_USE_LOCAL_CACHE        1
 
-//#define ACPI_USE_SYSTEM_INTTYPES
-
+// #define DEFINE_ACPI_GLOBALS
 
 /* External globals for __KERNEL__, stubs is needed */
 
-#define ACPI_GLOBAL(t,a)
-#define ACPI_INIT_GLOBAL(t,a,b)
+#define ACPI_GLOBAL(t,a)            extern t a;
+#define ACPI_INIT_GLOBAL(t,a,b)     extern t a;
 
 /* Generating stubs for configurable ACPICA macros */
 
@@ -164,9 +163,6 @@
 *  We can't directly #include the OS header files-- they're C++! 
 *  However, we CAN include the system headers.
 *
-*  You can probably tell, however, that this is very dangerous
-*  and is probably going to be prone to breaking.
-*
 */
 #if !defined(__cplusplus)
 #include <stdbool.h>
@@ -174,13 +170,27 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define ACPI_FLUSH_CPU_CACHE()      asm volatile("wbinvd" : : : "memory")
+
 // by default ACPI_(MUTEX/SEMAPHORE/SPINLOCK) types are #defined to void*
-// so we don't need to do anything.
+// so we don't need to do anything with those.
 #define ACPI_CPU_FLAGS              uint32_t
 
 #define ACPI_MACHINE_WIDTH          32
 #define COMPILER_DEPENDENT_INT64    long long
 #define COMPILER_DEPENDENT_UINT64   unsigned long long
-#define ACPI_USE_NATIVE_DIVIDE
 
+#define ACPI_DIV_64_BY_32(n_hi, n_lo, d32, q32, r32) \
+asm volatile("mov %0, %%edx\n\t" \
+             "mov %1, %%eax\n\t" \
+             "idiv %%ecx\n\t" \
+             "mov %%eax, %0\n\t" \
+             "mov %%edx, %1\n\t" \
+             : "=g"(q32), "=g"(r32) : "g"(n_hi), "g"(n_lo), "c"(d32) : "%eax", "%edx", "memory");
+
+#define ACPI_SHIFT_RIGHT_64(n_hi, n_lo) \
+asm volatile("shr $1, %0\n\t"\
+             "rcr $1, %1\n\t"\
+             : "=r"(n_hi), "=r"(n_lo) : "0"(n_hi),"1"(n_lo) : "memory" );
+             
 #endif /* __ACOMAMORI_H__ */

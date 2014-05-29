@@ -36,5 +36,6 @@ extern void terminal_putentryat(char, char, size_t, size_t);
 extern void terminal_putchar(char);
 extern void terminal_writestring(char*);
 extern void terminal_writestring(char*, size_t);
+extern void terminal_backspace();
 
 //#define MIRROR_VGA_SERIAL

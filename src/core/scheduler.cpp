@@ -112,7 +112,14 @@ process_queue::process_queue() {
 }
 
 void process_add_to_runqueue( process* process_to_add ) {
+    if( process_to_add == NULL )
+        return;
     if( (process_to_add->priority < SCHEDULER_PRIORITY_LEVELS) && (process_to_add->priority >= 0) ) {
+        for( int i=0;i<run_queues[process_to_add->priority].get_count();i++ ) {
+            if( run_queues[process_to_add->priority][i] && (run_queues[process_to_add->priority][i]->id == process_to_add->id) ) {
+                return; // already added
+            }
+        }
         process_to_add->state = process_state::runnable;
         run_queues[process_to_add->priority].add( process_to_add );
     } else {
@@ -131,7 +138,7 @@ void process_scheduler() {
         }
     }
     if(current_priority == -1) {
-        kprintf("scheduler: no available processes left, sleeping.\n");
+        //kprintf("scheduler: no available processes left, sleeping.\n");
         multitasking_enabled = false; // don't jump to the context switch handler on IRQ0
         asm volatile("sti" : : : "memory"); // make sure we actually can wake up from this
         system_wait_for_interrupt(); // sleep for a bit

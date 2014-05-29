@@ -144,3 +144,15 @@ void terminal_writestring(char* data, size_t datalen)
 	for ( size_t i = 0; i < datalen; i++ )
 		terminal_putchar(data[i]);
 }
+
+void terminal_backspace() {
+    __vga_write_lock.lock();
+    if(--terminal_column > VGA_WIDTH) {
+        if(--terminal_row > VGA_HEIGHT) {
+            terminal_scroll(-1);
+            terminal_row = 0;
+        }
+    }
+    terminal_putentryat(' ', terminal_color, terminal_column, terminal_row);
+    __vga_write_lock.unlock();
+}

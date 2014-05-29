@@ -152,13 +152,7 @@ char* ps2_keyboard_readline(int *len) {
                 break;
             } else if(kp->key == KEY_Bksp && bytes_recv > 0) {
                 bytes_recv--;
-                if(--terminal_column > VGA_WIDTH) {
-                    if(--terminal_row > VGA_HEIGHT) {
-                        terminal_scroll(-1);
-                        terminal_row = 0;
-                    }
-                }
-                terminal_putentryat(' ', terminal_color, terminal_column, terminal_row);
+                terminal_backspace();
             } else if(kp->is_ascii) {
                 buf[bytes_recv] = kp->character;
                 terminal_putchar(kp->character);

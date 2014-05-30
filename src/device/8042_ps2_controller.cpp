@@ -4,6 +4,7 @@
 #include "arch/x86/irq.h"
 #include "arch/x86/pic.h"
 #include "core/scheduler.h"
+#include "core/message.h"
 #include "device/vga.h"
 #include "device/pit.h"
 #include "device/ps2_controller.h"
@@ -64,36 +65,37 @@ unsigned char ps2_wait_for_input() {
 }
 
 unsigned char port2_input_buffer[256];
-
-mutex     irq1_buffer_mutex;
-semaphore irq1_buffer_fill(0,256);
-semaphore irq1_buffer_empty(256,256);
+mutex irq1_buffer_mutex;
 
 int port1_buffer_length = 0;
 int port2_buffer_length = 0;
 
 // there's probably a better way to implement this, I just haven't thought of it
-unsigned char port1_input_buffer[256];
+unsigned char port1_input_buffer[0x1000];
 volatile unsigned int  port1_data_head = 0;
 volatile unsigned int  port1_data_tail = 0;
-process* current_waiter = NULL;
+process *current_waiter = NULL;
 
 unsigned char ps2_receive_byte(bool port2) {
     //kprintf("ps2_receive_byte: checking/waiting for data...\n");
+    
+    /*
+    unsigned int data = (unsigned int)msg->data;
+    delete msg;
+    return (unsigned char)data;
+    */
     irq1_buffer_mutex.lock();
+    current_waiter = process_current;
     while( true ) {
         process_current->state = process_state::waiting;
-        if( port1_data_tail != port1_data_head )
+        if( port1_data_tail != port1_data_head ) {
             break;
-        current_waiter = process_current;
+        }
         process_switch_immediate();
     }
     process_current->state = process_state::runnable;
-    
-    //kprintf("ps2_receive_byte: there's something here!\n");
-    // get data
     uint8_t data = port1_input_buffer[port1_data_tail++];
-    port1_data_tail %= 256;
+    port1_data_tail %= 0x1000;
     current_waiter = NULL;
     irq1_buffer_mutex.unlock();
     
@@ -102,9 +104,10 @@ unsigned char ps2_receive_byte(bool port2) {
 }
 
 void irq1_handler() {
-    port1_input_buffer[port1_data_head] = io_inb(0x60);
-    port1_data_head = (port1_data_head+1) % 256;
-    if( current_waiter ) {
+    unsigned char data = io_inb(0x60);
+    port1_input_buffer[port1_data_head] = data;
+    port1_data_head = (port1_data_head+1) % 0x1000;
+    if(current_waiter != NULL) {
         current_waiter->state = process_state::runnable;
         process_add_to_runqueue( current_waiter );
     }
@@ -246,12 +249,6 @@ void ps2_controller_init() {
     kprintf("Port 1 ident: 0x%x\n", port1_ident);
     kprintf("Port 2 ident: 0x%x\n", port2_ident);
 #endif 
-    // Prepare the SLIH.
-    /*
-    irq1_handler_process = new process( (size_t)&irq1_delayed_handler, false, 0, "irq1_handler_process",NULL, 0 );
-    spawn_process( irq1_handler_process, false ); // don't immediately schedule the process to run
-    */
-    
     // Now enable interrupts.
     irq_add_handler( 1, (size_t)&irq1_handler );
     irq_add_handler( 12, (size_t)&irq12_handler );

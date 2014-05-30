@@ -4,6 +4,7 @@
 #include "includes.h"
 #include "core/paging.h"
 #include "core/dynmem.h"
+#include "core/scheduler.h"
 #include "arch/x86/multitask.h"
 #include "arch/x86/irq.h"
 
@@ -70,7 +71,12 @@ void *kmalloc(size_t length, unsigned int flags) {
                     }
                     // otherwise, we can't, so we don't add a new block
                     // (remember: current->status already == HEAP_HEADER_STATUS_USED)
-                    return (void*)((size_t)current+sizeof(k_heap_header)+1);
+                    void *ret_ptr = (void*)((size_t)current+sizeof(k_heap_header)+1);
+                    uint8_t *clear_ptr = (uint8_t*)ret_ptr;
+                    for(size_t i=0;i<length;i++) {
+                        clear_ptr[i] = 0;
+                    }
+                    return ret_ptr;
                 }
             } else {
                 // okay so we're at the end of the list, and we need to add a new block
@@ -82,7 +88,12 @@ void *kmalloc(size_t length, unsigned int flags) {
                     new_block->next = NULL;
                     new_block->status = HEAP_HEADER_STATUS_FREE;
                     current->next = new_block;
-                    return (void*)((size_t)current+sizeof(k_heap_header)+1);
+                    void *ret_ptr = (void*)((size_t)current+sizeof(k_heap_header)+1);
+                    uint8_t *clear_ptr = (uint8_t*)ret_ptr;
+                    for(size_t i=0;i<length;i++) {
+                        clear_ptr[i] = 0;
+                    }
+                    return ret_ptr;
                 } else {
                     // not enough space left on the current set
                     // go to the next set
@@ -115,7 +126,12 @@ void *kmalloc(size_t length, unsigned int flags) {
                     set_start_block->next = allocation_start_block;
                     current->next = set_start_block;
                     current->status = HEAP_HEADER_STATUS_FREE;
-                    return (void*)((size_t)set_start_block+sizeof(k_heap_header)+1);
+                    void *ret_ptr = (void*)((size_t)set_start_block+sizeof(k_heap_header)+1);
+                    uint8_t *clear_ptr = (uint8_t*)ret_ptr;
+                    for(size_t i=0;i<length;i++) {
+                        clear_ptr[i] = 0;
+                    }
+                    return ret_ptr;
                 }
             }
         }
@@ -151,6 +167,7 @@ void *kmalloc(size_t length) {
     }
 }
 
+void* panic_ptr;
 void kfree(void* ptr) {
     k_heap_header *header = (k_heap_header*)((size_t)ptr-sizeof(k_heap_header)-1);
     if(header->status == HEAP_HEADER_STATUS_USED) {
@@ -160,7 +177,7 @@ void kfree(void* ptr) {
         // iterate->next = header
         // or iterate == NULL in which case we're trying to free an invalid (unreachable) block
         if(iterate == NULL) {
-            panic("dynmem: attempted to free an unreachable block!");
+            panic("dynmem: attempted to free an unreachable block!\nPointer points to: 0x%p.", ptr);
         }
         if( __sync_bool_compare_and_swap( &header->next->status, HEAP_HEADER_STATUS_FREE, HEAP_HEADER_STATUS_USED ) ) {
             // header->next is free
@@ -195,6 +212,7 @@ void kfree(void* ptr) {
             return; // if the pointer wasn't returned from k_vmem_alloc, then nothing happens.
         // now we've ruled out the possibility of a page-level allocation
         // so that means that this pointer is invalid.
-        panic("dynmem: attempted to free an invalid pointer!\nPointer points to: 0x%x.\n", (uint64_t)ptr);
+        panic_ptr = ptr;
+        panic("dynmem: attempted to free an invalid pointer!\nPointer points to: 0x%p.\n", ptr);
     }
 }

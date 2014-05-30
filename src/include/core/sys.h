@@ -49,7 +49,7 @@ template <class T>
 T* resize(T* alloc_to_extend, int n_elements, int desired_elements) {
     T* new_alloc = (T*)kmalloc(sizeof(T)*desired_elements);
     if( (alloc_to_extend != NULL) && (new_alloc != NULL) ) {
-        for(int i=0;i<desired_elements;i++) {
+        for(int i=0;i<((n_elements<desired_elements) ? n_elements:desired_elements);i++) {
             new_alloc[i] = alloc_to_extend[i];
         }
         kfree(alloc_to_extend);

@@ -6,6 +6,7 @@
 #include "device/ps2_controller.h"
 #include "device/ps2_keyboard.h"
 #include "device/vga.h"
+#include "lib/vector.h"
 
 // for now, we'll just assume that port1 is always connected to the keyboard.
 // Because virtualbox's emulated keyboard apparently does not send ident bytes in response to an 0xF2.
@@ -15,6 +16,8 @@ char current_state;
 
 ps2_keypress* keystroke_buffer[256];
 int keystroke_buffer_offset = 0;
+
+process *keyboard_input_process;
 
 char shift_char(char in) {
     switch(in) {
@@ -109,19 +112,33 @@ ps2_keypress* convert_scancode(bool f0, bool e0, unsigned char code_end) {
 }
 
 ps2_keypress* ps2_keyboard_get_keystroke() { // blocks for a keystroke
+    set_event_listen_status( "keypress", true );
+    message *msg = wait_for_message();
+    ps2_keypress *data = (ps2_keypress*)msg->data;
+    delete msg;
+    return data;
+}
+
+void ps2_keyboard_input_process() {
     bool e0 = false;
     bool f0 = false;
     
     while(true) {
         unsigned char data = ps2_receive_byte(false);
-        if(data == 0xE0)
+        if(data == 0xE0) {
             e0 = true;
-        else if(data == 0xF0)
+        } else if(data == 0xF0) {
             f0 = true;
-        else
-            return convert_scancode(f0, e0, data);
+        } else {
+            ps2_keypress* key = convert_scancode(f0, e0, data);
+            message msg;
+            msg.type = "keypress";
+            msg.data = key;
+            send_message( msg );
+            e0 = false;
+            f0 = false;
+        }
     }
-    return NULL;
 }
 
 
@@ -138,35 +155,37 @@ void ps2_keyboard_initialize() {
         ps2_send_byte(0xF4, false); // 0xF4 - Enable scanning
         ps2_wait_for_input();
     //}
+    register_event_type( "keypress" );
+    keyboard_input_process = new process( (size_t)&ps2_keyboard_input_process, false, 0, "ps2kb_in" ,NULL, 0 );
+    spawn_process( keyboard_input_process, true );
 }
 
 char* ps2_keyboard_readline(int *len) {
-    char* buf = (char*)kmalloc(HEAP_MEMBLOCK_SIZE);
-    int bytes_recv = 0;
-    size_t buf_sz = HEAP_MEMBLOCK_SIZE;
+    vector<char> buffer;
     while(true) {
         ps2_keypress *kp = ps2_keyboard_get_keystroke();
         if(!kp->released) {
             if(kp->key == KEY_Enter) {
                 terminal_putchar('\n');
                 break;
-            } else if(kp->key == KEY_Bksp && bytes_recv > 0) {
-                bytes_recv--;
+            } else if(kp->key == KEY_Bksp && buffer.length() > 0) {
+                buffer.remove_end();
                 terminal_backspace();
             } else if(kp->is_ascii) {
-                buf[bytes_recv] = kp->character;
+                buffer.add(kp->character);
                 terminal_putchar(kp->character);
-                if(bytes_recv > buf_sz) {
-                    buf_sz += HEAP_MEMBLOCK_SIZE;
-                    char *buf2 = (char*)kmalloc(buf_sz);
-                    for(int i=0;i<bytes_recv;i++)
-                        buf2[i] = buf[i];
-                    buf = buf2;
-                }
-                bytes_recv++;
             }
         }
     }
-    *len = bytes_recv;
-    return buf;
+    char *ret = (char*)kmalloc(buffer.length());
+    if(ret) {
+        for(int i=0;i<buffer.length();i++) {
+            ret[i] = buffer[i];
+        }
+        *len = buffer.length();
+        return ret;
+    } else {
+        *len = -1;
+        return NULL;
+    }
 }

@@ -1,6 +1,7 @@
 #pragma once
 #include "includes.h"
 #include "arch/x86/multitask.h"
+#include "core/message.h"
 #include "device/pit.h"
 #include "lib/vector.h"
 
@@ -52,15 +53,6 @@ typedef struct address_space {
     ~address_space();
 } process_address_space;
 
-typedef struct message {
-    const char* message_name;
-    void*       data;
-    uint64_t    timestamp;
-    
-    message( const char* ev_name, void* ev_data ) { this->message_name = ev_name; this->data = ev_data; this->timestamp = get_sys_time_counter(); };
-    message();
-} message;
-
 typedef struct process {
     cpu_regs                 regs;
     cpu_regs                 user_regs;
@@ -72,24 +64,15 @@ typedef struct process {
     process_address_space    address_space;
     process_state            state;
     uint32_t                 wait_time;
-    vector<const char*>      wait_events;
     uint32_t                 return_value;
     vector<message*>         message_queue;
+    mutex                    message_queue_lock;
     
     ~process();
     process( cpu_regs, int, const char* );
     process( size_t entry_point, bool is_usermode, int priority, const char* name, void* args, int n_args );
     
     bool send_message( message );
-    
-    void set_message_filter_varg( int, va_list );
-    void set_message_filter( int, ... );
-    
-    void add_to_message_filter_varg( int, va_list );
-    void add_to_message_filter( int, ... );
-    
-    void remove_from_message_filter_varg( int, va_list );
-    void remove_from_message_filter( int, ... );
 } process;
 
 // simple FIFO process queue

@@ -342,6 +342,7 @@ void panic(char *str, ...) {
     // Disable multitasking (and spinlocks too).
     multitasking_enabled = 0;
     if(double_panic) { // triple panic / fault!
+        panic_str = str;
         while(true) {
             asm volatile("cli\n\t"
             "hlt"

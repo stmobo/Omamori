@@ -1,5 +1,6 @@
 // cxa.cpp - __cxa_* functions
 
+#include "includes.h"
 #include "core/cxa.h"
 
 cxa_term_func::cxa_term_func() {
@@ -15,6 +16,10 @@ cxa_term_func::cxa_term_func(const cxa_term_func *obj2) {
 }
 
 cxa_termination_func __cxa_exit_funcs[ATEXIT_MAX_FUNCS];
+
+extern "C" void __cxa_pure_virtual() {
+    kprintf("Invalid pure virtual function call!");
+}
 
 extern "C" int __cxa_atexit( void (*destructor)(void*), void* arg, void *dso ) {
     for(int i=0;i<ATEXIT_MAX_FUNCS;i++) {

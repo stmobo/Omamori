@@ -157,119 +157,6 @@ void process_scheduler() {
     //kprintf("New pid=%u.\n", (unsigned long long int)process_current->id);
 }
 
-int send_message_all( message msg ) {
-    int processes_notified = 0;
-    for(int i=0;i<system_processes.length();i++) {
-        if( system_processes[i] ) {
-            if( system_processes[i]->send_message(msg) ) {
-                processes_notified++;
-            }
-        }
-    }
-    return processes_notified;
-}
-
-// yes, you have to delete the returned pointer.
-message *get_latest_message() {
-    return process_current->message_queue.remove();
-}
-
-message *wait_for_message() {
-    while( process_current->message_queue.length() == 0 ) {
-        process_switch_immediate();
-    }
-    return process_current->message_queue.remove();
-}
-
-message *wait_for_message( int n_filter_options, ... ) {
-    va_list args;
-    va_start(args, n_filter_options);
-    
-    process_current->set_message_filter_varg( n_filter_options, args );
-    
-    va_end(args);
-    
-    return wait_for_message();
-} 
-
-void process::set_message_filter_varg( int n_filter_options, va_list args ) {
-    this->wait_events.clear();
-    for(int i=0;i<n_filter_options;i++) {
-        const char* next = va_arg(args, const char*);
-        this->wait_events.add( next );
-    }
-}
-
-void process::set_message_filter( int n_filter_options, ... ) {
-    va_list args;
-    va_start(args, n_filter_options);
-    
-    this->set_message_filter_varg( n_filter_options, args );
-    
-    va_end(args);
-}
-
-void process::add_to_message_filter_varg( int n_filter_options, va_list args ) {
-    for(int i=0;i<n_filter_options;i++) {
-        const char* next = va_arg(args, const char*);
-        this->wait_events.add( next );
-    }
-}
-
-void process::add_to_message_filter( int n_filter_options, ... ) {
-    va_list args;
-    va_start(args, n_filter_options);
-    
-    this->add_to_message_filter_varg( n_filter_options, args );
-    
-    va_end(args);
-}
-
-void process::remove_from_message_filter_varg( int n_filter_options, va_list args ) {
-    for(int i=0;i<n_filter_options;i++) {
-        const char* filter = va_arg(args, const char*);
-        for( int j=0;j<this->wait_events.length();j++ ) {
-            if( this->wait_events[j] != NULL ) {
-                if( strcmp( const_cast<char*>(this->wait_events[j]), const_cast<char*>(filter) ) ) {
-                    this->wait_events.remove( j );
-                }
-            }
-        }
-    }
-}
-
-void process::remove_from_message_filter( int n_filter_options, ... ) {
-    va_list args;
-    va_start(args, n_filter_options);
-    
-    this->remove_from_message_filter_varg( n_filter_options, args );
-    
-    va_end(args);
-}
-
-// note: this seems *very* inefficient, maybe change it?
-// an enum of possible event values, maybe?
-bool process::send_message( message msg ) {
-    if( (this->state == process_state::waiting) || (this->state == process_state::runnable) ) {
-        for(int i=0;i<this->wait_events.length();i++) {
-            if( this->wait_events[i] != NULL ) {
-                if( strcmp( const_cast<char*>(this->wait_events[i]), const_cast<char*>(msg.message_name) ) ) {
-                    message *copy = new message;
-                    copy->message_name = msg.message_name;
-                    copy->data = msg.data;
-                    this->message_queue.add(copy);
-                    return true;
-                }
-            }
-        }
-    }
-    return false;
-}
-
-message::message() {
-    this->timestamp = get_sys_time_counter();
-}
-
 process::~process() {
     if( this->id != 0 ) {
         for( int i=0;i<system_processes.length();i++ ) {
@@ -355,7 +242,7 @@ process::process( size_t entry_point, bool is_usermode, int priority, const char
         paging_set_pte( (size_t)tmp_stack_page, stack_phys_page, 0 );
         tmp_stack_page[1022] = n_args;
         tmp_stack_page[1021] = (uint32_t)args;
-        tmp_stack_page[1020] = (uint32_t)&__process_execution_complete;
+        tmp_stack_page[1020] = (uint32_t)&__process_execution_complete; // fixme: i'm putting this in the wrong spot, process execution returns to 0 instead
         paging_unset_pte( (size_t)tmp_stack_page );
         this->regs.ebp = 0xBFFFFFF0; // 0xC0000000 - 1 - 4 - 4 - 4 - 4 
         this->regs.esp = 0xBFFFFFF0; // 0xC0000000 - 1 - 4 - 4 - 4 - 4

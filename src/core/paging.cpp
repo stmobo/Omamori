@@ -717,7 +717,7 @@ void paging_handle_pagefault(char error_code, uint32_t cr2, uint32_t eip, uint32
     if(in_pagefault) { // don't want to recursively pagefault (yet)
         recursive_cr2 = cr2;
         recursive_ins = eip;
-        panic("paging: page fault in page fault handler!\npaging: initial CR2: 0x%x\npaging: recursive CR2: 0x%x", (unsigned long long int)panic_cr2, (unsigned long long int)recursive_cr2);
+        panic("paging: page fault in page fault handler!\npaging: initial CR2: 0x%x\npaging: recursive CR2: 0x%x", panic_cr2, recursive_cr2);
     }
     panic_cr2 = cr2;
     panic_ins = eip;
@@ -732,8 +732,10 @@ void paging_handle_pagefault(char error_code, uint32_t cr2, uint32_t eip, uint32
             }
         }
         if( cr2 < 0x1000 ) { // invalid address-- first page is not and never should be mapped (NULL address page)
-            panic("paging: invalid memory access (possible NULL pointer dereference?)\nAccessed address: 0x%x\nEIP=0x%x\nCS=0x%x",
-            (unsigned long long int)cr2, (unsigned long long int)eip, (unsigned long long int)cs);
+            panic_cr2 = cr2;
+            panic_ins = eip;
+            panic("paging: invalid memory access (possible NULL pointer dereference?)\nAccessed address: 0x%X\nEIP=0x%X\nCS=0x%X",
+            cr2, eip, cs);
         }
         //kprintf("Page fault!\n");
         //kprintf("CR2: 0x%x\n", (unsigned long long int)cr2);

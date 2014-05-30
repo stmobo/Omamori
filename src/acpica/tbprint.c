@@ -309,7 +309,7 @@ AcpiTbVerifyChecksum (
             "Incorrect checksum in table [%4.4s] - 0x%2.2X, "
             "should be 0x%2.2X",
             Table->Signature, Table->Checksum,
-            (UINT8) (Table->Checksum - Checksum)));
+            (Table->Checksum - Checksum)));
 
 #if (ACPI_CHECKSUM_ABORT)
         return (AE_BAD_CHECKSUM);

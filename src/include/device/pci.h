@@ -1,9 +1,16 @@
 // pci.h
 #pragma once
+#include "includes.h"
 
 #define PCI_IO_CONFIG_ADDRESS       0xCF8
 #define PCI_IO_CONFIG_DATA          0xCFC
 
+typedef struct pcie_ecs_range {
+    uint32_t mmio_paddr;
+    char     bus_start;
+    char     bus_end;
+    size_t   vaddr;
+} pcie_ecs_range;
 
 struct pci_device {
     uint8_t bus;

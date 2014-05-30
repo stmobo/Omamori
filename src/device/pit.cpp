@@ -17,7 +17,7 @@ double sys_timer_ms_fraction = 0;
 double ms_per_tick = 0; // (1/pit_frequency)*1000
 
 // This is called AFTER context switching, but before new task context is loaded.
-void irq0_handler() {
+bool irq0_handler() {
     /*
     if(multitasking_enabled) {
         kprintf("IRQ0!\nTimeslice counter: 0x%x!\n", (unsigned long long int)multitasking_timeslice_tick_count);
@@ -29,6 +29,7 @@ void irq0_handler() {
 
     sys_timer_ms += ms_added;
     sys_timer_ms_fraction = fractional(sys_timer_ms_fraction);
+    return true;
 }
 
 unsigned long long int get_sys_elapsed_time() {

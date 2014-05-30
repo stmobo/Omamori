@@ -89,7 +89,7 @@ message *wait_for_message() {
 }
 
 bool set_event_listen_status( char* event_name, bool status ) {
-    vector<process*>* queue = (*message_queues)[event_name];
+    vector<process*>* queue = message_queues->get(event_name);
     if(queue) {
         if(status) {
             for(int i=0;i<queue->length();i++) {

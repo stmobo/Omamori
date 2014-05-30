@@ -125,7 +125,7 @@ int write_uart_fifo(short base) {
 }
 
 // serial_irq - UART interrupt handler
-void serial_irq() {
+bool serial_irq() {
     short port = COM1_BASE_PORT;
     char iir;
     if( ((iir = io_inb(COM1_BASE_PORT+2)) & (IIR_INT_NOT_PENDING)) == 0 ) {
@@ -142,6 +142,8 @@ void serial_irq() {
         read_uart_fifo(port);
     if(iir & (IIR_INT_THR_EMPTY))
         write_uart_fifo(port);
+        
+    return true;
 }
 
 char* serial_read(int *ret_bytes) {

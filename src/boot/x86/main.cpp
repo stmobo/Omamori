@@ -40,8 +40,8 @@ void test_process_1() {
     kprintf("Initializing PS/2 keyboard.\n");
     ps2_keyboard_initialize();
     
-    kprintf("Initializing PCI.\n");
-    pci_check_bus(0);
+    //kprintf("Initializing PCI.\n");
+    //pci_check_bus(0);
     
     kprintf("Press ENTER to continue...\n");
     terminal_putchar('>');
@@ -135,8 +135,8 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     // now initialize PCI
     // well, maybe later
     
-    terminal_writestring("Initializing serial interface.\n");
-    initialize_serial(COM1_BASE_PORT, 3);
+    //terminal_writestring("Initializing serial interface.\n");
+    //initialize_serial(COM1_BASE_PORT, 3);
     
     /*
     serial_print_basic("Serial port 1 active.\n");

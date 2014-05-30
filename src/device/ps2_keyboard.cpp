@@ -172,7 +172,7 @@ char* ps2_keyboard_readline(int *len) {
                 buffer.remove_end();
                 terminal_backspace();
             } else if(kp->is_ascii) {
-                buffer.add(kp->character);
+                buffer.add_end(kp->character);
                 terminal_putchar(kp->character);
             }
         }

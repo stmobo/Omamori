@@ -60,7 +60,7 @@ void spawn_process( process* to_add, bool sched_immediate ) {
     system_processes.add( to_add );
     if( sched_immediate )
         process_add_to_runqueue( to_add );
-    kprintf("Starting new process with ID: %u (%s).", (unsigned long long int)to_add->id, to_add->name);
+    //kprintf("Starting new process with ID: %u (%s).", (unsigned long long int)to_add->id, to_add->name);
 }
 
 void process_queue::add(process* process_to_add) {
@@ -122,8 +122,6 @@ void process_add_to_runqueue( process* process_to_add ) {
         }
         process_to_add->state = process_state::runnable;
         run_queues[process_to_add->priority].add( process_to_add );
-    } else {
-        kprintf("Invalid process priority %u\n", (unsigned long long int)(process_to_add->priority));
     }
 }
 
@@ -230,7 +228,7 @@ process::process( size_t entry_point, bool is_usermode, int priority, const char
         this->address_space.map_pde( 768, (size_t)&PageTable768, 1 );
         // map stack frames in
         for(int i=0;i<PROCESS_STACK_SIZE;i++) {
-            kprintf("multitasking: mapping in stack page for new process: 0x%x\n", (unsigned long long int)(((0xC0000000-1)-(i*0x1000))&0xFFFFF000));
+            //kprintf("multitasking: mapping in stack page for new process: 0x%x\n", (unsigned long long int)(((0xC0000000-1)-(i*0x1000))&0xFFFFF000));
             if(!this->address_space.map_new( ((0xC0000000-1)-(i*0x1000))&0xFFFFF000, 1 ))
                 panic("multitasking: failed to initialize stack frames for process!");
         }
@@ -238,14 +236,14 @@ process::process( size_t entry_point, bool is_usermode, int priority, const char
         uint32_t* tmp_stack_page = (uint32_t*)k_vmem_alloc(1);
         if( stack_phys_page == NULL )
             panic("multitasking: failed to initialize stack frames!");
-        kprintf("multitasking: process stack starts at paddr 0x%x.\n", (unsigned long long int)stack_phys_page);
+        //kprintf("multitasking: process stack starts at paddr 0x%x.\n", (unsigned long long int)stack_phys_page);
         paging_set_pte( (size_t)tmp_stack_page, stack_phys_page, 0 );
         tmp_stack_page[1022] = n_args;
         tmp_stack_page[1021] = (uint32_t)args;
-        tmp_stack_page[1020] = (uint32_t)&__process_execution_complete; // fixme: i'm putting this in the wrong spot, process execution returns to 0 instead
+        tmp_stack_page[1020] = (uint32_t)&__process_execution_complete;
         paging_unset_pte( (size_t)tmp_stack_page );
-        this->regs.ebp = 0xBFFFFFF0; // 0xC0000000 - 1 - 4 - 4 - 4 - 4 
-        this->regs.esp = 0xBFFFFFF0; // 0xC0000000 - 1 - 4 - 4 - 4 - 4
+        this->regs.ebp = 0xBFFFFFF0; // 0xC0000000 - 4 - 4 - 4 - 4 
+        this->regs.esp = 0xBFFFFFF0; // 0xC0000000 - 4 - 4 - 4 - 4
         this->regs.cr3 = this->address_space.page_directory_physical;
     } else {
         panic("multitasking: failed to initialize address space for process!\n");
@@ -258,7 +256,7 @@ page_table::page_table() {
     if( frame != NULL ) {
         this->ready = true;
         this->paddr = frame->address;
-        kprintf("New page table initialized at address 0x%x.\n", (uint64_t)this->paddr);
+        //kprintf("New page table initialized at address 0x%x.\n", (uint64_t)this->paddr);
     }
 }
 
@@ -401,7 +399,7 @@ bool address_space::map( size_t vaddr, size_t paddr, int flags ) {
     if( table ) {
         //kprintf("address_space::map: Page table at 0x%x mapped to 0x%x.\n", (unsigned long long int)pt->paddr, (unsigned long long int)table);
         //kprintf("address_space::map: mapping v0x%x -> p0x%x.\n", (unsigned long long int)vaddr, (unsigned long long int)paddr );
-        kprintf("address_space::map: table=0x%p, table_offset=%u\n", table, (unsigned long long int)table_offset );
+        //kprintf("address_space::map: table=0x%p, table_offset=%u\n", table, (unsigned long long int)table_offset );
         table[table_offset] = paddr | flags;
         pt->unmap();
         return true;
@@ -480,6 +478,6 @@ uint32_t address_space::get( size_t vaddr ) {
         pt->unmap();
         return ret;
     }
-    kprintf("address_space::get: could not map page table to active memory.\n");
+    //kprintf("address_space::get: could not map page table to active memory.\n");
     return 0;
 }

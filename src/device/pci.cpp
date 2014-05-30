@@ -1,10 +1,15 @@
 // pci.cpp
+// also handles PCI Express (well, whenever I get around to writing support for it)
 
 #include "includes.h"
 #include "device/pci.h"
+#include "lib/vector.h"
 
 pci_device **pci_devices = NULL;
 int pci_n_devices = 0;
+
+uint32_t pcie_mmio_base = 0;
+vector<pcie_ecs_range*> ecs_ranges;
 
 uint32_t pci_read_config_32(char bus, char device, char func, char offset) {
     uint32_t config_addr = (0x80000000 | (bus<<16) | (device<<11) | (func<<8) | (offset&0xFC));

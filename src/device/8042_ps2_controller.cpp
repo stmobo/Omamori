@@ -103,7 +103,7 @@ unsigned char ps2_receive_byte(bool port2) {
     return data;
 }
 
-void irq1_handler() {
+bool irq1_handler() {
     unsigned char data = io_inb(0x60);
     port1_input_buffer[port1_data_head] = data;
     port1_data_head = (port1_data_head+1) % 0x1000;
@@ -111,9 +111,10 @@ void irq1_handler() {
         current_waiter->state = process_state::runnable;
         process_add_to_runqueue( current_waiter );
     }
+    return true;
 }
 
-void irq12_handler() {
+bool irq12_handler() {
     unsigned char data = io_inb(0x60);
 #ifdef DEBUG
     kprintf("IRQ 12! Data=0x%x\n", data);
@@ -122,6 +123,7 @@ void irq12_handler() {
     port2_buffer_length++;
     if(port2_buffer_length > 255)
         port2_buffer_length = 0;
+    return true;
 }
 
 void ps2_set_interrupt_status(bool status, bool port2) {

@@ -6,8 +6,9 @@
 #include "core/sys.h"
 #include "arch/x86/pic.h"
 #include "arch/x86/irq.h"
+#include "lib/vector.h"
 
-size_t irq_handlers[16] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };
+vector<size_t> irq_handlers[16];
 signed int waiting_for = -1;
 bool do_wait = false;
 bool in_irq_context = false;
@@ -18,9 +19,13 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
         waiting_for = -1;
     */
     in_irq_context = true;
-    if(irq_handlers[irq_num] != 0) {
-        void (*handler)(void) = (void(*)())irq_handlers[irq_num]; // jump to the stored function pointer...
-        handler(); // ...and hope there's someone there to catch us.
+    if(irq_handlers[irq_num].length() > 0) {
+        for( int i=0;i<irq_handlers[irq_num].length();i++ ) {
+            bool(*handler)(void) = (bool(*)())(irq_handlers[irq_num].get(i)); // jump to the stored function pointer...
+            if(handler()) {
+                break; // irq's handled, we're done here
+            }
+        }
     }
     pic_end_interrupt(irq_num);
     in_irq_context = false;
@@ -28,18 +33,22 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
 }
 
 bool irq_add_handler(int irq_num, size_t addr) {
-    if(irq_handlers[irq_num] != 0)
-        return false;
-    irq_handlers[irq_num] = addr;
+    for( int i=0;i<irq_handlers[irq_num].length();i++ ) {
+        if( irq_handlers[irq_num].get(i) == addr ) {
+            return false;
+        }
+    }
+    irq_handlers[irq_num].add(addr);
     irq_set_mask(irq_num, false);
     return true;
 }
 
-bool irq_remove_handler(int irq_num) {
-    if(irq_handlers[irq_num] == 0)
-        return false;
-    irq_handlers[irq_num] = 0;
-    irq_set_mask(irq_num, true);
+bool irq_remove_handler(int irq_num, size_t addr) {
+    for( int i=0;i<irq_handlers[irq_num].length();i++ ) {
+        if( irq_handlers[irq_num].get(i) == addr ) {
+            irq_handlers[irq_num].remove(i);
+        }
+    }
     return true;
 }
 

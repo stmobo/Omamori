@@ -97,7 +97,7 @@ extern "C" {
                     }
                 }
             }
-            search_addr += 0x8;
+            search_addr += 0x10;
         }
         kprintf("acpi: could not find RDSP!\n");
         return 0xFFFFFFFF;
@@ -350,8 +350,9 @@ extern "C" {
 
     ACPI_OSD_HANDLER __acpi_irq;
     void* __acpi_irq_context;
-    void __acpi_interrupt() {
+    bool __acpi_interrupt() {
         __acpi_irq(__acpi_irq_context);
+        return true;
     }
       
     ACPI_STATUS AcpiOsInstallInterruptHandler(UINT32 InterruptLevel, ACPI_OSD_HANDLER Handler, void *Context) {
@@ -362,7 +363,7 @@ extern "C" {
     }
     
     ACPI_STATUS AcpiOsRemoveInterruptHandler(UINT32 InterruptNumber, ACPI_OSD_HANDLER Handler) {
-        irq_remove_handler(InterruptNumber);
+        irq_add_handler(InterruptNumber, (size_t)&__acpi_interrupt);
         return AE_OK;
     }
     

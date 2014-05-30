@@ -201,7 +201,7 @@ void do_context_switch(uint32_t syscall_n) {
 void process_exec_complete( uint32_t return_value ) {
     process_current->state = process_state::dead;
     process_current->return_value = return_value;
-    process_switch_immediate();
+    while(true) { process_switch_immediate(); }
     panic("Reached end of process execution but still going on!\n");
 }
 

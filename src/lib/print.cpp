@@ -121,166 +121,519 @@ char *append_char(char* str1, char c) {
     return out;
 }
 
-// Print to string
-char *ksprintf_varg(const char* str, va_list args) {
-    char *out = (char*)kmalloc(1);
-    out[0] = '\0';
-    for( size_t i=0;i<strlen(const_cast<char*>(str));i++ ) {
-        if( str[i] == '%' ) {
-            switch( str[i+1] ) {
-                case 'u':
-                {
-                    char *str2 = int_to_decimal( va_arg(args, unsigned long long int) );
-                    char *out_copy = concatentate_strings( out, str2 );
-                    kfree(out);
-                    out = out_copy;
-                    i++;
+char *printf_form_final_str( va_list args, char specifier,
+    char type_length, int min_width, int precision,
+    bool pad_left, bool pad_zeroes, bool add_sign,
+    bool add_blank, bool add_identifier ) 
+    {
+    
+    bool is_negative = false;
+    char *str2 = NULL;
+    switch( specifier ){
+        case 'c':
+        {
+            char c = va_arg(args, int);
+            str2 = (char*)kmalloc(2);
+            str2[0] = c;
+            str2[1] = 0;
+            return str2;
+        }
+        case 's':
+        {
+            char *str3 = va_arg(args, char*);
+            return str3;
+        }
+        case 'u':
+        {
+            switch( type_length ) {
+                case 'q':
+                    str2 = int_to_decimal( (unsigned char)va_arg(args, int) );
                     break;
-                }
-                case 'd':
-                case 'i':
-                {
-                    signed long long int silli = va_arg(args, signed long long int);
-                    char *str2 = int_to_decimal( silli );
-                    if(silli < 0) {
-                        str2 = concatentate_strings( "-", str2 );
-                        silli *= -1;
-                    }
-                    char *out_copy = concatentate_strings( out, str2 );
-                    kfree(out);
-                    out = out_copy;
-                    i++;
+                case 'h':
+                    str2 = int_to_decimal( (unsigned short int)va_arg(args, int) );
                     break;
-                }
-                case 'o':
-                {
-                    char *str2 = int_to_octal( va_arg(args, long long int) );
-                    char *out_copy = concatentate_strings( out, str2 );
-                    kfree(out);
-                    out = out_copy;
-                    i++;
+                case 'l':
+                    str2 = int_to_decimal( va_arg(args, unsigned long int) );
                     break;
-                }
-                case 'p':
-                    {
-                        void *ptr = va_arg(args, void*);
-                        char *upper = int_to_hex( reinterpret_cast<size_t>(ptr) );
-                        for(int i=0;i<16;i++) {
-                            switch(upper[i]) {
-                                case 'A':
-                                    upper[i] = 'a';
-                                    break;
-                                case 'B':
-                                    upper[i] = 'b';
-                                    break;
-                                case 'C':
-                                    upper[i] = 'c';
-                                    break;
-                                case 'D':
-                                    upper[i] = 'd';
-                                    break;
-                                case 'E':
-                                    upper[i] = 'e';
-                                    break;
-                                case 'F':
-                                    upper[i] = 'f';
-                                    break;
-                                default:
-                                    break;
-                            }
-                            if(upper[i] == 0) {
-                                break;
-                            }
-                        }
-                        char *out_copy = concatentate_strings( out, upper );
-                        kfree(out);
-                        out = out_copy;
-                        i++;
+                case 'b':
+                    str2 = int_to_decimal( va_arg(args, unsigned long long int) );
+                    break;
+                case 'j':
+                    str2 = int_to_decimal( va_arg(args, uintmax_t) );
+                    break;
+                case 'z':
+                    str2 = int_to_decimal( va_arg(args, size_t) );
+                    break;
+                case 't':
+                    str2 = int_to_decimal( va_arg(args, ptrdiff_t) );
+                    break;
+                case 0:
+                default:
+                    str2 = int_to_decimal( va_arg(args, unsigned int) );
+                    break;
+            }
+            break;
+        }
+        case 'o':
+        {
+            switch( type_length ) {
+                case 'q':
+                    str2 = int_to_octal( (unsigned char)va_arg(args, int) );
+                    break;
+                case 'h':
+                    str2 = int_to_octal( (unsigned short int)va_arg(args, int) );
+                    break;
+                case 'l':
+                    str2 = int_to_octal( va_arg(args, unsigned long int) );
+                    break;
+                case 'b':
+                    str2 = int_to_octal( va_arg(args, unsigned long long int) );
+                    break;
+                case 'j':
+                    str2 = int_to_octal( va_arg(args, uintmax_t) );
+                    break;
+                case 'z':
+                    str2 = int_to_octal( va_arg(args, size_t) );
+                    break;
+                case 't':
+                    str2 = int_to_octal( va_arg(args, ptrdiff_t) );
+                    break;
+                case 0:
+                default:
+                    str2 = int_to_octal( va_arg(args, unsigned int) );
+                    break;
+            }
+            break;
+        }
+        case 'X':
+        {
+            switch( type_length ) {
+                case 'q':
+                    str2 = int_to_hex( (unsigned char)va_arg(args, int) );
+                    break;
+                case 'h':
+                    str2 = int_to_hex( (unsigned short int)va_arg(args, int) );
+                    break;
+                case 'l':
+                    str2 = int_to_hex( va_arg(args, unsigned long int) );
+                    break;
+                case 'b':
+                    str2 = int_to_hex( va_arg(args, unsigned long long int) );
+                    break;
+                case 'j':
+                    str2 = int_to_hex( va_arg(args, uintmax_t) );
+                    break;
+                case 'z':
+                    str2 = int_to_hex( va_arg(args, size_t) );
+                    break;
+                case 't':
+                    str2 = int_to_hex( va_arg(args, ptrdiff_t) );
+                    break;
+                case 0:
+                default:
+                    str2 = int_to_hex( va_arg(args, unsigned int) );
+                    break;
+            }
+            break;
+        }
+        case 'p':
+        {
+            void *ptr = va_arg(args, void*);
+            str2 = int_to_hex( reinterpret_cast<uint32_t>(ptr) );
+            break;
+        }
+        case 'x':
+        {
+            switch( type_length ) {
+                case 'q':
+                    str2 = int_to_hex( (unsigned char)va_arg(args, int) );
+                    break;
+                case 'h':
+                    str2 = int_to_hex( (unsigned short int)va_arg(args, int) );
+                    break;
+                case 'l':
+                    str2 = int_to_hex( va_arg(args, unsigned long int) );
+                    break;
+                case 'b':
+                    str2 = int_to_hex( va_arg(args, unsigned long long int) );
+                    break;
+                case 'j':
+                    str2 = int_to_hex( va_arg(args, uintmax_t) );
+                    break;
+                case 'z':
+                    str2 = int_to_hex( va_arg(args, size_t) );
+                    break;
+                case 't':
+                    str2 = int_to_hex( va_arg(args, ptrdiff_t) );
+                    break;
+                case 0:
+                default:
+                    str2 = int_to_hex( va_arg(args, unsigned int) );
+                    break;
+            }
+            for(int i=0;i<strlen(str2);i++) {
+                switch(str2[i]) {
+                    case 'A':
+                        str2[i] = 'a';
                         break;
-                    }
-                case 'x':
-                    {
-                        char *upper = int_to_hex( va_arg(args, long long int) );
-                        for(int i=0;i<16;i++) {
-                            switch(upper[i]) {
-                                case 'A':
-                                    upper[i] = 'a';
-                                    break;
-                                case 'B':
-                                    upper[i] = 'b';
-                                    break;
-                                case 'C':
-                                    upper[i] = 'c';
-                                    break;
-                                case 'D':
-                                    upper[i] = 'd';
-                                    break;
-                                case 'E':
-                                    upper[i] = 'e';
-                                    break;
-                                case 'F':
-                                    upper[i] = 'f';
-                                    break;
-                                default:
-                                    break;
-                            }
-                            if(upper[i] == 0) {
-                                break;
-                            }
-                        }
-                        char *out_copy = concatentate_strings( out, upper );
-                        kfree(out);
-                        out = out_copy;
-                        i++;
+                    case 'B':
+                        str2[i] = 'b';
                         break;
-                    }
-                case 'X':
+                    case 'C':
+                        str2[i] = 'c';
+                        break;
+                    case 'D':
+                        str2[i] = 'd';
+                        break;
+                    case 'E':
+                        str2[i] = 'e';
+                        break;
+                    case 'F':
+                        str2[i] = 'f';
+                        break;
+                    default:
+                        break;
+                }
+                if(str2[i] == 0) {
+                    break;
+                }
+            }
+            break;
+        } // case 'x'
+        case 'f':
+        case 'F':
+        {
+            double n = va_arg(args, double);
+            double frac = fractional(n);
+            int whole = floor(n);
+            int frac_int = 0;
+            while( floor(frac) != frac ) {
+                frac *= 10;
+            }
+            frac_int = frac;
+            
+            char *whole_str = int_to_decimal(whole);
+            char *frac_str = int_to_decimal(frac_int);
+            
+            str2 = concatentate_strings( whole_str, concatentate_strings( ".", frac_str ) );
+            kfree( whole_str );
+            kfree( frac_str );
+            break;
+        }
+        case 'd':
+        case 'i':
+        {
+            switch( type_length ) {
+                case 'q':
                 {
-                    char *str2 = int_to_hex( va_arg(args, long long int) );
-                    char *out_copy = concatentate_strings( out, str2 );
-                    kfree(out);
-                    out = out_copy;
-                    i++;
+                    signed char n = va_arg(args, int);
+                    if( n < 0 ){
+                        is_negative = true;
+                        n *= -1;
+                    }
+                    str2 = int_to_decimal( n );
+                    break;
+                }
+                case 'h':
+                {
+                    short int n = va_arg(args, int);
+                    if( n < 0 ){
+                        is_negative = true;
+                        n *= -1;
+                    }
+                    str2 = int_to_decimal( n );
+                    break;
+                }
+                case 'l':
+                {
+                    long int n = va_arg(args, long int);
+                    if( n < 0 ){
+                        is_negative = true;
+                        n *= -1;
+                    }
+                    str2 = int_to_decimal( n );
                     break;
                 }
                 case 'b':
                 {
-                    char *str2 = int_to_bin( va_arg(args, long long int) );
-                    char *out_copy = concatentate_strings( out, str2 );
-                    kfree(out);
-                    out = out_copy;
-                    i++;
+                    long long n = va_arg(args, long long int);
+                    if( n < 0 ){
+                        is_negative = true;
+                        n *= -1;
+                    }
+                    str2 = int_to_decimal( n );
                     break;
                 }
-                case 's':
+                case 'j':
                 {
-                    char *str2 = va_arg(args, char*);
-                    char *out_copy = concatentate_strings( out, str2 );
-                    kfree(out);
-                    out = out_copy;
-                    i++;
+                    intmax_t n = va_arg(args, intmax_t);
+                    if( n < 0 ){
+                        is_negative = true;
+                        n *= -1;
+                    }
+                    str2 = int_to_decimal( n );
                     break;
                 }
+                case 'z':
+                {
+                    size_t n = va_arg(args, size_t);
+                    if( n < 0 ){
+                        is_negative = true;
+                        n *= -1;
+                    }
+                    str2 = int_to_decimal( n );
+                    break;
+                }
+                case 't':
+                {
+                    ptrdiff_t n = va_arg(args, ptrdiff_t);
+                    if( n < 0 ){
+                        is_negative = true;
+                        n *= -1;
+                    }
+                    str2 = int_to_decimal( n );
+                    break;
+                }
+                case 0:
+                default:
+                {
+                    int n = va_arg(args, int);
+                    if( n < 0 ){
+                        is_negative = true;
+                        n *= -1;
+                    }
+                    str2 = int_to_decimal( n );
+                    break;
+                }
+            }
+            break;
+        } // case 'd' / 'i'
+        
+    }
+    if( str2 == NULL )
+        return NULL;
+    if(min_width > strlen(str2)) {
+        int n_padding = strlen(str2) - min_width;
+        for(int i=0;i<n_padding;i++) {
+            if( !pad_left ) {
+                char* str2_copy = NULL;
+                if( pad_zeroes )
+                    str2_copy = concatentate_strings( "0", str2 );
+                else
+                    str2_copy = concatentate_strings( " ", str2 );
+                if( str2_copy == NULL )
+                    return NULL;
+                kfree(str2);
+                str2 = str2_copy;
+            } else {
+                char* str2_copy = NULL;
+                if( pad_zeroes )
+                    str2_copy = concatentate_strings( str2, "0" );
+                else
+                    str2_copy = concatentate_strings( str2, " ");
+                if( str2_copy == NULL )
+                    return NULL;
+                kfree(str2);
+                str2 = str2_copy;
+            }
+        }
+    }
+    char* str2_copy = NULL;
+    if( is_negative ) {
+        str2_copy = concatentate_strings( "-", str2 );
+    } else if( add_sign ) {
+        str2_copy = concatentate_strings( "+", str2 );
+    } else if( add_blank ) {
+        str2_copy = concatentate_strings( " ", str2 );
+    }
+    if( is_negative || add_sign || add_blank ){
+        if( str2_copy == NULL )
+            return NULL;
+        kfree(str2);
+        str2 = str2_copy;
+    }
+    return str2;
+}
+
+// Print to string
+char *ksprintf_varg(const char* str, va_list args) {
+    char *out = (char*)kmalloc(1);
+    out[0] = '\0';
+    
+    bool reading_specifier = false;
+    
+    // Flags
+    bool pad_left = false; // if (min_width > strlen(int_to_<whatever>(next_arg)) then pad
+    bool use_zeroes = false; // ..for padding (see above)
+    bool always_sign = false;
+    bool blank_sign = false;
+    bool add_punctuation = false; // add '0', '0x', or decimal points depending on output format
+    
+    char length = 0; // 'q' instead of 'hh' (signed char) and 'b' instead of 'll' (long long)
+    
+    int min_width = 0;
+    int precision = 0;
+    bool reading_precision = false;
+    bool reading_width = false;
+    
+    for( size_t i=0;i<strlen(const_cast<char*>(str));i++ ) {
+        if( str[i] == '%' ) {
+            if( str[i+1] == '%' ) {
+                char *out_copy = append_char( out, '%' );
+                kfree(out);
+                out = out_copy;
+                i++;
+            } else {
+                reading_specifier = true;
+            }
+        } else if(reading_specifier) {
+            switch( str[i] ) {
+                case '0': // width / precision fields
+                    if( !(reading_precision || reading_width) ) {
+                        use_zeroes = true;
+                        break;
+                    }
+                    // else fall through
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case '5':
+                case '6':
+                case '7':
+                case '8':
+                case '9':
+                    if(reading_precision) {
+                        precision *= 10;
+                        for(int j=0;j<10;j++) {
+                            if( str[i] == numeric_alpha[j] ) {
+                                precision += j;
+                                break;
+                            }
+                        }
+                    } else {
+                        reading_width = true;
+                        min_width *= 10;
+                        for(int j=0;j<10;j++) {
+                            if( str[i] == numeric_alpha[j] ) {
+                                min_width += j;
+                                break;
+                            }
+                        }
+                    }
+                    break;
+                case '.':
+                    reading_precision = true;
+                    break;
+                case '*':
+                    if(reading_precision) {
+                        precision = va_arg(args, unsigned int);
+                    } else {
+                        min_width = va_arg(args, unsigned int);
+                    }
+                    break;
+                case '-': // flags
+                    pad_left = true;
+                    break;
+                case '+':
+                    always_sign = true;
+                    break;
+                case ' ':
+                    blank_sign = true;
+                    break;
+                case '#':
+                    add_punctuation = true;
+                    break;
+                case 'h': // type length
+                    if( str[i+1] == 'h' ) {
+                        length = 'q';
+                        i++;
+                    } else {
+                        length = 'h';
+                    }
+                    break;
+                case 'l':
+                    if( str[i+1] == 'l' ) {
+                        length = 'b';
+                        i++;
+                    } else {
+                        length = 'l';
+                    }
+                    break;
+                case 'j':
+                case 'z':
+                case 't':
+                case 'L':
+                    length = str[i];
+                    break;
+                case 'u':
+                case 'd':
+                case 'i':
+                case 'F':
+                case 'f':
+                case 'o':
+                case 'p':
+                case 'x':
+                case 'X':
+                case 's':
                 case 'c':
                 {
-                    char c = va_arg(args, int);
-                    char c2[2];
-                    c2[0] = c;
-                    c2[1] = 0;
-                    char *out_copy = concatentate_strings( out, c2 );
+                    char *str2 = printf_form_final_str( args, str[i],
+                                    length, min_width, precision,
+                                    pad_left, use_zeroes, always_sign,
+                                    blank_sign, add_punctuation );
+                    char *out_copy = concatentate_strings( out, str2 );
                     kfree(out);
                     out = out_copy;
-                    i++;
+                    
+                    pad_left = false;
+                    use_zeroes = false;
+                    always_sign = false;
+                    blank_sign = false;
+                    add_punctuation = false;
+                    reading_precision = false;
+                    reading_width = false;
+                    reading_specifier = false;
+                    
+                    length = 0;
+                    min_width = 0;
+                    precision = 0;
+                    
                     break;
                 }
-                case '%':
+                case 'n':
                 {
-                    char *out_copy = append_char( out, '%' );
-                    kfree(out);
-                    out = out_copy;
-                    i++;
+                    pad_left = false;
+                    use_zeroes = false;
+                    always_sign = false;
+                    blank_sign = false;
+                    add_punctuation = false;
+                    reading_precision = false;
+                    reading_width = false;
+                    reading_specifier = false;
+                    
+                    length = 0;
+                    min_width = 0;
+                    precision = 0;
+                    
+                    signed int* ptr = va_arg(args, signed int*);
+                    *ptr = strlen(out);
                     break;
                 }
+                default:
+                    pad_left = false;
+                    use_zeroes = false;
+                    always_sign = false;
+                    blank_sign = false;
+                    add_punctuation = false;
+                    reading_precision = false;
+                    reading_width = false;
+                    reading_specifier = false;
+                    
+                    length = 0;
+                    min_width = 0;
+                    precision = 0;
+                    break;
             }
         } else {
             char *out_copy = append_char( out, str[i] );

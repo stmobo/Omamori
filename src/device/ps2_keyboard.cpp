@@ -7,6 +7,7 @@
 #include "device/ps2_keyboard.h"
 #include "device/vga.h"
 #include "lib/vector.h"
+#include "lib/refcount.h"
 
 // for now, we'll just assume that port1 is always connected to the keyboard.
 // Because virtualbox's emulated keyboard apparently does not send ident bytes in response to an 0xF2.
@@ -111,11 +112,11 @@ ps2_keypress* convert_scancode(bool f0, bool e0, unsigned char code_end) {
     return kp;
 }
 
-ps2_keypress* ps2_keyboard_get_keystroke() { // blocks for a keystroke
+shared_ptr<ps2_keypress> ps2_keyboard_get_keystroke() { // blocks for a keystroke
     set_event_listen_status( "keypress", true );
     message *msg = wait_for_message();
-    ps2_keypress *data = (ps2_keypress*)msg->data;
-    delete msg;
+    shared_ptr<ps2_keypress> data;
+    data = (ps2_keypress*)(msg->data);
     return data;
 }
 
@@ -163,7 +164,8 @@ void ps2_keyboard_initialize() {
 char* ps2_keyboard_readline(int *len) {
     vector<char> buffer;
     while(true) {
-        ps2_keypress *kp = ps2_keyboard_get_keystroke();
+        shared_ptr<ps2_keypress> kp;
+        kp = ps2_keyboard_get_keystroke();
         if(!kp->released) {
             if(kp->key == KEY_Enter) {
                 terminal_putchar('\n');

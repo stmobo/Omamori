@@ -1,5 +1,7 @@
 // ps2_keyboard.h
 #pragma once
+#include "includes.h"
+#include "lib/refcount.h"
 
 #define KB_RESPONSE_SELFTEST_PASS           0xAA
 #define KB_RESPONSE_ECHO                    0xEE
@@ -142,5 +144,5 @@ typedef struct ps2_keypress {
 } ps2_keypress;
 
 extern void ps2_keyboard_initialize(void);
-extern ps2_keypress* ps2_keyboard_get_keystroke(void);
+extern shared_ptr<ps2_keypress> ps2_keyboard_get_keystroke(void);
 extern char* ps2_keyboard_readline(int*);

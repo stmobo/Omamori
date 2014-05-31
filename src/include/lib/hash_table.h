@@ -18,6 +18,7 @@ class hash_table {
     
     public:
     hash_table( int );
+    ~hash_table( );
     void set( char*, T );
     void remove( char* );
     T get( char* );
@@ -36,6 +37,16 @@ template<class T>
 hash_table<T>::hash_table( int array_size ) {
     this->internal_array = new ht_bucket_entry<T>*[array_size];
     this->internal_array_size = array_size;
+}
+
+template<class T>
+hash_table<T>::~hash_table() {
+    if(this->internal_array) {
+        for(int i=0;i<this->internal_array_size;i++) {
+            delete this->internal_array[i];
+        }
+        delete this->internal_array;
+    }
 }
 
 template<class T>

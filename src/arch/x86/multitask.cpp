@@ -131,9 +131,12 @@ void process_switch_immediate() {
     syscall(0);
 }
 
-uint32_t do_syscall() {
+uint32_t do_syscall( uint32_t syscall_n ) {
     //kprintf("Syscall!");
     //kprintf("Call number: 0x%x\n", (unsigned long long int)process_current->user_regs.eax);
+    if( syscall_n == 1 ) {
+        return do_fork();
+    }
     return ~process_current->user_regs.eax;
 }
 
@@ -159,7 +162,7 @@ void do_context_switch(uint32_t syscall_n) {
         // If we're preempted, then the syscall's context is saved.
         // We save active_regs in a special slot to ensure that we don't lose it.
         asm volatile("sti" : : : "memory"); // we can reenable interrupts, since we're not going to the scheduler
-        uint32_t ret = do_syscall();
+        uint32_t ret = do_syscall( syscall_n );
         asm volatile("cli" : : : "memory"); // make sure preemption doesn't screw this up
         process_current->user_regs.eax = ret; // set return value
         process_current->user_regs.eflags |= (1<<9); // set IF

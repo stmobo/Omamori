@@ -666,6 +666,53 @@ void paging_unmap_phys_address( size_t vaddr, int n_frames ) {
     k_vmem_free( vaddr );
 }
 
+void copy_pageframe_range( uint32_t src_page, uint32_t dst_page, int n_pages ) {
+    src_page &= 0xFFFFF000;
+    dst_page &= 0xFFFFF000;
+    
+    size_t tmp_pages = k_vmem_alloc(2);
+    
+    uint32_t* src_v_page = (uint32_t*)tmp_pages;
+    uint32_t* dst_v_page = (uint32_t*)(tmp_pages+0x1000);
+    
+    for(int i=0;i<n_pages;i++) {
+        paging_set_pte( tmp_pages, src_page+(i*0x1000), 0 );
+        paging_set_pte( tmp_pages+0x1000, dst_page+(i*0x1000), 0 );
+        
+        for(int j=0;j<0x1000;j++) {
+            dst_v_page[j] = src_v_page[j];
+        }
+    }
+    
+    paging_unset_pte( tmp_pages );
+    paging_unset_pte( tmp_pages+0x1000 );
+    k_vmem_free(tmp_pages);
+}
+
+page_frame* duplicate_pageframe_range( uint32_t src_page, int n_pages ) {
+    src_page &= 0xFFFFF000;
+    
+    size_t tmp_pages = k_vmem_alloc(2);
+    page_frame *new_frames = pageframe_allocate(n_pages);
+    
+    uint32_t* src_v_page = (uint32_t*)tmp_pages;
+    uint32_t* dst_v_page = (uint32_t*)(tmp_pages+0x1000);
+    
+    for(int i=0;i<n_pages;i++) {
+        paging_set_pte( tmp_pages, src_page+(i*0x1000), 0 );
+        paging_set_pte( tmp_pages+0x1000, new_frames[i].address, 0 );
+        
+        for(int j=0;j<0x1000;j++) {
+            dst_v_page[j] = src_v_page[j];
+        }
+    }
+    
+    paging_unset_pte( tmp_pages );
+    paging_unset_pte( tmp_pages+0x1000 );
+    k_vmem_free(tmp_pages);
+    return new_frames;
+}
+
 size_t mmap(int n_pages) {
     size_t alloc_start = k_vmem_alloc(n_pages);
     page_frame *alloc_frames = pageframe_allocate(n_pages);

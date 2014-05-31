@@ -11,6 +11,8 @@ const char* numeric_alpha = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 size_t strlen(char* str)
 {
+    if( str == NULL )
+        return 0;
 	size_t ret = 0;
 	while ( str[ret] != 0 )
 		ret++;
@@ -99,6 +101,24 @@ char* int_to_decimal(signed long long int n) {
 }
 
 char *concatentate_strings(char* str1, char *str2) {
+    if( (str1 == NULL) && (str2 == NULL) )
+        return NULL;
+    if( str1 == NULL ) {
+        char *out = (char*)kmalloc( strlen(str2)+1 );
+        for(size_t i=0;i<strlen(str2);i++) {
+            out[i] = str2[i];
+        }
+        out[ strlen(str2) ] = 0;
+        return out;
+    }
+    if( str2 == NULL ) {
+        char *out = (char*)kmalloc( strlen(str1)+1 );
+        for(size_t i=0;i<strlen(str1);i++) {
+            out[i] = str1[i];
+        }
+        out[ strlen(str1) ] = 0;
+        return out;
+    }
     int len = strlen(str1) + strlen(str2);
     char *out = (char*)kmalloc(len + 2);
     for(size_t i=0;i<strlen(str1);i++) {
@@ -112,6 +132,12 @@ char *concatentate_strings(char* str1, char *str2) {
 }
 
 char *append_char(char* str1, char c) {
+    if( str1 == NULL ) {
+        char *ret = (char*)kmalloc( 2 );
+        ret[0] = c;
+        ret[1] = 0;
+        return ret;
+    }
     char *out = (char*)kmalloc( strlen(str1)+2 );
     for(unsigned int i=0;i<strlen(str1);i++) {
         out[i] = str1[i];
@@ -457,8 +483,7 @@ char *printf_form_final_str( va_list args, char specifier,
 
 // Print to string
 char *ksprintf_varg(const char* str, va_list args) {
-    char *out = (char*)kmalloc(1);
-    out[0] = '\0';
+    char *out = NULL;
     
     bool reading_specifier = false;
     
@@ -480,7 +505,8 @@ char *ksprintf_varg(const char* str, va_list args) {
         if( str[i] == '%' ) {
             if( str[i+1] == '%' ) {
                 char *out_copy = append_char( out, '%' );
-                kfree(out);
+                if( out )
+                    kfree(out);
                 out = out_copy;
                 i++;
             } else {
@@ -582,8 +608,11 @@ char *ksprintf_varg(const char* str, va_list args) {
                                     length, min_width, precision,
                                     pad_left, use_zeroes, always_sign,
                                     blank_sign, add_punctuation );
+                    if( str2 == NULL )
+                        break;
                     char *out_copy = concatentate_strings( out, str2 );
-                    kfree(out);
+                    if( out )
+                        kfree(out);
                     out = out_copy;
                     
                     pad_left = false;
@@ -637,7 +666,8 @@ char *ksprintf_varg(const char* str, va_list args) {
             }
         } else {
             char *out_copy = append_char( out, str[i] );
-            kfree(out);
+            if( out )
+                kfree(out);
             out = out_copy;
         }
     }

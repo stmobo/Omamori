@@ -100,3 +100,7 @@ extern size_t paging_map_phys_address( size_t, int );
 extern void paging_unmap_phys_address( size_t, int );
 extern size_t mmap(int);
 extern void munmap(size_t);
+
+// misc.
+extern void copy_pageframe_range( uint32_t, uint32_t, int );
+extern page_frame* duplicate_pageframe_range( uint32_t, int );

@@ -158,6 +158,19 @@ bool interrupts_enabled() {
     return ((eflags & (1<<9)) > 0);
 }
 
+void cpuid(uint32_t func_code, uint32_t *eax_ret, uint32_t *ebx_ret, uint32_t *ecx_ret, uint32_t *edx_ret) {
+    asm volatile("cpuid"
+                 : "=a"(*eax_ret), "=b"(*ebx_ret), "=c"(*ecx_ret), "=d"(*edx_ret)
+                 : "a"(func_code));
+}
+
+void vendorid(uint32_t ret[3]) {
+    asm volatile("mov $0, %%eax\n\t"
+                 "cpuid\n\t"
+                 : "=b"(ret[0]), "=d"(ret[1]), "=c"(ret[2])
+                 : : "%eax");
+}
+
 /*
  * 64bit integer routines
  */

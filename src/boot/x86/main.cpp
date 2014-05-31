@@ -30,6 +30,7 @@ void test_func(void* n) {
     terminal_writestring("atexit() works.\n");
 }
 
+//#define COMPILE_FORK_TEST
 void test_process_1() {
     terminal_writestring("Initializing ACPI.\n");
     initialize_acpi();
@@ -40,9 +41,43 @@ void test_process_1() {
     kprintf("Initializing PS/2 keyboard.\n");
     ps2_keyboard_initialize();
     
-    //kprintf("Initializing PCI.\n");
+    kprintf("Initializing PCI.\n");
     //pci_check_bus(0);
-    
+#ifdef COMPILE_FORK_TEST
+    uint32_t child_pid = -1;
+    if( (child_pid = fork()) == -1 ) {
+        kprintf("Whoops, something went wrong with fork!");
+    } else if( child_pid == 0 ) {
+        kprintf("Hello from (child) process %u!\n", (unsigned int)process_current->id);
+        while(true) {
+            ps2_keypress* kp = ps2_keyboard_get_keystroke();
+            if( kp->key == KEY_CurUp ) {
+                kprintf("Process %u: Up!", (unsigned int)process_current->id);
+            } else if( kp->key == KEY_CurDown ) {
+                kprintf("Process %u: Down!", (unsigned int)process_current->id);
+            }
+        }
+    } else {
+        kprintf("Press ENTER to continue...\n");
+        terminal_putchar('>');
+        while(true) {
+            int len;
+            char *line = ps2_keyboard_readline(&len);
+            if(strcmp(line, "exit", 0)) {
+                terminal_putchar('\n');
+                kfree(line);
+                //flush_serial_buffer(NULL);
+                break;
+            } else if(strcmp(line, "time", 0)) {
+                kprintf("Time since system startup: %u ticks.", (unsigned int)get_sys_time_counter());
+            } else {
+                kprintf("Process %u: %s!\n", (unsigned int)process_current->id, line);
+            }
+            kfree(line);
+            terminal_writestring("\n>");
+        }
+    }
+#else
     kprintf("Press ENTER to continue...\n");
     terminal_putchar('>');
     while(true) {
@@ -54,13 +89,14 @@ void test_process_1() {
             //flush_serial_buffer(NULL);
             break;
         } else if(strcmp(line, "time", 0)) {
-            kprintf("Time since system startup: %u ticks.", (unsigned long long int)get_sys_time_counter());
+            kprintf("Time since system startup: %u ticks.", (unsigned int)get_sys_time_counter());
         } else {
-            kprintf(line, len);
+            kprintf("Process %u: %s!\n", (unsigned int)process_current->id, line);
         }
         kfree(line);
         terminal_writestring("\n>");
     }
+#endif
 }
 
 void test_process_2() {
@@ -132,9 +168,6 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     initialize_multitasking( proc1 );
     //spawn_process( proc2 );
         
-    // now initialize PCI
-    // well, maybe later
-    
     //terminal_writestring("Initializing serial interface.\n");
     //initialize_serial(COM1_BASE_PORT, 3);
     

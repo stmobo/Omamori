@@ -5,7 +5,6 @@
 #include "lib/vector.h"
 #include "core/scheduler.h"
 
-// maybe a hash table mapping input strings to vector<process*>'s instead?
 hash_table< vector<process*>* >* message_queues;
 
 void wake_all_in_queue( char *queue_name ) {

@@ -63,6 +63,20 @@ void spawn_process( process* to_add, bool sched_immediate ) {
     //kprintf("Starting new process with ID: %u (%s).", (unsigned long long int)to_add->id, to_add->name);
 }
 
+// syscall implementation
+uint32_t do_fork() {
+    process* new_process;
+    new_process = new process( process_current );
+    spawn_process( new_process, true );
+    new_process->user_regs.eax = 0;
+    return new_process->id;
+}
+
+// syscall wrapper function
+uint32_t fork() {
+    return syscall(1);
+}
+
 void process_queue::add(process* process_to_add) {
     if( this->count+1 > this->length ) {
         this->length += 1;
@@ -169,6 +183,57 @@ process::~process() {
             }
         }
     }
+}
+
+process::process( process* forked_process ) {
+    this->user_regs = forked_process->user_regs;
+    this->regs = forked_process->regs;
+    this->priority = forked_process->priority;
+    this->name = forked_process->name;
+    this->id = 0;
+    this->parent = forked_process->id;
+    
+    // traverse the process' page directory, and duplicate frames that aren't in PTs 768 or 0.
+    // this, coincidentally, also copies the stack.
+    this->address_space.page_tables = (page_table**)kmalloc(sizeof(page_table*)*(forked_process->address_space.n_page_tables));
+    for( int pt_num=0;pt_num<(forked_process->address_space.n_page_tables);pt_num++ ) {
+        // PDEs that were mapped in manually using address_space::map_pde() aren't copied here.
+        // They're not in forked_process->page_tables.
+        page_table *current = forked_process->address_space.page_tables[pt_num];
+        uint32_t *pde = (uint32_t*)((size_t)this->address_space.page_directory + (current->pde_no*4));
+        page_table *dest_pt = new page_table;
+        
+        if(!dest_pt->ready)
+            panic("fork: failed to copy frame for process!");
+            
+        uint32_t* current_vaddr = (uint32_t*)current->map();
+        uint32_t* dest_vaddr = (uint32_t*)dest_pt->map();
+        
+        if( !(current_vaddr == NULL) && !(dest_vaddr != NULL) )
+            panic("fork: failed to copy frame for process!");
+        
+        for(int pte_num=0;pte_num<1024;pte_num++) {
+            uint32_t pframe = current_vaddr[pte_num] & 0xFFFFF000;
+            uint16_t flags =  current_vaddr[pte_num] & 0x00000FFF;
+            if( pframe != 0 ) {
+                page_frame* dframe = duplicate_pageframe_range( pframe, 1 );
+                dest_vaddr[pte_num] = dframe->address | flags;
+                delete dframe;
+            }
+        }
+        
+        current->unmap();
+        dest_pt->unmap();
+        (*pde) = dest_pt->paddr | 1;
+        this->address_space.page_tables[pt_num] = dest_pt;
+    }
+    
+    // kernel mappings, same as below
+    this->address_space.map_pde( 0, (size_t)&PageTable0, 1 );
+    this->address_space.map_pde( 768, (size_t)&PageTable768, 1 );
+    
+    // need to update cr3 to point to our new PD.
+    this->regs.cr3 = this->address_space.page_directory_physical;
 }
 
 // caller is responsible for ensuring that the register values are correct!
@@ -375,7 +440,7 @@ bool address_space::map( size_t vaddr, size_t paddr, int flags ) {
             return false;
         new_pt->pde_no = table_no;
         this->page_tables = extend<page_table*>(this->page_tables, this->n_page_tables);
-        if( !page_tables )
+        if( !this->page_tables )
             return false;
         this->page_tables[this->n_page_tables] = new_pt;
         this->n_page_tables++;

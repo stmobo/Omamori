@@ -69,6 +69,7 @@ typedef struct process {
     mutex                    message_queue_lock;
     
     ~process();
+    process( process* );
     process( cpu_regs, int, const char* );
     process( size_t entry_point, bool is_usermode, int priority, const char* name, void* args, int n_args );
     
@@ -108,6 +109,8 @@ extern void process_scheduler();
 extern void process_add_to_runqueue( process* );
 extern process* get_process_by_pid( int );
 extern void spawn_process( process*, bool=true );
+extern uint32_t do_fork();
+extern uint32_t fork();
 
 extern "C" {
     extern void process_switch_immediate();

@@ -2,6 +2,11 @@
 
 .global as_syscall
 .global syscall_num
+.global syscall_arg1
+.global syscall_arg2
+.global syscall_arg3
+.global syscall_arg4
+.global syscall_arg5
 .global reg_dump_area
 .global __syscall_entry
 .global __multitasking_kmode_entry
@@ -39,6 +44,11 @@
 __syscall_entry:
     movl $1, (as_syscall)
     mov %eax, (syscall_num)
+    mov %ebx, (syscall_arg1)
+    mov %ecx, (syscall_arg2)
+    mov %edx, (syscall_arg3)
+    mov %edi, (syscall_arg4)
+    mov %esi, (syscall_arg5)
     # now fall through to below
     
 __multitasking_kmode_entry:
@@ -104,12 +114,28 @@ __multitasking_kmode_entry:
     mov %ax, %fs
     mov %ax, %gs
 
-    mov (syscall_num), %ebx
+    mov (syscall_num), %eax
+    mov (syscall_arg1), %ebx
+    mov (syscall_arg2), %ecx
+    mov (syscall_arg3), %edx
+    mov (syscall_arg4), %edi
+    mov (syscall_arg5), %esi
+    
+    push %esi
+    push %edi
+    push %edx
+    push %ecx
     push %ebx
+    push %eax
     
     call do_context_switch
     
+    pop %eax
     pop %ebx
+    pop %ecx
+    pop %edx
+    pop %edi
+    pop %esi
     
 __process_load_registers:
     mov $reg_dump_area, %eax

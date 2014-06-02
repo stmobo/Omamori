@@ -71,7 +71,7 @@ uint32_t do_fork() {
 
 // syscall wrapper function
 uint32_t fork() {
-    return syscall(1);
+    return syscall(1,42,0,0,0,0);
 }
 
 void process_queue::add(process* process_to_add) {
@@ -193,8 +193,6 @@ process::process( process* forked_process ) {
     // traverse the process' page directory, and duplicate frames that aren't in PTs 768 or 0.
     // this, coincidentally, also copies the stack.
     this->address_space.page_tables = new vector<page_table*>;
-    kprintf("process::process - copying process (parent: %u)\n", this->parent);
-    kprintf("process::process - child id: %u\n", this->id);
     //kprintf("process::process - process has %u page tables.\n", forked_process->address_space.page_tables->length());
     for( unsigned int pt_num=0;pt_num<(forked_process->address_space.page_tables->length());pt_num++ ) {
         // PDEs that were mapped in manually using address_space::map_pde() aren't copied here.

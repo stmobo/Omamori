@@ -35,7 +35,6 @@ extern "C" {
     extern uint32_t multitasking_timeslice_reset_value;
     extern uint32_t multitasking_timeslice_tick_count;
     extern uint32_t syscall_num;
-    extern cpu_regs active_regs;
     extern void __syscall_entry(void);
     extern void __ctext_switch_entry(void);
     extern void process_exec_complete(uint32_t);
@@ -43,4 +42,4 @@ extern "C" {
 }
 
 extern void usermode_jump( size_t, size_t );
-uint32_t syscall(uint32_t);
+uint32_t syscall(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);

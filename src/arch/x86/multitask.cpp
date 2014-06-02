@@ -9,6 +9,11 @@
 #include "device/vga.h"
 
 // scratch space, do not use
+uint32_t syscall_arg1 = 0; // ebx
+uint32_t syscall_arg2 = 0; // ecx
+uint32_t syscall_arg3 = 0; // edx
+uint32_t syscall_arg4 = 0; // edi
+uint32_t syscall_arg5 = 0; // esi
 uint32_t syscall_num = 0;
 uint32_t as_syscall = 0;
 // we have to dump registers to this array
@@ -22,7 +27,7 @@ bool starting_init_process = false;
 
 extern "C" {
     void __usermode_jump(size_t, size_t, size_t, size_t);
-    void do_context_switch(uint32_t);
+    void do_context_switch(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
     void __process_load_registers();
     void __save_registers_non_int();
 }
@@ -119,25 +124,25 @@ void cpu_regs::load_to_active() {
 }
 
 // a syscall(0) looks exactly like a context switch from the perspective of the switching code.
-uint32_t syscall(uint32_t syscall_num) {
+uint32_t syscall(uint32_t syscall_n, uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t arg4, uint32_t arg5) {
     uint32_t ret_val;
-    asm volatile("int $0x5C" : "=a" (ret_val) : "a"(syscall_num) : "memory");
+    asm volatile("int $0x5C" : "=a" (ret_val) : "a"(syscall_n), "b"(arg1), "c"(arg2), "d"(arg3), "D"(arg4), "S"(arg5) : "memory");
     return ret_val;
 }
 
 void process_switch_immediate() {
     //kprintf("switching process from pid %u.\n", process_current->id);
-    syscall(0);
+    syscall(0,0,0,0,0,0);
 }
 
-uint32_t do_syscall( uint32_t syscall_n ) {
+uint32_t do_syscall(uint32_t syscall_n, uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t arg4, uint32_t arg5) {
     if( syscall_n == 1 ) {
         return do_fork();
     }
     return ~process_current->user_regs.eax;
 }
 
-void do_context_switch(uint32_t syscall_n) {
+void do_context_switch(uint32_t syscall_n, uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t arg4, uint32_t arg5) {
     //kprintf("Context switch!\n");
     if( (process_current == NULL) && (!starting_init_process) ) {
         // presumably, multitasking hasn't been set up yet, so just return
@@ -160,7 +165,7 @@ void do_context_switch(uint32_t syscall_n) {
         // If we're preempted, then the syscall's context is saved.
         // We save active_regs in a special slot to ensure that we don't lose it.
         asm volatile("sti" : : : "memory"); // we can reenable interrupts, since we're not going to the scheduler
-        uint32_t ret = do_syscall( syscall_n );
+        uint32_t ret = do_syscall( syscall_n, arg1, arg2, arg3, arg4, arg5 );
         asm volatile("cli" : : : "memory"); // make sure preemption doesn't screw this up
         process_current->user_regs.eax = ret; // set return value
         process_current->user_regs.eflags |= (1<<9); // set IF
@@ -210,6 +215,11 @@ void do_context_switch(uint32_t syscall_n) {
     // reset various state on our way out
     as_syscall = 0;
     syscall_num = 0;
+    syscall_arg1 = 0;
+    syscall_arg2 = 0;
+    syscall_arg3 = 0;
+    syscall_arg4 = 0;
+    syscall_arg5 = 0;
 }
 
 void process_exec_complete( uint32_t return_value ) {

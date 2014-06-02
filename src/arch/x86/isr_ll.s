@@ -170,6 +170,11 @@ _isr_irq_0:
     pop %eax
     movl $0, (as_syscall)
     movl $0, (syscall_num)
+    movl $0, (syscall_arg1)
+    movl $0, (syscall_arg2)
+    movl $0, (syscall_arg3)
+    movl $0, (syscall_arg4)
+    movl $0, (syscall_arg5)
     jmp __multitasking_kmode_entry # do note that __multitasking_kmode_entry calls the irq handler in our stead.
     # not falling through -- __multitasking_kmode_entry does the iret itself
     

@@ -20,7 +20,7 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
     */
     in_irq_context = true;
     if(irq_handlers[irq_num].length() > 0) {
-        for( int i=0;i<irq_handlers[irq_num].length();i++ ) {
+        for( unsigned int i=0;i<irq_handlers[irq_num].length();i++ ) {
             bool(*handler)(void) = (bool(*)())(irq_handlers[irq_num].get(i)); // jump to the stored function pointer...
             if(handler()) {
                 break; // irq's handled, we're done here
@@ -33,7 +33,7 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
 }
 
 bool irq_add_handler(int irq_num, size_t addr) {
-    for( int i=0;i<irq_handlers[irq_num].length();i++ ) {
+    for( unsigned int i=0;i<irq_handlers[irq_num].length();i++ ) {
         if( irq_handlers[irq_num].get(i) == addr ) {
             return false;
         }
@@ -44,7 +44,7 @@ bool irq_add_handler(int irq_num, size_t addr) {
 }
 
 bool irq_remove_handler(int irq_num, size_t addr) {
-    for( int i=0;i<irq_handlers[irq_num].length();i++ ) {
+    for( unsigned int i=0;i<irq_handlers[irq_num].length();i++ ) {
         if( irq_handlers[irq_num].get(i) == addr ) {
             irq_handlers[irq_num].remove(i);
         }

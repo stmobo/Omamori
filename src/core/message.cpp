@@ -10,7 +10,7 @@ hash_table< vector<process*>* >* message_queues;
 void wake_all_in_queue( char *queue_name ) {
     vector<process*>* queue = (*message_queues)[queue_name];
     if(queue) {
-        for(int i=0;i<queue->length();i++) {
+        for(unsigned int i=0;i<queue->length();i++) {
             (*queue)[i]->state = process_state::runnable;
             process_add_to_runqueue( (*queue)[i] );
         }
@@ -20,7 +20,7 @@ void wake_all_in_queue( char *queue_name ) {
 void send_all_in_queue( char *queue_name, message msg ) {
     vector<process*>* queue = (*message_queues)[queue_name];
     if(queue) {
-        for(int i=0;i<queue->length();i++) {
+        for(unsigned int i=0;i<queue->length();i++) {
             (*queue)[i]->send_message( msg );
         }
     }
@@ -31,7 +31,7 @@ void send_message( message msg ) {
     if(queue) {
         int processes_recv = 0;
         //kprintf("send_message: queue->length() = %u.\n", (unsigned long long int)queue->length());
-        for(int i=0;i<queue->length();i++) {
+        for(unsigned int i=0;i<queue->length();i++) {
             process *current = queue->get(i);
             if( current != NULL ) {
                 current->send_message( msg );
@@ -91,7 +91,7 @@ bool set_event_listen_status( char* event_name, bool status ) {
     vector<process*>* queue = message_queues->get(event_name);
     if(queue) {
         if(status) {
-            for(int i=0;i<queue->length();i++) {
+            for(unsigned int i=0;i<queue->length();i++) {
                 process *current = queue->get(i);
                 if( current != NULL ) {
                     if( current->id == process_current->id ) {
@@ -102,7 +102,7 @@ bool set_event_listen_status( char* event_name, bool status ) {
             //kprintf("message: adding process %u to queue.\n", (unsigned long long int)process_current->id);
             queue->add( process_current );
         } else {
-            for(int i=0;i<queue->length();i++) {
+            for(unsigned int i=0;i<queue->length();i++) {
                 process *current = queue->get(i);
                 if( current != NULL ) {
                     if( current->id == process_current->id ) {

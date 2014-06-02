@@ -7,12 +7,13 @@
 template <class T>
 class vector {
     T* elements;
-    int n_allocated_for;
-    int n_elements;
+    unsigned int n_allocated_for = 0;
+    unsigned int n_elements = 0;
     
     public:
     void reallocate( int );
-    int length() { return this->n_allocated_for; };
+    unsigned int count() { return this->n_elements; };
+    unsigned int length() { return this->n_allocated_for; };
     void clear();
     
     // array access-style functions
@@ -88,9 +89,9 @@ template <class T>
 void vector<T>::add( T obj ) {
     this->n_elements++;
     if( this->elements == NULL ) {
-        this->reallocate( (this->n_elements+1) );
-    } else if( this->n_elements >= this->n_allocated_for ) {
-        this->reallocate( (this->n_elements - this->n_allocated_for)+1 );
+        this->reallocate( this->n_elements );
+    } else if( this->n_elements > this->n_allocated_for ) {
+        this->reallocate( this->n_elements - this->n_allocated_for );
     }
     for(int i=this->n_elements-1;i>=1;i--) {
         this->elements[i] = this->elements[i-1];
@@ -102,9 +103,9 @@ template <class T>
 void vector<T>::add_end( T obj ) {
     this->n_elements++;
     if( this->elements == NULL ) {
-        this->reallocate( (this->n_elements+1) );
-    } else if( this->n_elements >= this->n_allocated_for ) {
-        this->reallocate( (this->n_elements - this->n_allocated_for)+1 );
+        this->reallocate( this->n_elements );
+    } else if( this->n_elements > this->n_allocated_for ) {
+        this->reallocate( this->n_elements - this->n_allocated_for );
     }
     this->elements[this->n_elements-1] = obj;
 }

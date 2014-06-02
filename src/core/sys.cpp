@@ -86,7 +86,7 @@ void memclr(void* dst, size_t len) {
 }
 
 void strcpy(char* dst, char* src, size_t len) {
-    int i=0;
+    unsigned int i=0;
     while(true) {
         dst[i] = src[i];
         if( (src[i] == '\0') || ((len != 0) && (len == i) ) ) {
@@ -97,7 +97,7 @@ void strcpy(char* dst, char* src, size_t len) {
 }
 
 bool strcmp(char* op1, char* op2, size_t len) {
-    int i=0;
+    unsigned int i=0;
     while(true) {
         if( op1[i] != op2[i] ) {
             return false;
@@ -111,12 +111,12 @@ bool strcmp(char* op1, char* op2, size_t len) {
 }
 
 // memory search
-size_t memsrch(size_t start, size_t end, char *search_item, int len, size_t search_granularity) {
+size_t memsrch(size_t start, size_t end, char *search_item, unsigned int len, size_t search_granularity) {
     for(size_t i=start;i<=end;i+=search_granularity) {
         char *data = (char*)start;
         if( data[0] == search_item[0] ) {
             bool is_match = true;
-            for(int j=1;j<len;j++) {
+            for(unsigned int j=1;j<len;j++) {
                 if(data[j] != search_item[j]) {
                     is_match = false;
                     break;

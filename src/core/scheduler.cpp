@@ -19,8 +19,7 @@ process_queue run_queues[SCHEDULER_PRIORITY_LEVELS];
 process_queue sleep_queue;
 
 uint32_t allocate_new_pid() {
-    uint32_t ret = current_pid;
-    current_pid++;
+    uint32_t ret = current_pid++;
     if( current_pid == 0 ) { // overflow
         current_pid = 777;
         pids_have_overflowed = true;
@@ -29,7 +28,7 @@ uint32_t allocate_new_pid() {
         bool is_okay = false;
         while( !is_okay ) {
             is_okay = true;
-            for( int i=0;i<system_processes.length();i++ ) {
+            for( unsigned int i=0;i<system_processes.length();i++ ) {
                 if( (system_processes[i]->id) == ret ) {
                     ret++;
                     is_okay = false;
@@ -41,8 +40,8 @@ uint32_t allocate_new_pid() {
     return ret;
 }
 
-process* get_process_by_pid( int pid ) {
-    for( int i=0;i<system_processes.length();i++ ) {
+process* get_process_by_pid( unsigned int pid ) {
+    for( unsigned int i=0;i<system_processes.length();i++ ) {
         if( (system_processes[i]) && (system_processes[i]->id == pid) ) {
             return system_processes[i];
         }
@@ -51,12 +50,6 @@ process* get_process_by_pid( int pid ) {
 }
 
 void spawn_process( process* to_add, bool sched_immediate ) {
-    if( process_current ) {
-        to_add->parent = 0;
-    } else {
-        to_add->parent = process_current->id;
-    }
-    to_add->id = allocate_new_pid();
     system_processes.add( to_add );
     if( sched_immediate )
         process_add_to_runqueue( to_add );
@@ -64,12 +57,16 @@ void spawn_process( process* to_add, bool sched_immediate ) {
 }
 
 // syscall implementation
+semaphore __debug_fork_sema(1,1);
 uint32_t do_fork() {
-    process* new_process;
-    new_process = new process( process_current );
-    spawn_process( new_process, true );
-    new_process->user_regs.eax = 0;
-    return new_process->id;
+    process* child_process = new process( process_current );
+    process_current->user_regs.eax = child_process->id;        // so we need to move the new regs over
+    spawn_process( child_process, false );
+    process_add_to_runqueue( process_current );                // schedule ourselves to run later
+    process_current->state = process_state::forking;           // tell the scheduler to load from user_regs
+    child_process->state = process_state::runnable;            // let the child run
+    process_current = child_process;
+    return 0;
 }
 
 // syscall wrapper function
@@ -150,8 +147,8 @@ void process_scheduler() {
         }
     }
     if(current_priority == -1) {
-        //kprintf("scheduler: no available processes left, sleeping.\n");
         multitasking_enabled = false; // don't jump to the context switch handler on IRQ0
+        //kprintf("scheduler: no available processes left, sleeping.\n");
         asm volatile("sti" : : : "memory"); // make sure we actually can wake up from this
         system_wait_for_interrupt(); // sleep for a bit
         multitasking_enabled = true;
@@ -171,7 +168,7 @@ void process_scheduler() {
 
 process::~process() {
     if( this->id != 0 ) {
-        for( int i=0;i<system_processes.length();i++ ) {
+        for( unsigned int i=0;i<system_processes.length();i++ ) {
             if( (system_processes[i] != NULL) && (system_processes[i]->id == this->id) ) {
                 system_processes.set( i, NULL );
                 break;
@@ -190,50 +187,67 @@ process::process( process* forked_process ) {
     this->regs = forked_process->regs;
     this->priority = forked_process->priority;
     this->name = forked_process->name;
-    this->id = 0;
+    this->id = allocate_new_pid();
     this->parent = forked_process->id;
     
     // traverse the process' page directory, and duplicate frames that aren't in PTs 768 or 0.
     // this, coincidentally, also copies the stack.
-    this->address_space.page_tables = (page_table**)kmalloc(sizeof(page_table*)*(forked_process->address_space.n_page_tables));
-    for( int pt_num=0;pt_num<(forked_process->address_space.n_page_tables);pt_num++ ) {
+    this->address_space.page_tables = new vector<page_table*>;
+    kprintf("process::process - copying process (parent: %u)\n", this->parent);
+    kprintf("process::process - child id: %u\n", this->id);
+    //kprintf("process::process - process has %u page tables.\n", forked_process->address_space.page_tables->length());
+    for( unsigned int pt_num=0;pt_num<(forked_process->address_space.page_tables->length());pt_num++ ) {
         // PDEs that were mapped in manually using address_space::map_pde() aren't copied here.
         // They're not in forked_process->page_tables.
-        page_table *current = forked_process->address_space.page_tables[pt_num];
-        uint32_t *pde = (uint32_t*)((size_t)this->address_space.page_directory + (current->pde_no*4));
-        page_table *dest_pt = new page_table;
-        
-        if(!dest_pt->ready)
-            panic("fork: failed to copy frame for process!");
+        //kprintf("process::process - copying page table ID %u.\n", pt_num);
+        if( forked_process->address_space.page_tables->get(pt_num)->n_entries > 0 ) {
+            page_table *current = forked_process->address_space.page_tables->get(pt_num);
+            //kprintf("process::process - copying page table %u.\n", current->pde_no);
+            uint32_t *pde = (uint32_t*)((size_t)this->address_space.page_directory + (current->pde_no*4));
+            page_table *dest_pt = new page_table;
             
-        uint32_t* current_vaddr = (uint32_t*)current->map();
-        uint32_t* dest_vaddr = (uint32_t*)dest_pt->map();
-        
-        if( !(current_vaddr == NULL) && !(dest_vaddr != NULL) )
-            panic("fork: failed to copy frame for process!");
-        
-        for(int pte_num=0;pte_num<1024;pte_num++) {
-            uint32_t pframe = current_vaddr[pte_num] & 0xFFFFF000;
-            uint16_t flags =  current_vaddr[pte_num] & 0x00000FFF;
-            if( pframe != 0 ) {
-                page_frame* dframe = duplicate_pageframe_range( pframe, 1 );
-                dest_vaddr[pte_num] = dframe->address | flags;
-                delete dframe;
+            //kprintf("process::process - allocated new page table.\n");
+            
+            if(!dest_pt->ready)
+                panic("fork: failed to create copy of page table for process!");
+            
+            //kprintf("process::process - mapping tables into memory.\n");
+            
+            uint32_t* current_vaddr = (uint32_t*)current->map();
+            uint32_t* dest_vaddr = (uint32_t*)dest_pt->map();
+            
+            if( (current_vaddr == NULL) || (dest_vaddr == NULL) )
+                panic("fork: failed to allocate source / destination page for process!");
+            
+            //kprintf("process::process - copying PTEs...\n");
+            for(int pte_num=0;pte_num<1024;pte_num++) {
+                uint32_t pframe = current_vaddr[pte_num] & 0xFFFFF000;
+                uint16_t flags =  current_vaddr[pte_num] & 0x00000FFF;
+                if( current_vaddr[pte_num] != 0 ) {
+                    page_frame* dframe = duplicate_pageframe_range( pframe, 1 );
+                    dest_vaddr[pte_num] = dframe->address | flags;
+                    delete dframe;
+                }
             }
+            //kprintf("process::process - done copying page table.\n");
+            
+            current->unmap();
+            dest_pt->unmap();
+            (*pde) = dest_pt->paddr | 1;
+            this->address_space.page_tables->add(dest_pt);
+            //kprintf("process::process - added PT to PD / vector.\n");
         }
-        
-        current->unmap();
-        dest_pt->unmap();
-        (*pde) = dest_pt->paddr | 1;
-        this->address_space.page_tables[pt_num] = dest_pt;
     }
     
+    //kprintf("process::process - mapping in special PDEs.\n");
     // kernel mappings, same as below
     this->address_space.map_pde( 0, (size_t)&PageTable0, 1 );
     this->address_space.map_pde( 768, (size_t)&PageTable768, 1 );
     
     // need to update cr3 to point to our new PD.
+    this->user_regs.cr3 = this->address_space.page_directory_physical;
     this->regs.cr3 = this->address_space.page_directory_physical;
+    //kprintf("process::process - exiting!\n");
 }
 
 // caller is responsible for ensuring that the register values are correct!
@@ -241,6 +255,12 @@ process::process( cpu_regs regs, int priority, const char* name ) {
     this->regs = regs;
     this->priority = priority;
     this->name = name;
+    this->id = allocate_new_pid();
+    if( process_current != NULL ) {
+        this->parent = process_current->id;
+    } else {
+        this->parent = 0;
+    }
 }
 
 // notes for debugging:
@@ -249,8 +269,12 @@ process::process( cpu_regs regs, int priority, const char* name ) {
 // the kernel page table should start at vaddr 0xFFF00000.
 process::process( size_t entry_point, bool is_usermode, int priority, const char* name, void* args, int n_args ) {
     if(this->address_space.ready) { // no point in setting anything else if the address space couldn't be allocated
-        this->id = 0;
-        this->parent = 0;
+        this->id = allocate_new_pid();
+        if( process_current != NULL ) {
+            this->parent = process_current->id;
+        } else {
+            this->parent = 0;
+        }
         this->state = process_state::runnable;
         this->priority = priority;
         this->name = name;
@@ -315,52 +339,6 @@ process::process( size_t entry_point, bool is_usermode, int priority, const char
     }
 }
 
-page_table::page_table() {
-    page_frame *frame = pageframe_allocate(1);
-    
-    if( frame != NULL ) {
-        this->ready = true;
-        this->paddr = frame->address;
-        //kprintf("New page table initialized at address 0x%x.\n", (uint64_t)this->paddr);
-    }
-}
-
-page_table::~page_table() {
-    pageframe_deallocate_specific( pageframe_get_block_from_addr( this->paddr ), 0 );
-    if( this->map_addr != NULL ) {
-        this->unmap();
-    }
-    this->ready = false;
-}
-
-size_t page_table::map() {
-    size_t vaddr = k_vmem_alloc(1);
-    if( vaddr == NULL )
-        return NULL;
-    if( __sync_bool_compare_and_swap( &this->map_addr, NULL, vaddr ) ) {
-        system_disable_interrupts();
-        paging_set_pte(vaddr, this->paddr, 0);
-        system_enable_interrupts();
-        return vaddr;
-    }
-    k_vmem_free(vaddr);
-    return this->map_addr;
-}
-
-void page_table::unmap() {
-    bool int_on = interrupts_enabled();
-    system_disable_interrupts();
-    
-    if( this->map_addr != NULL ) {
-        paging_unset_pte( this->map_addr );
-        k_vmem_free( this->map_addr );
-        this->map_addr = NULL;
-    }
-    
-    if( int_on )
-        system_enable_interrupts();
-}
-
 address_space::address_space() {
     page_frame *pd_frame = pageframe_allocate(1);
     size_t pd_vaddr = k_vmem_alloc(1);
@@ -370,8 +348,7 @@ address_space::address_space() {
         this->page_directory_physical = pd_frame->address;
         this->page_directory = (uint32_t*)pd_vaddr;
         this->page_directory[1023] = this->page_directory_physical | 1;
-        this->page_tables = NULL;
-        this->n_page_tables = 0;
+        this->page_tables = new vector<page_table*>;
         this->ready = true;
     }
 }
@@ -381,19 +358,21 @@ address_space::~address_space() {
         pageframe_deallocate_specific( pageframe_get_block_from_addr( this->page_directory_physical ), 0 );
         k_vmem_free( (size_t)this->page_directory );
         if( this->page_tables != NULL ) {
-            for(int i=0;i<this->n_page_tables;i++) {
-                uint32_t *pt = (uint32_t*)this->page_tables[i]->map();
-                for(int j=0;j<1024;j++) {
-                    size_t paddr = pt[i] & 0xFFFFF000;
-                    if( paddr != 0 ) {
-                        int frameID = pageframe_get_block_from_addr( paddr );
-                        pageframe_deallocate_specific( frameID, 0 );
+            for(unsigned int i=0;i<this->page_tables->length();i++) {
+                if( this->page_tables->get(i)->n_entries > 0 ) {
+                    uint32_t *pt = (uint32_t*)this->page_tables->get(i)->map();
+                    for(int j=0;j<1024;j++) {
+                        size_t paddr = pt[i] & 0xFFFFF000;
+                        if( paddr != 0 ) {
+                            int frameID = pageframe_get_block_from_addr( paddr );
+                            pageframe_deallocate_specific( frameID, 0 );
+                        }
                     }
+                    this->page_tables->get(i)->unmap();
                 }
-                this->page_tables[i]->unmap();
-                delete (this->page_tables[i]);
+                delete (this->page_tables->get(i));
             }
-            kfree(this->page_tables);
+            delete this->page_tables;
         }
         this->ready = false;
     }
@@ -439,17 +418,20 @@ bool address_space::map( size_t vaddr, size_t paddr, int flags ) {
         if( !new_pt->ready )
             return false;
         new_pt->pde_no = table_no;
+        this->page_tables->add_end(new_pt);
+        /*
         this->page_tables = extend<page_table*>(this->page_tables, this->n_page_tables);
         if( !this->page_tables )
             return false;
         this->page_tables[this->n_page_tables] = new_pt;
         this->n_page_tables++;
+        */
         pt = new_pt;
         (*pde) = new_pt->paddr | 1;
     } else {
-        for(int i=0;i<this->n_page_tables;i++) {
-            if( this->page_tables[i]->pde_no == table_no ) {
-                pt = this->page_tables[i];
+        for(unsigned int i=0;i<this->page_tables->length();i++) {
+            if( this->page_tables->get(i)->pde_no == table_no ) {
+                pt = this->page_tables->get(i);
                 break;
             }
         }
@@ -465,6 +447,8 @@ bool address_space::map( size_t vaddr, size_t paddr, int flags ) {
         //kprintf("address_space::map: Page table at 0x%x mapped to 0x%x.\n", (unsigned long long int)pt->paddr, (unsigned long long int)table);
         //kprintf("address_space::map: mapping v0x%x -> p0x%x.\n", (unsigned long long int)vaddr, (unsigned long long int)paddr );
         //kprintf("address_space::map: table=0x%p, table_offset=%u\n", table, (unsigned long long int)table_offset );
+        if( table[table_offset] == 0 )
+            pt->n_entries++;
         table[table_offset] = paddr | flags;
         pt->unmap();
         return true;
@@ -485,9 +469,9 @@ void address_space::unmap( size_t vaddr ) {
     if( ((*pde) & 1) == 0 ) {
         return;
     } else {
-        for(int i=0;i<this->n_page_tables;i++) {
-            if( this->page_tables[i]->pde_no == table_no ) {
-                pt = this->page_tables[i];
+        for(unsigned int i=0;i<page_tables->length();i++) {
+            if( this->page_tables->get(i)->pde_no == table_no ) {
+                pt = this->page_tables->get(i);
                 break;
             }
         }
@@ -503,8 +487,17 @@ void address_space::unmap( size_t vaddr ) {
     if( block_addr != -1 ) {
         pageframe_deallocate_specific(block_addr, 0);
     }
-    table[table_offset] = 0;
-    pt->unmap();
+    if( table[table_offset] != 0 ) {
+        pt->n_entries--;
+        table[table_offset] = 0;
+        pt->unmap();
+        if( pt->n_entries == 0 ) { // there's nothing here anymore, we can free it
+            (*pde) = 0;
+            delete pt;
+        }
+    } else {
+        pt->unmap();
+    }
 }
 
 uint32_t address_space::get( size_t vaddr ) {
@@ -521,9 +514,9 @@ uint32_t address_space::get( size_t vaddr ) {
         //kprintf("address_space::get: could not find PDE.\n");
         return 0;
     } else {
-        for(int i=0;i<this->n_page_tables;i++) {
-            if( this->page_tables[i]->pde_no == table_no ) {
-                pt = this->page_tables[i];
+        for(unsigned int i=0;i<this->page_tables->length();i++) {
+            if( this->page_tables->get(i)->pde_no == table_no ) {
+                pt = this->page_tables->get(i);
                 break;
             }
         }
@@ -538,11 +531,57 @@ uint32_t address_space::get( size_t vaddr ) {
     uint32_t *table = (uint32_t*)pt->map();
     if( table ) {
         //kprintf("address_space::get: table=0x%p, table_offset=%u\n", table, (unsigned long long int)table_offset );
-        uint32_t ret = table[table_offset] & 0xFFFFF000;
+        uint32_t ret = table[table_offset];
         //kprintf("address_space::get: mapping seems to be v0x%x -> p0x%x.\n", (unsigned long long int)vaddr, (unsigned long long int)ret );
         pt->unmap();
         return ret;
     }
     //kprintf("address_space::get: could not map page table to active memory.\n");
     return 0;
+}
+
+page_table::page_table() {
+    page_frame *frame = pageframe_allocate(1);
+    
+    if( frame != NULL ) {
+        this->ready = true;
+        this->paddr = frame->address;
+        //kprintf("New page table initialized at address 0x%x.\n", (uint64_t)this->paddr);
+    }
+}
+
+page_table::~page_table() {
+    pageframe_deallocate_specific( pageframe_get_block_from_addr( this->paddr ), 0 );
+    if( this->map_addr != NULL ) {
+        this->unmap();
+    }
+    this->ready = false;
+}
+
+size_t page_table::map() {
+    size_t vaddr = k_vmem_alloc(1);
+    if( vaddr == NULL )
+        return NULL;
+    if( __sync_bool_compare_and_swap( &this->map_addr, NULL, vaddr ) ) {
+        system_disable_interrupts();
+        paging_set_pte(vaddr, this->paddr, 0);
+        system_enable_interrupts();
+        return vaddr;
+    }
+    k_vmem_free(vaddr);
+    return this->map_addr;
+}
+
+void page_table::unmap() {
+    bool int_on = interrupts_enabled();
+    system_disable_interrupts();
+    
+    if( this->map_addr != NULL ) {
+        paging_unset_pte( this->map_addr );
+        k_vmem_free( this->map_addr );
+        this->map_addr = NULL;
+    }
+    
+    if( int_on )
+        system_enable_interrupts();
 }

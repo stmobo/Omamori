@@ -161,7 +161,7 @@ void ps2_keyboard_initialize() {
     spawn_process( keyboard_input_process, true );
 }
 
-char* ps2_keyboard_readline(int *len) {
+char* ps2_keyboard_readline(unsigned int *len) {
     vector<char> buffer;
     while(true) {
         shared_ptr<ps2_keypress> kp;
@@ -181,7 +181,7 @@ char* ps2_keyboard_readline(int *len) {
     }
     char *ret = (char*)kmalloc(buffer.length());
     if(ret) {
-        for(int i=0;i<buffer.length();i++) {
+        for(unsigned int i=0;i<buffer.length();i++) {
             ret[i] = buffer[i];
         }
         *len = buffer.length();

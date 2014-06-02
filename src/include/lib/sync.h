@@ -21,21 +21,16 @@ typedef class spinlock {
 } spinlock;
 
 typedef class reentrant_mutex {
-    spinlock control_lock;
-    uint32_t lock_count = 0;
-    int      uid = -1;
-    uint64_t mutex_id = ~0;
+    spinlock          control_lock;
+    uint32_t          lock_count = 0;
+    unsigned int      uid = ~0;
+    uint64_t          mutex_id = ~0;
     
     public:
     int get_owner_uid();
     uint32_t get_lock_count();
-    
-    bool trylock( int uid );
+
     bool trylock( );
-    
-    void lock( int uid );
-    void unlock( int uid );
-    
     void lock();
     void unlock();
     

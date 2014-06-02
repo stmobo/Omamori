@@ -6,6 +6,7 @@
 #include "arch/x86/irq.h"
 #include "arch/x86/pic.h"
 #include "core/scheduler.h"
+#include "device/vga.h"
 
 // scratch space, do not use
 uint32_t syscall_num = 0;
@@ -120,20 +121,16 @@ void cpu_regs::load_to_active() {
 // a syscall(0) looks exactly like a context switch from the perspective of the switching code.
 uint32_t syscall(uint32_t syscall_num) {
     uint32_t ret_val;
-    asm volatile("mov %1, %%eax\n\t"
-    "int $0x5C\n\t"
-    "mov %%eax, %0\n\t"
-    : "=g"(ret_val) : "g"(syscall_num) : "memory");
+    asm volatile("int $0x5C" : "=a" (ret_val) : "a"(syscall_num) : "memory");
     return ret_val;
 }
 
 void process_switch_immediate() {
+    //kprintf("switching process from pid %u.\n", process_current->id);
     syscall(0);
 }
 
 uint32_t do_syscall( uint32_t syscall_n ) {
-    //kprintf("Syscall!");
-    //kprintf("Call number: 0x%x\n", (unsigned long long int)process_current->user_regs.eax);
     if( syscall_n == 1 ) {
         return do_fork();
     }
@@ -157,7 +154,8 @@ void do_context_switch(uint32_t syscall_n) {
         //kprintf("Now loading process context.\n");
         return;
     }
-    if( syscall_n != 0 ) {
+    if( syscall_n > 0 ) {
+        process_current->in_syscall = syscall_n;
         process_current->user_regs.load_from_active();
         // If we're preempted, then the syscall's context is saved.
         // We save active_regs in a special slot to ensure that we don't lose it.
@@ -167,12 +165,13 @@ void do_context_switch(uint32_t syscall_n) {
         process_current->user_regs.eax = ret; // set return value
         process_current->user_regs.eflags |= (1<<9); // set IF
         process_current->user_regs.load_to_active(); // load new user registers
+        process_current->in_syscall = 0;
     } else {
         // Save registers
         process_current->regs.load_from_active();
         // reschedule to run
         multitasking_timeslice_tick_count = MULTITASKING_RUN_TIMESLICE;
-        if( (process_current != NULL) && (process_current->state == process_state::runnable) )
+        if( (process_current != NULL) && ((process_current->state == process_state::runnable) || (process_current->state == process_state::forking)) )
             process_add_to_runqueue( process_current );
         
         uint16_t pic_isr = pic_get_isr();
@@ -190,8 +189,20 @@ void do_context_switch(uint32_t syscall_n) {
         // load new process context
         active_tss.esp0 = process_current->regs.kernel_stack;
         active_tss.load_active();
-        process_current->regs.eflags |= (1<<9); 
-        process_current->regs.load_to_active();
+        if( process_current->state == process_state::forking ) { // load from user_regs instead of regs (like a syscall)
+            if( process_current->user_regs.eip < 0x1000 ) {
+                panic("multitask: invalid process EIP!\n");
+            }
+            process_current->state = process_state::runnable;
+            process_current->user_regs.eflags |= (1<<9); 
+            process_current->user_regs.load_to_active();
+        } else {
+            if( process_current->regs.eip < 0x1000 ) {
+                panic("multitask: invalid process EIP!\n");
+            }
+            process_current->regs.eflags |= (1<<9); 
+            process_current->regs.load_to_active();
+        }
         if( pic_isr & 1 ) { // were we in IRQ context?
             in_irq_context = false; // well, we're not going to be anymore after this
         }

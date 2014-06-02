@@ -779,10 +779,8 @@ void paging_handle_pagefault(char error_code, uint32_t cr2, uint32_t eip, uint32
             }
         }
         if( cr2 < 0x1000 ) { // invalid address-- first page is not and never should be mapped (NULL address page)
-            panic_cr2 = cr2;
-            panic_ins = eip;
-            panic("paging: invalid memory access (possible NULL pointer dereference?)\nAccessed address: 0x%X\nEIP=0x%X\nCS=0x%X",
-            cr2, eip, cs);
+            panic("paging: invalid memory access (possible NULL pointer dereference?)\nAccessed address: 0x%x\nEIP=0x%x\nCS=0x%x",
+            panic_cr2, panic_ins, cs);
         }
         //kprintf("Page fault!\n");
         //kprintf("CR2: 0x%x\n", (unsigned long long int)cr2);

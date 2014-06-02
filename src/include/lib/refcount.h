@@ -34,13 +34,19 @@ class shared_ptr {
     uint32_t  rc_id;
     
     public:
-    weak_ptr<T>&    operator=(const weak_ptr<T>&);
-    shared_ptr<T>&  operator=(const shared_ptr<T>&);
-    shared_ptr<T>&  operator=(const T*);
-    T&              operator*()  { return *this->object; };
-    T*              operator->() { return this->object; };
-    T*              get() { return this->object; };
-    void            invalidate();
+    const weak_ptr<T>&    operator=(const weak_ptr<T>&);
+    const shared_ptr<T>&  operator=(const shared_ptr<T>&);
+    shared_ptr<T>&        operator=(const T*);
+    T&                    operator*()  { return *this->object; };
+    T*                    operator->() { return this->object; };
+    
+    bool                  operator==(const weak_ptr<T>& rhs) { return (this->object == rhs.object); }
+    bool                  operator==(const shared_ptr<T>& rhs) { return (this->object == rhs.object); }
+    bool                  operator!=(const weak_ptr<T>& rhs) { return (this->object != rhs.object); }
+    bool                  operator!=(const shared_ptr<T>& rhs) { return (this->object != rhs.object); }
+    
+    T*                    get() { return this->object; };
+    void                  invalidate();
     
     shared_ptr() : object(NULL), rc(NULL), rc_id(0) {};
     shared_ptr(T*);
@@ -83,7 +89,6 @@ shared_ptr<T>::shared_ptr(T* obj) {
 
 template<class T>
 shared_ptr<T>::~shared_ptr() {
-    //kprintf("destroying shared pointer.\n");
     this->invalidate();
 }
 
@@ -94,15 +99,15 @@ void shared_ptr<T>::invalidate() {
             delete this->object;
             delete this->rc;
             shared_ptr_is_alive.set( this->rc_id, false );
-            this->object = NULL;
-            this->rc     = NULL;
-            this->rc_id  = 0;
         }
     }
+    this->object = NULL;
+    this->rc     = NULL;
+    this->rc_id  = 0;
 }
 
 template<class T>
-weak_ptr<T>& shared_ptr<T>::operator=(const weak_ptr<T>& org) {
+const weak_ptr<T>& shared_ptr<T>::operator=(const weak_ptr<T>& org) {
     this->invalidate();
     if( !org.expired() ) {
         if( org.rc != NULL ) {
@@ -112,17 +117,19 @@ weak_ptr<T>& shared_ptr<T>::operator=(const weak_ptr<T>& org) {
             this->rc_id = org.rc_id;
         }
     }
-    return const_cast<weak_ptr<T>&>(org);
+    return org;
 }
 
 template<class T>
-shared_ptr<T>& shared_ptr<T>::operator=(const shared_ptr<T>& org) {
-    this->invalidate();
-    if( org.rc != NULL ) {
-        this->rc = org.rc;
-        this->object = org.object;
-        this->rc->increment();
-        this->rc_id = org.rc_id;
+const shared_ptr<T>& shared_ptr<T>::operator=(const shared_ptr<T>& org) {
+    if( &org != this ) {
+        this->invalidate();
+        if( org.rc != NULL ) {
+            this->rc = org.rc;
+            this->object = org.object;
+            this->rc->increment();
+            this->rc_id = org.rc_id;
+        }
     }
     return const_cast<shared_ptr<T>&>(org);
 }
@@ -152,8 +159,14 @@ class weak_ptr {
     uint32_t  rc_id;
     
     public:
-    shared_ptr<T> operator=(const shared_ptr<T>);
-    weak_ptr<T>   operator=(const weak_ptr<T>);
+    const shared_ptr<T>   operator=(const shared_ptr<T>);
+    const weak_ptr<T>     operator=(const weak_ptr<T>);
+    
+    bool                  operator==(const weak_ptr<T>& rhs) { return (this->object == rhs.object); }
+    bool                  operator==(const shared_ptr<T>& rhs) { return (this->object == rhs.object); }
+    bool                  operator!=(const weak_ptr<T>& rhs) { return (this->object != rhs.object); }
+    bool                  operator!=(const shared_ptr<T>& rhs) { return (this->object != rhs.object); }
+    
     shared_ptr<T> get_shared();
     T*            get() { return this->object; };
     bool          expired();
@@ -178,19 +191,19 @@ weak_ptr<T>::weak_ptr( weak_ptr<T>& ptr ) {
 }
 
 template<class T>
-weak_ptr<T> weak_ptr<T>::operator=( const weak_ptr<T> ptr ) {
+const weak_ptr<T> weak_ptr<T>::operator=( const weak_ptr<T> ptr ) {
     this->object = ptr.object;
     this->rc     = ptr.rc;
     this->rc_id  = ptr.rc_id;
-    return const_cast<weak_ptr<T>&>(ptr);
+    return ptr;
 }
 
 template<class T>
-shared_ptr<T> weak_ptr<T>::operator=( const shared_ptr<T> ptr ) {
+const shared_ptr<T> weak_ptr<T>::operator=( const shared_ptr<T> ptr ) {
     this->object = ptr.object;
     this->rc     = ptr.rc;
     this->rc_id  = ptr.rc_id;
-    return const_cast<shared_ptr<T>&>(ptr);
+    return ptr;
 }
 
 template<class T>

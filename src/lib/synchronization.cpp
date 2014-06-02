@@ -120,11 +120,11 @@ reentrant_mutex::reentrant_mutex() {
     this->mutex_id = last_mutex_id++;
 }
 
-bool reentrant_mutex::trylock( int uid ) {
+bool reentrant_mutex::trylock() {
     if( multitasking_enabled ) {
         this->control_lock.lock_cli();
-        if( (this->uid == -1) || (this->uid == uid) ){
-            this->uid = uid;
+        if( (this->uid == ~0) || (this->uid == process_current->id) ){
+            this->uid = process_current->id;
             this->lock_count++;
             this->control_lock.unlock_cli();
             return true;
@@ -135,15 +135,6 @@ bool reentrant_mutex::trylock( int uid ) {
     return true;
 }
 
-bool reentrant_mutex::trylock() {
-    if( process_current != NULL) {
-        return this->trylock( process_current->id );
-    }
-    return false;
-}
-
-uint32_t panic_lock = 0;
-uint32_t enable_lock_prints = 0;
 void reentrant_mutex::lock() {
     if( process_current != NULL) {
         if( multitasking_enabled ) { // don't screw up state if multitasking is not enabled
@@ -158,41 +149,20 @@ void reentrant_mutex::lock() {
             }
             */
             this->control_lock.lock_cli();
-            if( (this->uid == -1) || (this->uid == process_current->id) ){ // okay, it's not taken yet (or we've already taken it), acquire it
+            if( (this->uid == ~0) || (this->uid == process_current->id) ){ // okay, it's not taken yet (or we've already taken it), acquire it
                 this->uid = process_current->id;
-                if(enable_lock_prints > 0)
-                    kprintf("Lock is free for us, returning.\n");
             } else {
                 this->control_lock.unlock_cli();
-                if(enable_lock_prints > 0) {
-                    kprintf("Lock was not free, sleeping.\n");
-                    process *locker_process = get_process_by_pid( this->uid );
-                    if( locker_process ) {
-                        kprintf("Holder pid=%u (%s) / our pid=%u (%s)\n", (unsigned long long int)(this->uid), locker_process->name, (unsigned long long int)(process_current->id), process_current->name );
-                    }
-                }
                 while( true ) {
-                    if(enable_lock_prints > 0)
-                        kprintf("%s[%u]: Sleeping for mutex.\n", process_current->name, (unsigned long long int)(process_current->id));
                     process_switch_immediate(); // go to sleep
                     this->control_lock.lock_cli(); // okay, checking again
-                    if(enable_lock_prints > 0) {
-                        process *locker_process = get_process_by_pid( this->uid );
-                        if( locker_process ) {
-                            kprintf("Holder pid=%u (%s) / our pid=%u (%s)\n", (unsigned long long int)(this->uid), locker_process->name, (unsigned long long int)(process_current->id), process_current->name );
-                        }
-                    }
-                    if( (this->uid == -1) || (this->uid == uid) ) { // is it still locked?
-                        if(enable_lock_prints > 0)
-                            kprintf("Now it's free for us, returning.\n");
+                    if( (this->uid == ~0) || (this->uid == uid) ) { // is it still locked?
                         this->uid = process_current->id; // okay it is, acquire it
                         break;
                     } else {
                         process *locker_process = get_process_by_pid( this->uid );
                         if( locker_process ) {
                             if( locker_process->state == process_state::dead ) {
-                                if( enable_lock_prints > 0 )
-                                    kprintf("Process %u: Holding process is dead, taking forcefully.\n", (unsigned long long int)(process_current->id));
                                 this->uid = process_current->id;
                                 break;
                             }

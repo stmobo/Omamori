@@ -19,6 +19,7 @@ extern "C" {
 enum struct process_state {
     runnable,
     waiting,
+    forking,
     dead,
 };
 
@@ -27,6 +28,7 @@ typedef struct page_table {
     int      flags = 0;
     int      pde_no = -1;
     bool     ready = false; // is true if the constructor was able to allocate all required resources.
+    int      n_entries = 0;
     
     size_t map_addr = NULL;
     
@@ -37,11 +39,10 @@ typedef struct page_table {
 } page_table; 
 
 typedef struct address_space {
-    uint32_t   page_directory_physical = NULL; // paddr of the PD
-    uint32_t   *page_directory = NULL;         // a pointer to the PD's vaddr
-    page_table **page_tables = NULL;
-    int         n_page_tables = 0;
-    bool        ready = false;
+    uint32_t                page_directory_physical = NULL; // paddr of the PD
+    uint32_t                *page_directory = NULL;         // a pointer to the PD's vaddr
+    vector<page_table*>     *page_tables = NULL;
+    bool                    ready = false;
     
     void unmap_pde( int );
     void map_pde( int, size_t, int );
@@ -67,6 +68,7 @@ typedef struct process {
     uint32_t                 return_value;
     vector<message*>         message_queue;
     mutex                    message_queue_lock;
+    uint32_t                 in_syscall = 0;
     
     ~process();
     process( process* );
@@ -108,7 +110,7 @@ extern int send_message_all( message msg );
 extern void process_scheduler();
 extern void process_add_to_runqueue( process* );
 extern process* get_process_by_pid( int );
-extern void spawn_process( process*, bool=true );
+extern void spawn_process( process* to_add, bool sched_immediate=true );
 extern uint32_t do_fork();
 extern uint32_t fork();
 

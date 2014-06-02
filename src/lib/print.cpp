@@ -11,15 +11,18 @@ const char* numeric_alpha = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 size_t strlen(char* str)
 {
-    if( str == NULL )
+    if( (uint32_t)str < 0x1000 ) // also catches NULL pointer derefs!
         return 0;
+    if( str == (char*)0x00000001) {
+        panic("lolderp");
+    }
 	size_t ret = 0;
 	while ( str[ret] != 0 )
 		ret++;
 	return ret;
 }
 
-char* int_to_octal(long long int n) {
+char* int_to_octal(unsigned long long int n) {
     if(n == 0) {
         char* mem = (char*)kmalloc(2);
         mem[0] = '0';
@@ -38,7 +41,7 @@ char* int_to_octal(long long int n) {
     return ret;
 }
 
-char* int_to_hex(long long int n) {
+char* int_to_hex(unsigned long long int n) {
     if(n == 0) {
         char* mem = (char*)kmalloc(2);
         mem[0] = '0';
@@ -60,7 +63,7 @@ char* int_to_hex(long long int n) {
     return ret;
 }
 
-char* int_to_bin(long long int n) {
+char* int_to_bin(unsigned long long int n) {
     if(n == 0) {
         char* mem = (char*)kmalloc(2);
         mem[0] = '0';
@@ -76,8 +79,8 @@ char* int_to_bin(long long int n) {
 }
 
 // there is DEFINITELY a better way to do this.
-char* int_to_decimal(signed long long int n) {
-    size_t d = 0;
+char* int_to_decimal(unsigned long long int n) {
+    unsigned int d = 0;
     int n2 = n;
     if(n == 0) {
         char* mem = (char*)kmalloc(2);
@@ -92,7 +95,7 @@ char* int_to_decimal(signed long long int n) {
     n2 = n;
     d++;
     char* mem = (char*)kmalloc(d);
-    for(int i=1;i<d;i++) {
+    for(unsigned int i=1;i<d;i++) {
         mem[(d-i)-1] = numeric_alpha[(n2%10)];
         n2 /= 10;
     }
@@ -105,29 +108,31 @@ char *concatentate_strings(char* str1, char *str2) {
         return NULL;
     if( str1 == NULL ) {
         char *out = (char*)kmalloc( strlen(str2)+1 );
-        for(size_t i=0;i<strlen(str2);i++) {
+        for(size_t i=0;i<=strlen(str2);i++) {
             out[i] = str2[i];
         }
-        out[ strlen(str2) ] = 0;
         return out;
     }
     if( str2 == NULL ) {
         char *out = (char*)kmalloc( strlen(str1)+1 );
-        for(size_t i=0;i<strlen(str1);i++) {
+        for(size_t i=0;i<=strlen(str1);i++) {
             out[i] = str1[i];
         }
-        out[ strlen(str1) ] = 0;
         return out;
     }
-    int len = strlen(str1) + strlen(str2);
+    int len = (strlen(str1) + strlen(str2));
     char *out = (char*)kmalloc(len + 2);
-    for(size_t i=0;i<strlen(str1);i++) {
+    for(size_t i=0;i<=strlen(str1);i++) {
         out[i] = str1[i];
+        if( out[i] == 0 )
+            break;
     }
-    for(size_t i=0;i<strlen(str2);i++) {
+    for(size_t i=0;i<=strlen(str2);i++) {
         out[ i+strlen(str1) ] = str2[i];
+        if( out[ i+strlen(str1) ] == 0 )
+            break;
     } 
-    out[len+1] = '\0';
+    out[len] = '\0';
     return out;
 }
 
@@ -148,7 +153,7 @@ char *append_char(char* str1, char c) {
 }
 
 char *printf_form_final_str( va_list args, char specifier,
-    char type_length, int min_width, int precision,
+    char type_length, unsigned int min_width, unsigned int precision,
     bool pad_left, bool pad_zeroes, bool add_sign,
     bool add_blank, bool add_identifier ) 
     {
@@ -156,111 +161,129 @@ char *printf_form_final_str( va_list args, char specifier,
     bool is_negative = false;
     char *str2 = NULL;
     switch( specifier ){
-        case 'c':
-        {
-            char c = va_arg(args, int);
-            str2 = (char*)kmalloc(2);
-            str2[0] = c;
-            str2[1] = 0;
-            return str2;
-        }
-        case 's':
-        {
-            char *str3 = va_arg(args, char*);
-            return str3;
-        }
         case 'u':
         {
+            unsigned long long int n;
             switch( type_length ) {
                 case 'q':
-                    str2 = int_to_decimal( (unsigned char)va_arg(args, int) );
+                    n = (unsigned char)va_arg(args, int);
                     break;
                 case 'h':
-                    str2 = int_to_decimal( (unsigned short int)va_arg(args, int) );
+                    n = (unsigned short int)va_arg(args, int);
                     break;
                 case 'l':
-                    str2 = int_to_decimal( va_arg(args, unsigned long int) );
+                    n = va_arg(args, unsigned long int);
                     break;
                 case 'b':
-                    str2 = int_to_decimal( va_arg(args, unsigned long long int) );
+                    n = va_arg(args, unsigned long long int);
                     break;
                 case 'j':
-                    str2 = int_to_decimal( va_arg(args, uintmax_t) );
+                    n = va_arg(args, uintmax_t);
                     break;
                 case 'z':
-                    str2 = int_to_decimal( va_arg(args, size_t) );
+                    n = va_arg(args, size_t);
                     break;
                 case 't':
-                    str2 = int_to_decimal( va_arg(args, ptrdiff_t) );
+                    n = va_arg(args, ptrdiff_t);
                     break;
-                case 0:
                 default:
-                    str2 = int_to_decimal( va_arg(args, unsigned int) );
+                    n = va_arg(args, unsigned int);
                     break;
             }
+            str2 = int_to_decimal(n);
             break;
         }
         case 'o':
         {
+            unsigned long long int n;
             switch( type_length ) {
                 case 'q':
-                    str2 = int_to_octal( (unsigned char)va_arg(args, int) );
+                    n = (unsigned char)(va_arg(args, int));
                     break;
                 case 'h':
-                    str2 = int_to_octal( (unsigned short int)va_arg(args, int) );
+                    n = (unsigned short int)(va_arg(args, int));
                     break;
                 case 'l':
-                    str2 = int_to_octal( va_arg(args, unsigned long int) );
+                    n = va_arg(args, unsigned long int);
                     break;
                 case 'b':
-                    str2 = int_to_octal( va_arg(args, unsigned long long int) );
+                    n = va_arg(args, unsigned long long int);
                     break;
                 case 'j':
-                    str2 = int_to_octal( va_arg(args, uintmax_t) );
+                    n = va_arg(args, uintmax_t);
                     break;
                 case 'z':
-                    str2 = int_to_octal( va_arg(args, size_t) );
+                    n = va_arg(args, size_t);
                     break;
                 case 't':
-                    str2 = int_to_octal( va_arg(args, ptrdiff_t) );
+                    n = va_arg(args, ptrdiff_t);
                     break;
-                case 0:
                 default:
-                    str2 = int_to_octal( va_arg(args, unsigned int) );
+                    n = va_arg(args, unsigned int);
                     break;
+            }
+            str2 = int_to_octal(n);
+            break;
+        }
+        case 's':
+        {
+            char *arg_str;
+            arg_str = va_arg(args, char*);
+            if( (uint32_t)arg_str < 0x1000 ) // dirty hack (nothing's supposed to be down there)
+                return NULL;
+            if(precision != 0) {
+                str2 = (char*)kmalloc(precision+2);
+                if(str2 == NULL)
+                    break;
+                str2[precision+1] = 0;
+                for(unsigned int i=0;i<=precision;i++) {
+                    str2[i] = arg_str[i];
+                    if(str2[i] == 0)
+                        break;
+                }
+            } else {
+                str2 = (char*)kmalloc( strlen(arg_str)+2 );
+                if(str2 == NULL)
+                    break;
+                str2[strlen(arg_str)+1] = 0;
+                for(unsigned int i=0;i<=strlen(arg_str);i++) {
+                    str2[i] = arg_str[i];
+                    if(str2[i] == 0)
+                        break;
+                }
             }
             break;
         }
         case 'X':
         {
+            unsigned long long int n;
             switch( type_length ) {
                 case 'q':
-                    str2 = int_to_hex( (unsigned char)va_arg(args, int) );
+                    n = (unsigned char)va_arg(args, int);
                     break;
                 case 'h':
-                    str2 = int_to_hex( (unsigned short int)va_arg(args, int) );
+                    n = (unsigned short int)va_arg(args, int);
                     break;
                 case 'l':
-                    str2 = int_to_hex( va_arg(args, unsigned long int) );
+                    n = va_arg(args, unsigned long int);
                     break;
                 case 'b':
-                    str2 = int_to_hex( va_arg(args, unsigned long long int) );
+                    n = va_arg(args, unsigned long long int);
                     break;
                 case 'j':
-                    str2 = int_to_hex( va_arg(args, uintmax_t) );
+                    n = va_arg(args, uintmax_t);
                     break;
                 case 'z':
-                    str2 = int_to_hex( va_arg(args, size_t) );
+                    n = va_arg(args, size_t);
                     break;
                 case 't':
-                    str2 = int_to_hex( va_arg(args, ptrdiff_t) );
+                    n = va_arg(args, ptrdiff_t);
                     break;
-                case 0:
                 default:
-                    str2 = int_to_hex( va_arg(args, unsigned int) );
+                    n = va_arg(args, unsigned int);
                     break;
             }
-            break;
+            str2 = int_to_hex(n);
         }
         case 'p':
         {
@@ -270,34 +293,35 @@ char *printf_form_final_str( va_list args, char specifier,
         }
         case 'x':
         {
+            unsigned long long int n;
             switch( type_length ) {
                 case 'q':
-                    str2 = int_to_hex( (unsigned char)va_arg(args, int) );
+                    n = (unsigned char)va_arg(args, int);
                     break;
                 case 'h':
-                    str2 = int_to_hex( (unsigned short int)va_arg(args, int) );
+                    n = (unsigned short int)va_arg(args, int);
                     break;
                 case 'l':
-                    str2 = int_to_hex( va_arg(args, unsigned long int) );
+                    n = va_arg(args, unsigned long int);
                     break;
                 case 'b':
-                    str2 = int_to_hex( va_arg(args, unsigned long long int) );
+                    n = va_arg(args, unsigned long long int);
                     break;
                 case 'j':
-                    str2 = int_to_hex( va_arg(args, uintmax_t) );
+                    n = va_arg(args, uintmax_t);
                     break;
                 case 'z':
-                    str2 = int_to_hex( va_arg(args, size_t) );
+                    n = va_arg(args, size_t);
                     break;
                 case 't':
-                    str2 = int_to_hex( va_arg(args, ptrdiff_t) );
+                    n = va_arg(args, ptrdiff_t);
                     break;
-                case 0:
                 default:
-                    str2 = int_to_hex( va_arg(args, unsigned int) );
+                    n = va_arg(args, unsigned int);
                     break;
             }
-            for(int i=0;i<strlen(str2);i++) {
+            str2 = int_to_hex(n);
+            for(unsigned int i=0;i<strlen(str2);i++) {
                 switch(str2[i]) {
                     case 'A':
                         str2[i] = 'a';
@@ -349,97 +373,49 @@ char *printf_form_final_str( va_list args, char specifier,
         case 'd':
         case 'i':
         {
+            unsigned long long int un;
+            long long int n;
             switch( type_length ) {
                 case 'q':
-                {
-                    signed char n = va_arg(args, int);
-                    if( n < 0 ){
-                        is_negative = true;
-                        n *= -1;
-                    }
-                    str2 = int_to_decimal( n );
+                    n = va_arg(args, int);
                     break;
-                }
                 case 'h':
-                {
-                    short int n = va_arg(args, int);
-                    if( n < 0 ){
-                        is_negative = true;
-                        n *= -1;
-                    }
-                    str2 = int_to_decimal( n );
+                    n = va_arg(args, int);
                     break;
-                }
                 case 'l':
-                {
-                    long int n = va_arg(args, long int);
-                    if( n < 0 ){
-                        is_negative = true;
-                        n *= -1;
-                    }
-                    str2 = int_to_decimal( n );
+                    n = va_arg(args, long int);
                     break;
-                }
                 case 'b':
-                {
-                    long long n = va_arg(args, long long int);
-                    if( n < 0 ){
-                        is_negative = true;
-                        n *= -1;
-                    }
-                    str2 = int_to_decimal( n );
+                    n = va_arg(args, long long int);
                     break;
-                }
                 case 'j':
-                {
-                    intmax_t n = va_arg(args, intmax_t);
-                    if( n < 0 ){
-                        is_negative = true;
-                        n *= -1;
-                    }
-                    str2 = int_to_decimal( n );
+                    n = va_arg(args, intmax_t);
                     break;
-                }
                 case 'z':
-                {
-                    size_t n = va_arg(args, size_t);
-                    if( n < 0 ){
-                        is_negative = true;
-                        n *= -1;
-                    }
-                    str2 = int_to_decimal( n );
+                    n = va_arg(args, size_t);
                     break;
-                }
                 case 't':
-                {
-                    ptrdiff_t n = va_arg(args, ptrdiff_t);
-                    if( n < 0 ){
-                        is_negative = true;
-                        n *= -1;
-                    }
-                    str2 = int_to_decimal( n );
+                    n = va_arg(args, ptrdiff_t);
                     break;
-                }
-                case 0:
                 default:
-                {
-                    int n = va_arg(args, int);
-                    if( n < 0 ){
-                        is_negative = true;
-                        n *= -1;
-                    }
-                    str2 = int_to_decimal( n );
+                    n = va_arg(args, int);
                     break;
-                }
             }
+            if( n < 0 ) {
+                is_negative = true;
+                n *= -1;
+            }
+            un = n;
+            str2 = int_to_decimal(un);
             break;
         } // case 'd' / 'i'
-        
+        default:
+            return NULL;
     }
     if( str2 == NULL )
         return NULL;
-    if(min_width > strlen(str2)) {
-        int n_padding = strlen(str2) - min_width;
+    if(min_width > (strlen(str2)-1)) {
+        int n_padding = (strlen(str2)-1) - min_width;
         for(int i=0;i<n_padding;i++) {
             if( !pad_left ) {
                 char* str2_copy = NULL;
@@ -496,12 +472,14 @@ char *ksprintf_varg(const char* str, va_list args) {
     
     char length = 0; // 'q' instead of 'hh' (signed char) and 'b' instead of 'll' (long long)
     
-    int min_width = 0;
-    int precision = 0;
+    unsigned int min_width = 0;
+    unsigned int precision = 0;
     bool reading_precision = false;
     bool reading_width = false;
     
-    for( size_t i=0;i<strlen(const_cast<char*>(str));i++ ) {
+    for( size_t i=0;i<strlen(const_cast<char*>(str))+1;i++ ) {
+        if(str[i] == 0)
+            break;
         if( str[i] == '%' ) {
             if( str[i+1] == '%' ) {
                 char *out_copy = append_char( out, '%' );
@@ -511,6 +489,18 @@ char *ksprintf_varg(const char* str, va_list args) {
                 i++;
             } else {
                 reading_specifier = true;
+                
+                pad_left = false;
+                use_zeroes = false;
+                always_sign = false;
+                blank_sign = false;
+                add_punctuation = false;
+                reading_precision = false;
+                reading_width = false;
+                
+                length = 0;
+                min_width = 0;
+                precision = 0;
             }
         } else if(reading_specifier) {
             switch( str[i] ) {
@@ -586,6 +576,8 @@ char *ksprintf_varg(const char* str, va_list args) {
                         length = 'l';
                     }
                     break;
+                case 'q':
+                case 'b':
                 case 'j':
                 case 'z':
                 case 't':
@@ -602,66 +594,41 @@ char *ksprintf_varg(const char* str, va_list args) {
                 case 'x':
                 case 'X':
                 case 's':
-                case 'c':
                 {
                     char *str2 = printf_form_final_str( args, str[i],
                                     length, min_width, precision,
                                     pad_left, use_zeroes, always_sign,
                                     blank_sign, add_punctuation );
-                    if( str2 == NULL )
+                    if( str2 == NULL ) {
                         break;
+                    }
                     char *out_copy = concatentate_strings( out, str2 );
+                    if( out != NULL ) {
+                        kfree(out);
+                    }
+                    out = out_copy;
+                    reading_specifier = false;
+                    break;
+                }
+                case 'c':
+                {
+                    char c = va_arg(args, int);
+                    char* out_copy = append_char( out, c );
                     if( out )
                         kfree(out);
                     out = out_copy;
-                    
-                    pad_left = false;
-                    use_zeroes = false;
-                    always_sign = false;
-                    blank_sign = false;
-                    add_punctuation = false;
-                    reading_precision = false;
-                    reading_width = false;
                     reading_specifier = false;
-                    
-                    length = 0;
-                    min_width = 0;
-                    precision = 0;
-                    
                     break;
                 }
                 case 'n':
                 {
-                    pad_left = false;
-                    use_zeroes = false;
-                    always_sign = false;
-                    blank_sign = false;
-                    add_punctuation = false;
-                    reading_precision = false;
-                    reading_width = false;
-                    reading_specifier = false;
-                    
-                    length = 0;
-                    min_width = 0;
-                    precision = 0;
-                    
                     signed int* ptr = va_arg(args, signed int*);
                     *ptr = strlen(out);
+                    reading_specifier = false;
                     break;
                 }
                 default:
-                    pad_left = false;
-                    use_zeroes = false;
-                    always_sign = false;
-                    blank_sign = false;
-                    add_punctuation = false;
-                    reading_precision = false;
-                    reading_width = false;
                     reading_specifier = false;
-                    
-                    length = 0;
-                    min_width = 0;
-                    precision = 0;
                     break;
             }
         } else {
@@ -669,6 +636,7 @@ char *ksprintf_varg(const char* str, va_list args) {
             if( out )
                 kfree(out);
             out = out_copy;
+            reading_specifier = false;
         }
     }
     return out;
@@ -699,7 +667,7 @@ void kprintf_varg(const char *str, va_list args) {
 }
 
 // Print something to screen.
-// DO NOT CALL THIS FROM AN ISR!!!
+// don't call this from irq context, it might break stuff
 void kprintf(const char *str, ...) {
     va_list args;
     va_start(args, str);

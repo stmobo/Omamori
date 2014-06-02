@@ -21,7 +21,8 @@ extern void paging_handle_pagefault(char, uint32_t, uint32_t, uint32_t);
 void halt_err(size_t err, size_t eip, size_t cs, char* desc) {
     kprintf("%s\nerror code=0x%x\nEIP=0x%x\nCS=0x%x", desc, (unsigned long long int)err, (unsigned long long int)eip, (unsigned long long int)cs);
     while(true) {
-        asm volatile("hlt\n\t" : : : "memory");
+        asm volatile("cli\n\t"
+                     "hlt\n\t" : : : "memory");
     }
 }
 

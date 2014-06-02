@@ -3,11 +3,11 @@
 #include <stdarg.h>
 //#define ENABLE_SERIAL_LOGGING
 
-extern char* int_to_decimal(long long int);
+extern char* int_to_decimal(unsigned long long int);
 extern char* double_to_decimal(double);
-extern char* int_to_octal(long long int);
-extern char* int_to_hex(long long int);
-extern char* int_to_bin(long long int);
+extern char* int_to_octal(unsigned long long int);
+extern char* int_to_hex(unsigned long long int);
+extern char* int_to_bin(unsigned long long int);
 extern char* concatentate_strings(char*, char*);
 extern char* append_char(char*, char);
 extern char* ksprintf_varg(const char*, va_list);

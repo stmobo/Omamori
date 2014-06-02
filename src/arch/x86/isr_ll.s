@@ -1,5 +1,7 @@
 .global multitasking_enabled
 .global multitasking_timeslice_tick_count
+.global as_syscall
+.global syscall_num
 
 # generic wrapper stuff
 _isr_call_cpp_func:
@@ -166,6 +168,8 @@ _isr_irq_0:
     jne .__isr_irq_0_no_ctext_switch # do a "normal" irq call if it isn't
     
     pop %eax
+    movl $0, (as_syscall)
+    movl $0, (syscall_num)
     jmp __multitasking_kmode_entry # do note that __multitasking_kmode_entry calls the irq handler in our stead.
     # not falling through -- __multitasking_kmode_entry does the iret itself
     

@@ -83,16 +83,16 @@ extern "C" {
                     checksum += ((rdsp->rdst_addr) >> 16) & 0xFF;
                     checksum += ((rdsp->rdst_addr) >> 24) & 0xFF;
                     if(checksum == 0) {
-                        kprintf("acpi: found RDSP at 0x%x\n", (unsigned long long int)search_addr);
+                        kprintf("acpi: found RDSP at 0x%p\n", (void*)search_addr);
                         char oem_id[7];
                         for(int i=0;i<6;i++) {
                             oem_id[i] = rdsp->oem_id[i];
                         }
                         oem_id[6] = '\0';
                         kprintf("acpi: oem_id: %s\n", (uint64_t)oem_id);
-                        kprintf("acpi: revision: 0x%x\n", (uint64_t)rdsp->revision);
-                        kprintf("acpi: rdst_addr: 0x%x\n",(uint64_t)rdsp->rdst_addr);
-                        kprintf("acpi: checksum: 0x%x\n", (uint64_t)rdsp->checksum);
+                        kprintf("acpi: revision: %u\n", rdsp->revision);
+                        kprintf("acpi: rdst_addr: 0x%p\n",(void*)rdsp->rdst_addr);
+                        kprintf("acpi: checksum: 0x%x\n", rdsp->checksum);
                         return search_addr;
                     }
                 }

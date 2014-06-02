@@ -27,6 +27,7 @@ class vector {
     T remove_end(); // removes from end   (FILO)
     T remove(int);     // removes from start (FIFO)
     
+    vector( vector<T>& );
     vector();
     vector( int );
     ~vector();
@@ -37,6 +38,16 @@ vector<T>::vector() {
     this->elements = NULL;
     this->n_allocated_for = 0;
     this->n_elements = 0;
+}
+
+template <class T>
+vector<T>::vector( vector<T>& original ) {
+    this->elements = (T*)kmalloc(sizeof(T)*original.n_allocated_for);
+    this->n_allocated_for = original.n_allocated_for;
+    this->n_elements = original.n_allocated_for;
+    for( int i=0;i<original.n_allocated_for;i++ ) {
+        this->elements[i] = original.elements[i];
+    }
 }
 
 template <class T>

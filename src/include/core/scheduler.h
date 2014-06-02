@@ -11,6 +11,10 @@
 
 #define PROCESS_FLAGS_DELETE_ON_EXIT    (1<<0)
 
+// size in cpu_reg structs
+// total size = PROCESS_REG_STACK_SIZE*sizeof(cpu_reg)
+#define PROCESS_REG_STACK_SIZE          5
+
 extern "C" {
     extern void process_exec_complete(uint32_t);
     extern void __process_execution_complete(void);
@@ -66,13 +70,15 @@ typedef struct process {
     process_state                  state;
     uint32_t                       wait_time;
     uint32_t                       return_value;
-    vector< message* >             message_queue;
+    vector< message* >*            message_queue;
     mutex                          message_queue_lock;
     uint32_t                       in_syscall = 0;
     
+    bool operator==( const process& rhs ) { return (rhs.id == this->id); };
+    bool operator!=( const process& rhs ) { return (rhs.id != this->id); };
+    
     ~process();
     process( process* );
-    process( cpu_regs, int, const char* );
     process( size_t entry_point, bool is_usermode, int priority, const char* name, void* args, int n_args );
     
     bool send_message( message );

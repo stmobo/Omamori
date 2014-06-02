@@ -1,6 +1,6 @@
 // various things that I can't really put anywhere else
 #pragma once
-#include "dynmem.h"
+#include "core/dynmem.h"
 
 extern char io_inb(short);
 extern short io_inw(short);

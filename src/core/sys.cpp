@@ -198,7 +198,7 @@ unsigned long long __udivmoddi4( uint64_t dividend, uint64_t divisor, uint64_t *
         bit_to_add >>= 1;
     }
     
-    if( *remainder != NULL )
+    if( remainder != NULL )
         (*remainder) = dividend;
     return quotient;
 } 

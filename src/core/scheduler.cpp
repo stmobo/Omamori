@@ -247,20 +247,8 @@ process::process( process* forked_process ) {
     // need to update cr3 to point to our new PD.
     this->user_regs.cr3 = this->address_space.page_directory_physical;
     this->regs.cr3 = this->address_space.page_directory_physical;
+    this->message_queue = new vector<message*>;
     //kprintf("process::process - exiting!\n");
-}
-
-// caller is responsible for ensuring that the register values are correct!
-process::process( cpu_regs regs, int priority, const char* name ) {
-    this->regs = regs;
-    this->priority = priority;
-    this->name = name;
-    this->id = allocate_new_pid();
-    if( process_current != NULL ) {
-        this->parent = process_current->id;
-    } else {
-        this->parent = 0;
-    }
 }
 
 // notes for debugging:
@@ -334,6 +322,7 @@ process::process( size_t entry_point, bool is_usermode, int priority, const char
         this->regs.ebp = 0xBFFFFFF0; // 0xC0000000 - 4 - 4 - 4 - 4 
         this->regs.esp = 0xBFFFFFF0; // 0xC0000000 - 4 - 4 - 4 - 4
         this->regs.cr3 = this->address_space.page_directory_physical;
+        this->message_queue = new vector<message*>;
     } else {
         panic("multitasking: failed to initialize address space for process!\n");
     }

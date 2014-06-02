@@ -49,7 +49,7 @@ void test_process_1() {
         kprintf("Whoops, something went wrong with fork!");
     } else if( child_pid == 0 ) {
         kprintf("Hello from (child) process %u!\n", (unsigned int)process_current->id);
-        set_event_listen_status( "keypress", true );
+        set_message_listen_status( "keypress", true );
         while(true) {
             unique_ptr<ps2_keypress> kp;
             kp = ps2_keyboard_get_keystroke();

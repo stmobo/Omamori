@@ -147,9 +147,8 @@ __process_load_registers:
     # and fall through
 
 .__process_load_rest:
-    # load EFLAGS for iret (and reenable interrupts)
+    # load EFLAGS for iret
     mov 28(%eax), %ebx
-    or $0x200, %ebx
     push %ebx
     
     # load CS for iret

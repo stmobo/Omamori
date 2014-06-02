@@ -114,7 +114,7 @@ ps2_keypress* convert_scancode(bool f0, bool e0, unsigned char code_end) {
 
 ps2_keypress* ps2_keyboard_get_keystroke() { // blocks for a keystroke
     ps2_keypress* data;
-    set_event_listen_status( "keypress", true );
+    set_message_listen_status( "keypress", true );
     message* msg = wait_for_message();
     data = (ps2_keypress*)(msg->data);
     msg->data = NULL;
@@ -156,9 +156,9 @@ void ps2_keyboard_initialize() {
         ps2_send_byte(0xF4, false); // 0xF4 - Enable scanning
         ps2_wait_for_input();
     //}
-    register_message_type( "keypress" );
     keyboard_input_process = new process( (size_t)&ps2_keyboard_input_process, false, 0, "ps2kb_in" ,NULL, 0 );
     spawn_process( keyboard_input_process, true );
+    register_channel( "keypress", CHANNEL_MODE_MULTICAST, keyboard_input_process );
 }
 
 char* ps2_keyboard_readline(unsigned int *len) {

@@ -55,20 +55,20 @@ typedef struct address_space {
 } process_address_space;
 
 typedef struct process {
-    cpu_regs                 regs;
-    cpu_regs                 user_regs;
-    uint32_t                 id;
-    uint32_t                 parent;
-    const char*              name;
-    uint32_t                 flags;
-    int                      priority;
-    process_address_space    address_space;
-    process_state            state;
-    uint32_t                 wait_time;
-    uint32_t                 return_value;
-    vector<message*>         message_queue;
-    mutex                    message_queue_lock;
-    uint32_t                 in_syscall = 0;
+    cpu_regs                       regs;
+    cpu_regs                       user_regs;
+    uint32_t                       id;
+    uint32_t                       parent;
+    const char*                    name;
+    uint32_t                       flags;
+    int                            priority;
+    process_address_space          address_space;
+    process_state                  state;
+    uint32_t                       wait_time;
+    uint32_t                       return_value;
+    vector< message* >             message_queue;
+    mutex                          message_queue_lock;
+    uint32_t                       in_syscall = 0;
     
     ~process();
     process( process* );

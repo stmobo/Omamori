@@ -5,6 +5,8 @@
 #include "lib/vector.h"
 #include "core/scheduler.h"
 
+uint64_t last_message_id = 0;
+
 hash_table< vector<process*>* >* message_queues;
 
 void wake_all_in_queue( char *queue_name ) {
@@ -44,25 +46,28 @@ void send_message( message msg ) {
 }
 
 // yes, you have to delete the returned pointer.
-message *get_latest_message() {
+message* get_latest_message() {
     process_current->message_queue_lock.lock();
-    message *ret = process_current->message_queue.remove();
+    message* ret = process_current->message_queue.remove();
     process_current->message_queue_lock.unlock();
     return ret;
 }
 
 bool process::send_message( message msg ) {
-    if( (this->state == process_state::waiting) || (this->state == process_state::runnable) ) {
-        message *copy = new message;
-        copy->type = msg.type;
-        copy->data = msg.data;
-        this->message_queue.add(copy);
-        return true;
+    if( this->state != process_state::dead ) {
+        message* copy = new message( msg );
+        if(copy->data != NULL) {
+            this->message_queue.add(copy);
+            return true;
+        } else {
+            delete copy;
+            return false;
+        }
     }
     return false;
 }
 
-message *wait_for_message() {
+message* wait_for_message() {
     //kprintf("process %u (%s): Waiting for message!\n", (unsigned long long int)process_current->id, process_current->name);
     process_current->state = process_state::waiting;
     while( true ) {
@@ -73,7 +78,7 @@ message *wait_for_message() {
         process_switch_immediate();
     }
     process_current->state = process_state::runnable;
-    message *ret = NULL;
+    message* ret;
     int n_times_cycled = 0;
     process_current->message_queue_lock.lock();
     while( true ) {
@@ -116,15 +121,34 @@ bool set_event_listen_status( char* event_name, bool status ) {
     return false;
 }
 
-void register_event_type( char* event_name ) {
+void register_message_type( char* message_type ) {
     vector<process*>* new_queue = new vector<process*>;
     if( !new_queue )
         panic("messaging: could not allocate space for new message recipient list!");
-    message_queues->set( event_name, new_queue );
+    message_queues->set( message_type, new_queue );
 }
 
-message::message() {
-    this->timestamp = get_sys_time_counter();
+message::message( message& org ) {
+    this->type    = org.type;
+    this->data_sz = org.data_sz;
+    this->uid     = last_message_id++;
+    this->data    = kmalloc(org.data_sz);
+    if( this->data != NULL )
+        memcpy( this->data, org.data, org.data_sz );
+}
+
+message::message( const char* type, void* data, size_t data_sz ) {
+    this->type    = type;
+    this->data_sz = data_sz;
+    this->uid     = last_message_id++;
+    this->data    = kmalloc(data_sz);
+    if( this->data != NULL )
+        memcpy( this->data, data, data_sz );
+}
+
+message::~message() {
+    if(this->data != NULL)
+        kfree(this->data);
 }
 
 void initialize_ipc() {

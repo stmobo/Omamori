@@ -112,11 +112,13 @@ ps2_keypress* convert_scancode(bool f0, bool e0, unsigned char code_end) {
     return kp;
 }
 
-shared_ptr<ps2_keypress> ps2_keyboard_get_keystroke() { // blocks for a keystroke
+ps2_keypress* ps2_keyboard_get_keystroke() { // blocks for a keystroke
+    ps2_keypress* data;
     set_event_listen_status( "keypress", true );
-    message *msg = wait_for_message();
-    shared_ptr<ps2_keypress> data;
+    message* msg = wait_for_message();
     data = (ps2_keypress*)(msg->data);
+    msg->data = NULL;
+    delete msg;
     return data;
 }
 
@@ -132,9 +134,7 @@ void ps2_keyboard_input_process() {
             f0 = true;
         } else {
             ps2_keypress* key = convert_scancode(f0, e0, data);
-            message msg;
-            msg.type = "keypress";
-            msg.data = key;
+            message msg( "keypress", key, sizeof(ps2_keypress) );
             send_message( msg );
             e0 = false;
             f0 = false;
@@ -156,7 +156,7 @@ void ps2_keyboard_initialize() {
         ps2_send_byte(0xF4, false); // 0xF4 - Enable scanning
         ps2_wait_for_input();
     //}
-    register_event_type( "keypress" );
+    register_message_type( "keypress" );
     keyboard_input_process = new process( (size_t)&ps2_keyboard_input_process, false, 0, "ps2kb_in" ,NULL, 0 );
     spawn_process( keyboard_input_process, true );
 }
@@ -164,7 +164,7 @@ void ps2_keyboard_initialize() {
 char* ps2_keyboard_readline(unsigned int *len) {
     vector<char> buffer;
     while(true) {
-        shared_ptr<ps2_keypress> kp;
+        unique_ptr<ps2_keypress> kp;
         kp = ps2_keyboard_get_keystroke();
         if(!kp->released) {
             if(kp->key == KEY_Enter) {

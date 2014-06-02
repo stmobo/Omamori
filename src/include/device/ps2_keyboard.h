@@ -144,5 +144,5 @@ typedef struct ps2_keypress {
 } ps2_keypress;
 
 extern void ps2_keyboard_initialize(void);
-extern shared_ptr<ps2_keypress> ps2_keyboard_get_keystroke(void);
+extern ps2_keypress* ps2_keyboard_get_keystroke(void);
 extern char* ps2_keyboard_readline(unsigned int*);

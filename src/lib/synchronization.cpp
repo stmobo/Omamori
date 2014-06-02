@@ -277,10 +277,10 @@ bool semaphore::try_acquire(uint32_t count) {
     return true;
 }
 
-void semaphore::acquire(uint32_t count) {
+bool semaphore::acquire(uint32_t count) {
     // make sure we don't deadlock the process by attempting to fulfill an impossible request
     if( !(this->max_count == 0) && (count > this->max_count) ) {
-        return;
+        return false;
     }
     if( multitasking_enabled ) {
         while(true) {
@@ -303,6 +303,7 @@ void semaphore::acquire(uint32_t count) {
             process_switch_immediate();
         }
     }
+    return true;
 }
 
 uint32_t semaphore::get_count() {

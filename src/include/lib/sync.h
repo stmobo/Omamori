@@ -48,10 +48,30 @@ typedef class semaphore {
     uint32_t get_count();
     uint32_t get_max_count();
     bool try_acquire( uint32_t count );
-    void acquire( uint32_t count );
+    bool acquire( uint32_t count );
     bool release( uint32_t count );
     ~semaphore();
     semaphore();
     semaphore(uint32_t);
     semaphore(uint32_t,uint32_t);
 } semaphore;
+
+template <class T>
+class lock_guard {
+    T* lock;
+    
+    public:
+    lock_guard( T& lock ) { this->lock = &lock; this->lock->lock(); }
+    ~lock_guard( ) { this->lock->unlock(); this->lock = NULL; }
+};
+
+template <>
+class lock_guard<semaphore> {
+    semaphore *lock;
+    int n_elements;
+    bool status = false;
+    
+    public:
+    lock_guard( semaphore& lock, int n_elements ) { this->n_elements = n_elements; this->lock = &lock; this->status = this->lock->acquire(n_elements); }
+    ~lock_guard() { this->lock->release( this->n_elements ); }
+};

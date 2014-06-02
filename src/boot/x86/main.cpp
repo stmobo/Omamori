@@ -49,17 +49,20 @@ void test_process_1() {
         kprintf("Whoops, something went wrong with fork!");
     } else if( child_pid == 0 ) {
         kprintf("Hello from (child) process %u!\n", (unsigned int)process_current->id);
+        set_event_listen_status( "keypress", true );
         while(true) {
-            shared_ptr<ps2_keypress> kp;
+            unique_ptr<ps2_keypress> kp;
             kp = ps2_keyboard_get_keystroke();
-            if( kp->key == KEY_CurUp ) {
-                kprintf("Process %u: Up!\n", (unsigned int)process_current->id);
-            } else if( kp->key == KEY_CurDown ) {
-                kprintf("Process %u: Down!\n", (unsigned int)process_current->id);
+            if( !kp->released ) {
+                if( kp->key == KEY_CurUp ) {
+                    kprintf("Process %u: Up!\n", process_current->id);
+                } else if( kp->key == KEY_CurDown ) {
+                    kprintf("Process %u: Down!\n", process_current->id);
+                }
             }
         }
     } else {
-        kprintf("Hello from (parent) process %u!\n", (unsigned int)process_current->id);
+        kprintf("Hello from (parent) process %u!\n", process_current->id);
         kprintf("Press ENTER to continue...\n");
         terminal_putchar('>');
         while(true) {
@@ -73,8 +76,8 @@ void test_process_1() {
             } else if(strcmp(line, "time", 0)) {
                 kprintf("Time since system startup: %u ticks.", (unsigned int)get_sys_time_counter());
             } else {
-                kprintf("Line is located at: 0x%p\n.", line);
-                kprintf("Process %lu: %s!\n", (unsigned long int)process_current->id, line);
+                kprintf("Process %u: ", process_current->id);
+                kprintf("%s", line);
             }
             kfree(line);
             terminal_writestring("\n>");

@@ -227,38 +227,42 @@ shared_ptr<T> weak_ptr<T>::get_shared() {
 
 template<class T>
 class unique_ptr {
-    T* object;
+    T* object = NULL;
     
     public:
-    void        operator=(const unique_ptr<T>);
-    void        operator=(const T*);
+    bool        operator!=(const unique_ptr<T>& rhs) { return (this->object != rhs.object); };
+    bool        operator==(const unique_ptr<T>& rhs) { return (this->object == rhs.object); };
+    bool        operator!=(const T* rhs)             { return (this->object != rhs); };
+    bool        operator==(const T* rhs)             { return (this->object == rhs); };
+    void        operator=(const unique_ptr<T>&) = delete;
+    void        operator=(unique_ptr<T>&&);
+    void        operator=(T*);
     T&          operator*()  { return *this->object; };
-    T           operator->() { return this->object; };
-    T*          get() { return this->object; };
+    T*          operator->() { return this->object; };
+    void        reset() { if(this->object != NULL) { delete this->object; this->object = NULL; } };
     
     unique_ptr() : object(NULL) {};
     unique_ptr(T* obj) : object(obj) {};
-    unique_ptr(unique_ptr<T>&);
-    ~unique_ptr() { if(this->object != NULL) { delete this->object; } };
+    unique_ptr(unique_ptr<T>&) = delete;
+    unique_ptr(unique_ptr<T>&&);
+    ~unique_ptr() { this->reset(); };
 };
 
 template<class T>
-unique_ptr<T>::unique_ptr(unique_ptr<T>& ptr) {
+unique_ptr<T>::unique_ptr(unique_ptr<T>&& ptr) {
     this->object = ptr.object;
-    ptr.object = NULL;
+    ptr.reset();
 }
 
 template<class T>
-void unique_ptr<T>::operator=(const unique_ptr<T> ptr) {
-    if(this->object != NULL)
-        delete this->object;
+void unique_ptr<T>::operator=(unique_ptr<T>&& ptr) {
+    this->reset();
     this->object = ptr.object;
-    ptr.object = NULL;
+    ptr.reset();
 }
 
 template<class T>
-void unique_ptr<T>::operator=(const T* ptr) {
-    if(this->object != NULL)
-        delete this->object;
+void unique_ptr<T>::operator=(T* ptr) {
+    this->reset();
     this->object = ptr;
 }

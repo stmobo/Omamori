@@ -60,18 +60,17 @@ void spawn_process( process* to_add, bool sched_immediate ) {
 semaphore __debug_fork_sema(1,1);
 uint32_t do_fork() {
     process* child_process = new process( process_current );
-    process_current->user_regs.eax = child_process->id;        // so we need to move the new regs over
-    spawn_process( child_process, false );
-    process_add_to_runqueue( process_current );                // schedule ourselves to run later
-    process_current->state = process_state::forking;           // tell the scheduler to load from user_regs
-    child_process->state = process_state::runnable;            // let the child run
-    process_current = child_process;
-    return 0;
-}
-
-// syscall wrapper function
-uint32_t fork() {
-    return syscall(1,42,0,0,0,0);
+    if( child_process != NULL ) {
+        process_current->children.add_end(child_process);
+        process_current->user_regs.eax = child_process->id;        // so we need to move the new regs over
+        spawn_process( child_process, false );
+        process_add_to_runqueue( process_current );                // schedule ourselves to run later
+        process_current->state = process_state::forking;           // tell the scheduler to load from user_regs
+        child_process->state = process_state::runnable;            // let the child run
+        process_current = child_process;
+        return 0;
+    }
+    return -1;
 }
 
 void process_queue::add(process* process_to_add) {
@@ -166,6 +165,18 @@ void process_scheduler() {
     //kprintf("New pid=%u.\n", (unsigned long long int)process_current->id);
 }
 
+int process::wait() {
+    if( this->flags & PROCESS_FLAGS_DELETE_ON_EXIT ) {
+        this->flags &= ~(PROCESS_FLAGS_DELETE_ON_EXIT);
+    }
+    while(true) {
+        if( this->state == process_state::dead ) {
+            return this->return_value;
+        }
+        process_switch_immediate();
+    }
+}
+
 process::~process() {
     if( this->id != 0 ) {
         for( unsigned int i=0;i<system_processes.length();i++ ) {
@@ -174,10 +185,21 @@ process::~process() {
                 break;
             }
         }
+        for( unsigned int i=0;i<this->parent->children.length();i++ ) {
+            if( (this->parent->children[i] != NULL) && (this->parent->children[i]->id == this->id) ) {
+                this->parent->children.set( i, NULL );
+                break;
+            }
+        }
         for( int i=0;i<run_queues[this->priority].get_count();i++ ) {
             if( run_queues[this->priority][i]->id == this->id ) {
                 run_queues[this->priority].remove(i);
             }
+        }
+        this->state = process_state::dead;
+        if( process_current->id == this->id ) {
+            this->user_regs.eip = (uint32_t)&__process_execution_complete;
+            this->regs.eip = (uint32_t)&__process_execution_complete; // just in case we happen to come back
         }
     }
 }
@@ -188,7 +210,7 @@ process::process( process* forked_process ) {
     this->priority = forked_process->priority;
     this->name = forked_process->name;
     this->id = allocate_new_pid();
-    this->parent = forked_process->id;
+    this->parent = forked_process;
     
     // traverse the process' page directory, and duplicate frames that aren't in PTs 768 or 0.
     // this, coincidentally, also copies the stack.
@@ -256,11 +278,7 @@ process::process( process* forked_process ) {
 process::process( size_t entry_point, bool is_usermode, int priority, const char* name, void* args, int n_args ) {
     if(this->address_space.ready) { // no point in setting anything else if the address space couldn't be allocated
         this->id = allocate_new_pid();
-        if( process_current != NULL ) {
-            this->parent = process_current->id;
-        } else {
-            this->parent = 0;
-        }
+        this->parent = process_current;
         this->state = process_state::runnable;
         this->priority = priority;
         this->name = name;

@@ -15,6 +15,8 @@
 // total size = PROCESS_REG_STACK_SIZE*sizeof(cpu_reg)
 #define PROCESS_REG_STACK_SIZE          5
 
+#define PROCESS_BREAK_START             0x40000000
+
 extern "C" {
     extern void process_exec_complete(uint32_t);
     extern void __process_execution_complete(void);
@@ -58,11 +60,16 @@ typedef struct address_space {
     ~address_space();
 } process_address_space;
 
+typedef struct process_times {
+    uint32_t prog_exec;
+    uint32_t sysc_exec;
+} process_times;
+
 typedef struct process {
     cpu_regs                       regs;
     cpu_regs                       user_regs;
     uint32_t                       id;
-    uint32_t                       parent;
+    process*                       parent;
     const char*                    name;
     uint32_t                       flags;
     int                            priority;
@@ -73,6 +80,9 @@ typedef struct process {
     vector< message* >*            message_queue;
     mutex                          message_queue_lock;
     uint32_t                       in_syscall = 0;
+    uint32_t                       break_val = PROCESS_BREAK_START;
+    vector< process* >             children;
+    process_times                  times;
     
     bool operator==( const process& rhs ) { return (rhs.id == this->id); };
     bool operator!=( const process& rhs ) { return (rhs.id != this->id); };
@@ -81,6 +91,7 @@ typedef struct process {
     process( process* );
     process( size_t entry_point, bool is_usermode, int priority, const char* name, void* args, int n_args );
     
+    int  wait();
     bool send_message( message );
 } process;
 
@@ -118,8 +129,7 @@ extern void process_add_to_runqueue( process* );
 extern process* get_process_by_pid( int );
 extern void spawn_process( process* to_add, bool sched_immediate=true );
 extern uint32_t do_fork();
-extern uint32_t fork();
-
 extern "C" {
+    extern uint32_t fork();
     extern void process_switch_immediate();
 }

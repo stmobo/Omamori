@@ -3,6 +3,7 @@
 MAIN_SRC	:= src
 MAIN_OBJ    := obj
 INCLUDE_DIR := $(MAIN_SRC)/include
+
 ISO_DIR     := isodir
 
 ACPICA_SRC	:= $(MAIN_SRC)/acpica
@@ -37,11 +38,12 @@ LINK_ORDER_MID   := $(filter-out $(LINK_ORDER_FIRST) $(LINK_ORDER_LAST), $(OBJ_F
 # remap stuff to use our cross-compiler
 AS       := $(HOME)/opt/cross/bin/i686-elf-as
 CC       := $(HOME)/opt/cross/bin/i686-elf-gcc
-CCFLAGS  := -MMD -MP -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/acpica -std=gnu99 -ffreestanding -g -O2 -Wall -Wextra -Wno-unused-parameter -fno-omit-frame-pointer -fno-strict-aliasing
+CCFLAGS  := -MMD -MP -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/acpica -I$(INCLUDE_DIR)/newlib -std=gnu99 -ffreestanding -g -O2 -Wall -Wextra -Wno-unused-parameter -fno-omit-frame-pointer -fno-strict-aliasing
 CXX      := $(HOME)/opt/cross/bin/i686-elf-g++
-CXXFLAGS := -MMD -MP -I$(INCLUDE_DIR) -ffreestanding -g -O2 -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-conversion-null -Wno-write-strings -fno-exceptions -fno-rtti -fno-omit-frame-pointer -std=c++11
+CXXFLAGS := -MMD -MP -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/newlib -ffreestanding -g -O2 -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-conversion-null -Wno-write-strings -fno-exceptions -fno-rtti -fno-omit-frame-pointer -std=c++11
 LD       := $(HOME)/opt/cross/bin/i686-elf-gcc
-LDFLAGS  := -ffreestanding -g -O2
+LDFLAGS  := -nostdlib -ffreestanding -g -O2 -L./lib/i686-elf/lib
+LDLIBS   := -lgcc -lc
 
 all: omamori.iso
 
@@ -50,7 +52,7 @@ omamori.iso: omamori.elf
 		@grub-mkrescue -o omamori.iso $(ISO_DIR) > /dev/null 2>&1
 		
 omamori.elf: $(OBJ_FILES)
-		@$(LD) -T $(MAIN_SRC)/linker.ld $(LDFLAGS) -o ./omamori.elf $(LINK_ORDER_FIRST) $(LINK_ORDER_MID) $(LINK_ORDER_LAST) -nostdlib -lgcc
+		@$(LD) -T $(MAIN_SRC)/linker.ld $(LDFLAGS) -o ./omamori.elf $(LINK_ORDER_FIRST) $(LINK_ORDER_MID) $(LINK_ORDER_LAST) $(LDLIBS)
 		@mv omamori.elf omamori_embedded_debug.elf
 		@$(HOME)/opt/cross/bin/i686-elf-objcopy -S omamori_embedded_debug.elf omamori.elf
 

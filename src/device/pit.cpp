@@ -4,6 +4,7 @@
 #include "includes.h"
 #include "arch/x86/irq.h"
 #include "arch/x86/multitask.h"
+#include "core/scheduler.h"
 #include "device/vga.h"
 #include "device/pit.h"
 
@@ -29,6 +30,14 @@ bool irq0_handler() {
 
     sys_timer_ms += ms_added;
     sys_timer_ms_fraction = fractional(sys_timer_ms_fraction);
+    
+    if( multitasking_enabled && (process_current != NULL) ) {
+        if( process_current->in_syscall != 0 )
+            process_current->times.sysc_exec++;
+        else
+            process_current->times.prog_exec++;
+    }
+    
     return true;
 }
 

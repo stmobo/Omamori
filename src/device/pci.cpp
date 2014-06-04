@@ -5,8 +5,7 @@
 #include "device/pci.h"
 #include "lib/vector.h"
 
-pci_device **pci_devices = NULL;
-int pci_n_devices = 0;
+vector<pci_device*> pci_devices;
 
 uint32_t pcie_mmio_base = 0;
 vector<pcie_ecs_range*> ecs_ranges;
@@ -60,14 +59,6 @@ char pci_check_device(char bus, char device, char func) {
 }
 
 void pci_register_device(char bus, char device, char func) {
-    if( pci_devices != NULL )  {
-        pci_device **new_pci_devices = new pci_device*[pci_n_devices+1];
-        for(int i=0;i<pci_n_devices;i++) {
-            new_pci_devices[i] = pci_devices[i];
-        }
-        delete[] pci_devices;
-        pci_devices = new_pci_devices;
-    }
     if( pci_check_device(bus, device, func)  ) {
 //#ifdef PCI_DEBUG
         kprintf("pci: registered device - bus %u - device %u - func %u\n", (long long int)bus, (long long int)device, (long long int)func);
@@ -75,15 +66,18 @@ void pci_register_device(char bus, char device, char func) {
         kprintf("pci: vendorID: 0x%x\n", (long long int)pci_read_config_16(bus, device, func, 0));
         kprintf("pci: deviceID: 0x%x\n", (long long int)pci_read_config_16(bus, device, func, 2));
 //#endif
-        pci_devices[pci_n_devices]->bus = bus;
-        pci_devices[pci_n_devices]->device = device;
-        pci_devices[pci_n_devices]->func = func;
-        pci_devices[pci_n_devices]->class_code = pci_read_config_8( bus, device, func, 0x0B );
-        pci_devices[pci_n_devices]->subclass_code = pci_read_config_8( bus, device, func, 0x0A );
-        pci_devices[pci_n_devices]->header_type = pci_read_config_8(bus, device, func, 0x0E);
-        pci_devices[pci_n_devices]->vendorID = pci_read_config_16(bus, device, func, 0);
-        pci_devices[pci_n_devices]->deviceID = pci_read_config_16(bus, device, func, 2);
-        pci_n_devices++;
+        pci_device *new_device = new pci_device;
+        if( new_device == NULL )
+            panic("pci: failed to allocate new device structure!");
+        new_device->bus = bus;
+        new_device->device = device;
+        new_device->func = func;
+        new_device->class_code = pci_read_config_8( bus, device, func, 0x0B );
+        new_device->subclass_code = pci_read_config_8( bus, device, func, 0x0A );
+        new_device->header_type = pci_read_config_8(bus, device, func, 0x0E);
+        new_device->vendorID = pci_read_config_16(bus, device, func, 0);
+        new_device->deviceID = pci_read_config_16(bus, device, func, 2);
+        pci_devices.add(new_device);
     }
 }
 

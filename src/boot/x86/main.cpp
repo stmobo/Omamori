@@ -35,24 +35,20 @@ void test_func(void* n) {
     terminal_writestring("atexit() works.\n");
 }
 
-void *lua_kmalloc( void *state, void *ptr, size_t orig_sz, size_t new_sz ) {
-    if( new_sz == 0 ) { // free block
-        if( ptr != NULL )
-            kfree(ptr);
-        return NULL;
-    } else { // realloc() block
-        // since we don't have a realloc() function
-        // I'll just emulate it here.
-        void *new_ptr = kmalloc( new_sz );
-        if( (new_ptr != NULL) && (ptr != NULL) )
-            memcpy(new_ptr, ptr, orig_sz);
-        if( ptr != NULL )
-            kfree(ptr);
-        return new_ptr;
+static int lua_writeout_proxy(lua_State *st) {
+    int n_args = lua_gettop(st);
+    unsigned int ret = 0;
+    for(int i=1;i<=n_args;i++) {
+        if( lua_isstring(st, i) ) {
+            const char *out = lua_tostring(st, i);
+            terminal_writestring(const_cast<char*>(out));
+            ret += strlen(const_cast<char*>(out));
+        }
     }
+    terminal_putchar('\n');
+    lua_pushnumber(st, ret);
+    return 1;
 }
-
-lua_Alloc l_alloc_func = &lua_kmalloc;
 
 void test_process_1() {
     terminal_writestring("Initializing ACPI.\n");
@@ -65,7 +61,7 @@ void test_process_1() {
     ps2_keyboard_initialize();
     
     kprintf("Initializing PCI.\n");
-    //pci_check_bus(0);
+    pci_check_bus(0);
     uint32_t child_pid = fork();
     if( child_pid == -1 ) {
         kprintf("Whoops, something went wrong with fork!");
@@ -91,20 +87,23 @@ void test_process_1() {
         
         luaL_openlibs( st );
         kprintf("Opened libs..\n");
-        int stat = luaL_loadstring( st, "io.write(\"hello from lua version \",_VERSION,\"!\") return 0xC0DE" );
+        lua_register( st, "writeout", lua_writeout_proxy );
+        kprintf("Registered writeout..\n");
+        int stat = luaL_loadstring( st, "writeout(\"hello from lua version \",_VERSION,\"!\") return 0xC0DE" );
         kprintf("Loaded test program..\n");
         
         if( stat == 0 ) { // was it loaded successfully?
             kprintf("Performing call..\n");
             stat = lua_pcall( st, 0, 1, 0 );
             if( stat == 0 ) { // get return values
-                const char *retval = lua_tostring(st, -1);
-                kprintf("Test program returned successfully, returned value: %s\n", retval);
+                int retval = lua_tonumber(st, -1);
+                kprintf("Test program returned successfully, returned value: 0x%x\n", retval);
                 lua_pop(st, 1);
             }
         }
         if( stat != 0 ) { // was there an error?
-            kprintf("lua-error: %s\n", lua_tostring(st, -1));
+            const char *err = lua_tostring(st, -1);
+            kprintf("lua-error: %s\n", err);
             lua_pop(st, 1);
         }
         lua_close(st);

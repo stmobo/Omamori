@@ -408,10 +408,6 @@ void initialize_pageframes(multiboot_info_t* mb_info) {
     pageframes_initialized = true;
 }
 
-inline void invalidate_tlb(size_t address) {
-    asm volatile("invlpg (%0)" : : "r"(address) : "memory");
-}
-
 void paging_set_pte(size_t vaddr, size_t paddr, uint16_t flags) {
     if( vaddr < 0xC0000000 ) {
         process_current->address_space.map(vaddr, paddr, flags);
@@ -875,7 +871,9 @@ void paging_handle_pagefault(char error_code, uint32_t cr2, uint32_t eip, uint32
             if(frame_id == -1) {
                 panic("paging: No pageframes left to allocate!");
             }
-            process_current->address_space.map( (size_t)cr2 & 0xFFFFF000, pageframe_get_block_addr(frame_id, 0), 0x06 ); // load vaddr to newly allocated page
+            if( !process_current->address_space.map( (size_t)cr2 & 0xFFFFF000, pageframe_get_block_addr(frame_id, 0), 0 ) ) { // load vaddr to newly allocated page
+                panic("paging: failed to map in faulting page in process %u!", process_current->id);
+            }
         }
     } else {
         // We're dealing with a protection violation.

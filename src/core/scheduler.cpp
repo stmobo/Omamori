@@ -403,8 +403,11 @@ bool address_space::map_new( size_t vaddr, int flags ) {
 }
 
 bool address_space::map( size_t vaddr, size_t paddr, int flags ) {
-    if(vaddr > 0xC0000000)
+    if(vaddr > 0xC0000000) {
+        if( (process_current != NULL) && (process_current->id == 1) )
+            kprintf("address_space[%u]::map -- attempted to map in kernel-space page\n", process_current->id);
         return false; // Can't map things into kernel space from here
+    }
     flags &= 0xFFF;
     vaddr &= 0xFFFFF000;
     paddr &= 0xFFFFF000;
@@ -420,8 +423,11 @@ bool address_space::map( size_t vaddr, size_t paddr, int flags ) {
     if( ((*pde) & 1) == 0 ) {
         //kprintf("address_space::map - Creating new page table.\n");
         page_table *new_pt = new page_table;
-        if( !new_pt->ready )
+        if( !new_pt->ready ) {
+            if( (process_current != NULL) )
+                kprintf("address_space[%u]::map -- failed to allocate page table struct\n", process_current->id);
             return false;
+        }
         new_pt->pde_no = table_no;
         this->page_tables->add_end(new_pt);
         /*
@@ -447,16 +453,39 @@ bool address_space::map( size_t vaddr, size_t paddr, int flags ) {
         }
     }
     
-    uint32_t *table = (uint32_t*)pt->map();
-    if( table ) {
-        //kprintf("address_space::map: Page table at 0x%x mapped to 0x%x.\n", (unsigned long long int)pt->paddr, (unsigned long long int)table);
-        //kprintf("address_space::map: mapping v0x%x -> p0x%x.\n", (unsigned long long int)vaddr, (unsigned long long int)paddr );
-        //kprintf("address_space::map: table=0x%p, table_offset=%u\n", table, (unsigned long long int)table_offset );
-        if( table[table_offset] == 0 )
-            pt->n_entries++;
-        table[table_offset] = paddr | flags;
-        pt->unmap();
-        return true;
+    if( (process_current != NULL) && (process_current->address_space.page_directory_physical == this->page_directory_physical) ) {
+        int table_no = (vaddr >> 22);
+        int table_offset = (vaddr >> 12) & 0x3FF;
+        
+        // if we're the currently loaded process, we can just modify the recursively-mapped tables.
+        // and we don't need to check for the pde in this case (see above)
+        
+        uint32_t *table = (uint32_t*)(0xFFC00000+(table_no*0x1000));
+        uint32_t pte = table[table_offset];
+        if( (pte & 1) == 0 ) {
+            table[table_offset] = (paddr & 0xFFFFF000) | flags | 1;
+            invalidate_tlb( vaddr );
+            return true;
+        } else if( pte == ((paddr&0xFFFFF000) | flags) ) {
+            // the PTE's already here.
+            return true;
+        }
+        if( (process_current != NULL) )
+            kprintf("address_space[%u]::map -- attempted to remap already present page\n", process_current->id);
+    } else {
+        uint32_t *table = (uint32_t*)pt->map();
+        if( table ) {
+            //kprintf("address_space::map: Page table at 0x%x mapped to 0x%x.\n", (unsigned long long int)pt->paddr, (unsigned long long int)table);
+            //kprintf("address_space::map: mapping v0x%x -> p0x%x.\n", (unsigned long long int)vaddr, (unsigned long long int)paddr );
+            //kprintf("address_space::map: table=0x%p, table_offset=%u\n", table, (unsigned long long int)table_offset );
+            if( table[table_offset] == 0 )
+                pt->n_entries++;
+            table[table_offset] = paddr | flags | 1;
+            pt->unmap();
+            return true;
+        }
+        if( (process_current != NULL) )
+            kprintf("address_space[%u]::map -- failed to map page table into virtual memory\n", process_current->id);
     }
     return false;
 }

@@ -17,6 +17,10 @@ extern "C" {
         process_switch_immediate();
     }
 
+    int open(const char *name, int flags, int mode){
+        return -1;
+    }
+    
     int close(int file) {
         return -1;
     }
@@ -56,6 +60,11 @@ extern "C" {
     int link(char* oldfile, char* newname) {
         errno = EMLINK;
         return -1;
+    }
+    
+    int unlink(char *name){
+      errno=ENOENT;
+      return -1; 
     }
 
     int lseek(int file, int ptr, int dir) {
@@ -132,8 +141,15 @@ extern "C" {
     int write(int file, char *ptr, int len){
         if( file == 1 ) {
             terminal_writestring( ptr, len );
-        }
+        } else if( file == 2 ) {
+            terminal_writestring( "err: " );
+            terminal_writestring( ptr, len );
+        }        
         return len;
+    }
+    
+    int gettimeofday(struct timeval *tv, struct timezone *tz) {
+        return get_sys_time_counter(); // note: write a CMOS driver at some point to get time/date
     }
 
 }

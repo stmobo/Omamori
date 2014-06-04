@@ -115,11 +115,17 @@ ps2_keypress* convert_scancode(bool f0, bool e0, unsigned char code_end) {
 ps2_keypress* ps2_keyboard_get_keystroke() { // blocks for a keystroke
     ps2_keypress* data;
     set_message_listen_status( "keypress", true );
-    message* msg = wait_for_message();
-    data = (ps2_keypress*)(msg->data);
-    msg->data = NULL;
-    delete msg;
-    return data;
+    while(true) {
+        message* msg = wait_for_message();
+        if( strcmp(const_cast<char*>(msg->type), const_cast<char*>("keypress")) ) {
+            data = (ps2_keypress*)(msg->data);
+            msg->data = NULL;
+            delete msg;
+            return data;
+        }
+        delete msg;
+    }
+    
 }
 
 void ps2_keyboard_input_process() {

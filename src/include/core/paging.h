@@ -104,3 +104,6 @@ extern void munmap(size_t);
 // misc.
 extern void copy_pageframe_range( uint32_t, uint32_t, int );
 extern page_frame* duplicate_pageframe_range( uint32_t, int );
+inline void invalidate_tlb(size_t address) {
+    asm volatile("invlpg (%0)" : : "r"(address) : "memory");
+}

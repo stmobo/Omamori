@@ -13,6 +13,11 @@
 #include "device/ps2_controller.h"
 #include "device/ps2_keyboard.h"
 #include "device/vga.h"
+extern "C" {
+    #include "lua.h"
+    #include "lualib.h"
+    #include "lauxlib.h"
+}
 
 #if defined(__linux__)
 #error "You are not using a cross-compiler, you will most certainly run into trouble"
@@ -30,7 +35,25 @@ void test_func(void* n) {
     terminal_writestring("atexit() works.\n");
 }
 
-#define COMPILE_FORK_TEST
+void *lua_kmalloc( void *state, void *ptr, size_t orig_sz, size_t new_sz ) {
+    if( new_sz == 0 ) { // free block
+        if( ptr != NULL )
+            kfree(ptr);
+        return NULL;
+    } else { // realloc() block
+        // since we don't have a realloc() function
+        // I'll just emulate it here.
+        void *new_ptr = kmalloc( new_sz );
+        if( (new_ptr != NULL) && (ptr != NULL) )
+            memcpy(new_ptr, ptr, orig_sz);
+        if( ptr != NULL )
+            kfree(ptr);
+        return new_ptr;
+    }
+}
+
+lua_Alloc l_alloc_func = &lua_kmalloc;
+
 void test_process_1() {
     terminal_writestring("Initializing ACPI.\n");
     initialize_acpi();
@@ -43,7 +66,6 @@ void test_process_1() {
     
     kprintf("Initializing PCI.\n");
     //pci_check_bus(0);
-#ifdef COMPILE_FORK_TEST
     uint32_t child_pid = fork();
     if( child_pid == -1 ) {
         kprintf("Whoops, something went wrong with fork!");
@@ -63,46 +85,31 @@ void test_process_1() {
         }
     } else {
         kprintf("Hello from (parent) process %u!\n", process_current->id);
-        kprintf("Press ENTER to continue...\n");
-        terminal_putchar('>');
-        while(true) {
-            unsigned int len;
-            char *line = ps2_keyboard_readline(&len);
-            if(strcmp(line, "exit", 0)) {
-                terminal_putchar('\n');
-                kfree(line);
-                //flush_serial_buffer(NULL);
-                break;
-            } else if(strcmp(line, "time", 0)) {
-                kprintf("Time since system startup: %u ticks.", (unsigned int)get_sys_time_counter());
-            } else {
-                kprintf("Process %u: ", process_current->id);
-                kprintf("%s", line);
+        kprintf("Starting lua interpretation.\n");
+        lua_State *st = luaL_newstate();
+        kprintf("Opened state..\n");
+        
+        luaL_openlibs( st );
+        kprintf("Opened libs..\n");
+        int stat = luaL_loadstring( st, "io.write(\"hello from lua version \",_VERSION,\"!\") return 0xC0DE" );
+        kprintf("Loaded test program..\n");
+        
+        if( stat == 0 ) { // was it loaded successfully?
+            kprintf("Performing call..\n");
+            stat = lua_pcall( st, 0, 1, 0 );
+            if( stat == 0 ) { // get return values
+                const char *retval = lua_tostring(st, -1);
+                kprintf("Test program returned successfully, returned value: %s\n", retval);
+                lua_pop(st, 1);
             }
-            kfree(line);
-            terminal_writestring("\n>");
         }
-    }
-#else
-    kprintf("Press ENTER to continue...\n");
-    terminal_putchar('>');
-    while(true) {
-        int len;
-        char *line = ps2_keyboard_readline(&len);
-        if(strcmp(line, "exit", 0)) {
-            terminal_putchar('\n');
-            kfree(line);
-            //flush_serial_buffer(NULL);
-            break;
-        } else if(strcmp(line, "time", 0)) {
-            kprintf("Time since system startup: %u ticks.", (unsigned int)get_sys_time_counter());
-        } else {
-            kprintf("%s\n", line);
+        if( stat != 0 ) { // was there an error?
+            kprintf("lua-error: %s\n", lua_tostring(st, -1));
+            lua_pop(st, 1);
         }
-        kfree(line);
-        terminal_writestring("\n>");
+        lua_close(st);
+        kprintf("Closed state..\n");
     }
-#endif
 }
 
 void test_process_2() {

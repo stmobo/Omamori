@@ -13,7 +13,7 @@
 #define HEAP_SET_UNALLOCATED            0xFFFFFFFF
 #define HEAP_SET0_START                 0xC0400000
 #define HEAP_INITIAL_SETS_LENGTH        0x400000
-// 1024 * 128 = 524288KB, or half of kernel space.
+// (1024 * 128) pages = 524288KB, or half of kernel space.
 #define HEAP_HEADER_STATUS_FREE         0xDEA110C8
 #define HEAP_HEADER_STATUS_USED         0xA110C8ED
 #define KMALLOC_RESTART_COUNT                    5

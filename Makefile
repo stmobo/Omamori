@@ -16,10 +16,10 @@ SRC_DIRS    := $(ACPICA_SRC) $(ARCH_SRC) $(BOOT_SRC) $(CORE_SRC) $(DEVICE_SRC) $
 OBJ_DIRS    := $(subst src/,obj/,$(SRC_DIRS))
 
 # find all files of a certain type
-HDR_FILES := $(shell find $(INCLUDE_DIR) -type f -name *.h)
-C_FILES   := $(shell find $(SRC_DIRS) -type f -name *.c)
-CPP_FILES := $(shell find $(SRC_DIRS) -type f -name *.cpp)
-ASM_FILES := $(shell find $(SRC_DIRS) -type f -name *.s)
+HDR_FILES    := $(shell find $(INCLUDE_DIR) -type f -name *.h)
+C_FILES      := $(shell find $(SRC_DIRS) -type f -name *.c)
+CPP_FILES    := $(shell find $(SRC_DIRS) -type f -name *.cpp)
+ASM_FILES    := $(shell find $(SRC_DIRS) -type f -name *.s)
 
 # a few other things
 C_OBJ_FILES   :=  $(subst src/,obj/,$(patsubst %.c, %.o, $(C_FILES)))
@@ -40,10 +40,10 @@ AS       := $(HOME)/opt/cross/bin/i686-elf-as
 CC       := $(HOME)/opt/cross/bin/i686-elf-gcc
 CCFLAGS  := -MMD -MP -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/acpica -I$(INCLUDE_DIR)/newlib -std=gnu99 -ffreestanding -g -O2 -Wall -Wextra -Wno-unused-parameter -fno-omit-frame-pointer -fno-strict-aliasing
 CXX      := $(HOME)/opt/cross/bin/i686-elf-g++
-CXXFLAGS := -MMD -MP -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/newlib -ffreestanding -g -O2 -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-conversion-null -Wno-write-strings -fno-exceptions -fno-rtti -fno-omit-frame-pointer -std=c++11
+CXXFLAGS := -MMD -MP -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/newlib -I$(MAIN_SRC)/lib/lua -ffreestanding -g -O2 -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-conversion-null -Wno-write-strings -fno-exceptions -fno-rtti -fno-omit-frame-pointer -std=c++11
 LD       := $(HOME)/opt/cross/bin/i686-elf-gcc
 LDFLAGS  := -nostdlib -ffreestanding -g -O2 -L./lib/i686-elf/lib
-LDLIBS   := -lgcc -lc
+LDLIBS   := -lm -lc -lgcc
 
 all: omamori.iso
 

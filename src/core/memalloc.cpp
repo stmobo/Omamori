@@ -1,12 +1,5 @@
-// page frame size is 4 kilobytes
-// we're using a buddy allocator system for page frames.
-
-// Our test system has 2GB, in 2096700 page frames.
-// So, our order 0 bitmap is 256 KB.
-// we have bitmaps for everything up to order 8 (1MB blocks).
-// In total, our bitmaps will take up 512KB of space.
-
-// We use a linked-list allocator for virtual memory in both kernel and user space.
+// memalloc.cpp -- VMem / Page Frame Allocator + related functions (platform independent, page-size dependent)
+// (aka "all of the memory stuff that is platform-independent")
 
 #include "includes.h"
 #include "boot/multiboot.h"
@@ -14,25 +7,6 @@
 #include "core/scheduler.h"
 #include "device/vga.h"
 #include "lib/sync.h"
-
-/*
-My test system says:
-Avail: 
-0x0 - 0x9FC00 (almost 640 KB - this is conventional memory)
-0x100000 - 0x7FFF0000 (almost 2048MB - this is the rest of our memory)
-
-Note the gap from 0x9FC00 - 0x100000 (spanning about 0x60400 bytes, or 385KB)
-This is the EBDA / Vram / ROM area. We can't overwrite this area, or Bad Things happen.
-
-In addition, what GRUB doesn't tell us is that memory from 0x0 to 0x500 is used by various things
-and may be overwritten if we return to Real Mode for whatever reason.
-(it's the RealMode IVT and the BIOS Data Area). We could theoretically overwrite it
-but that's probably going to break stuff.
-
-There are also a few other spots we need to keep marked as "always in memory".
-One is the region from 0x10000 to kernel_end -- this is kernel code.
-We also need to keep the buddy maps for the frame allocator in memory for obvious reasons.
-*/
 
 unsigned long long int mem_avail_bytes;
 int mem_avail_kb;
@@ -48,13 +22,9 @@ int n_blocks[BUDDY_MAX_ORDER+1];
 vaddr_range k_vmem_linked_list;
 vaddr_range __k_vmem_allocate_start;
 
-bool pageframes_initialized = false;
-
-uint32_t initial_heap_pagetable[1024] __attribute__((aligned(0x1000)));
-
 static mutex __frame_allocator_lock;
 
-uint32_t global_kernel_page_directory[256]; // spans PDE nos. 768 - 1023
+bool pageframes_initialized = false;
 
 size_t pageframe_get_block_addr(int blk_num, int order) {
     int zero_order_blk = blk_num*(1<<order);
@@ -292,39 +262,6 @@ void pageframe_restrict_range(size_t start_addr, size_t end_addr) {
     }
 }
 
-void initialize_vmem_allocator() {
-    k_vmem_linked_list.address = 0xC0400000;
-    k_vmem_linked_list.free = false;
-    k_vmem_linked_list.prev = NULL;
-    k_vmem_linked_list.next = &__k_vmem_allocate_start;
-    
-    __k_vmem_allocate_start.address = 0xC0400000+HEAP_INITIAL_ALLOCATION;
-    __k_vmem_allocate_start.free = true;
-    __k_vmem_allocate_start.prev = &k_vmem_linked_list;
-    __k_vmem_allocate_start.next = NULL;
-    
-    // first off, map in initial_heap_pagetable.
-    // the PDE should already be there.
-    uint32_t *table = (uint32_t*)(0xFFC00000+(((size_t)(&initial_heap_pagetable[0])>>22)*0x1000));
-    table[ ((size_t)(&initial_heap_pagetable[0])>>12)&0x3FF ] = HEAP_INITIAL_PT_ADDR | 1;
-    invalidate_tlb( (size_t)&initial_heap_pagetable[0] );
-    
-    // map in initial_heap_pagetable as a page table
-    (*(uint32_t*)0xFFFFFC04) = (HEAP_INITIAL_PT_ADDR|1);
-    
-    // now actually map in the initial heap pages
-    for(int i=0;i<(HEAP_INITIAL_ALLOCATION/0x1000);i++) {
-        initial_heap_pagetable[i] = (HEAP_INITIAL_PHYS_ADDR+(i*0x1000)) | 1;
-        invalidate_tlb( 0xC0400000+(i*0x1000) );
-        //paging_set_pte( 0xC0400000+(i*0x1000), HEAP_INITIAL_PHYS_ADDR+(i*0x1000), 0 );
-    }
-    
-    for(int i=0;i<256;i++) {
-        global_kernel_page_directory[i] = 0;
-    }
-    global_kernel_page_directory[0] = ((uint32_t)&PageTable768 | 1);
-    global_kernel_page_directory[1] = (HEAP_INITIAL_PT_ADDR|1);
-}
 
 void initialize_pageframes(multiboot_info_t* mb_info) {
     terminal_writestring("Memory available:\n");
@@ -408,95 +345,40 @@ void initialize_pageframes(multiboot_info_t* mb_info) {
     pageframes_initialized = true;
 }
 
-void paging_set_pte(size_t vaddr, size_t paddr, uint16_t flags) {
-    if( vaddr < 0xC0000000 ) {
-        process_current->address_space.map(vaddr, paddr, flags);
-        return;
+void initialize_vmem_allocator() {
+    k_vmem_linked_list.address = 0xC0400000;
+    k_vmem_linked_list.free = false;
+    k_vmem_linked_list.prev = NULL;
+    k_vmem_linked_list.next = &__k_vmem_allocate_start;
+    
+    __k_vmem_allocate_start.address = 0xC0400000+HEAP_INITIAL_ALLOCATION;
+    __k_vmem_allocate_start.free = true;
+    __k_vmem_allocate_start.prev = &k_vmem_linked_list;
+    __k_vmem_allocate_start.next = NULL;
+    
+    // first off, map in initial_heap_pagetable.
+    // the PDE should already be there.
+    uint32_t *table = (uint32_t*)(0xFFC00000+(((size_t)(&initial_heap_pagetable[0])>>22)*0x1000)); // find the address of the table directly
+    table[ ((size_t)(&initial_heap_pagetable[0])>>12)&0x3FF ] = HEAP_INITIAL_PT_ADDR | 1;
+    invalidate_tlb( (size_t)&initial_heap_pagetable[0] );
+    
+    // map in initial_heap_pagetable as a page table
+    (*(uint32_t*)0xFFFFFC04) = (HEAP_INITIAL_PT_ADDR|1);
+    
+    // now actually map in the initial heap pages
+    for(int i=0;i<(HEAP_INITIAL_ALLOCATION/0x1000);i++) {
+        initial_heap_pagetable[i] = (HEAP_INITIAL_PHYS_ADDR+(i*0x1000)) | 1;
+        invalidate_tlb( 0xC0400000+(i*0x1000) );
+        //paging_set_pte( 0xC0400000+(i*0x1000), HEAP_INITIAL_PHYS_ADDR+(i*0x1000), 0 );
     }
     
-    int table_no = (vaddr >> 22); // should always be >= 768
-    int table_offset = (vaddr >> 12) & 0x3FF;
-    uint32_t *pde = (uint32_t*)(0xFFFFF000 + (table_no*4));
-    // first, check to see if there's an actual page table for the page we want to map in
-    // if not, then make a new one (or load in the preexisting one)
-    if( ((*pde) & 1) == 0 ) {
-        if( global_kernel_page_directory[table_no-768] != 0 ) {
-            (*pde) = global_kernel_page_directory[table_no-768];
-        } else {
-            page_frame* frame = pageframe_allocate(1);
-            (*pde) = frame->address | 1;
-            global_kernel_page_directory[table_no-768] = frame->address | 1;
-        }
+    for(int i=0;i<256;i++) {
+        global_kernel_page_directory[i] = 0;
     }
-    
-    uint32_t *table = (uint32_t*)(0xFFC00000+(table_no*0x1000));
-    uint32_t pte = table[table_offset];
-    if( (pte & 1) > 0 ) {
-        // okay, so there's already a mapping present for this page.
-        // we need to swap it out, but we don't have a hard disk driver yet.
-        // so right now we just exit noisily.
-        //kprintf("paging: Attempted to map vaddr 0x%x when mapping already present!\n", (unsigned long long int)vaddr);
-        return; 
-    }
-    table[table_offset] = paddr | (flags & 0xFFF) | 1;
-    invalidate_tlb( vaddr );
+    global_kernel_page_directory[0] = ((uint32_t)&PageTable768 | 1);
+    global_kernel_page_directory[1] = (HEAP_INITIAL_PT_ADDR|1);
 }
 
-void paging_unset_pte(size_t vaddr) {
-    if( vaddr < 0xC0000000 ) {
-        return process_current->address_space.unmap(vaddr);
-    }
-    
-    int table_no = (vaddr >> 22);
-    int table_offset = (vaddr >> 12) & 0x3FF;
-    uint32_t *pde = (uint32_t*)(0xFFFFF000 + (table_no*4));
-    // first, check to see if there's an actual page table for the page we want to map in
-    if( ((*pde) & 1) == 0 ) {
-        if( global_kernel_page_directory[table_no-768] != 0 ) {
-            // load this page table in to unmap globally
-            (*pde) = global_kernel_page_directory[table_no-768];
-        } else {
-            // otherwise, this page isn't even mapped in the first place.
-            return;
-        }
-    }
-    
-    uint32_t *table = (uint32_t*)(0xFFC00000+(table_no*0x1000));
-    uint32_t pte = table[table_offset];
-    if( (pte & 1) > 0 ) {
-        table[table_offset] = 0;
-        invalidate_tlb( vaddr );
-    }
-}
-
-uint32_t paging_get_pte(size_t vaddr) {
-    if( vaddr < 0xC0000000 ) {
-        return process_current->address_space.get(vaddr);
-    }
-    
-    int table_no = (vaddr >> 22);
-    int table_offset = (vaddr >> 12) & 0x3FF;
-    uint32_t *pde = (uint32_t*)(0xFFFFF000 + (table_no*4));
-    // first, check to see if there's an actual page table for the page we want to map in
-    // if not, then return "no such PTE"
-    if( ((*pde) & 1) == 0 ) {
-        if( global_kernel_page_directory[table_no-768] != 0 ) {
-            // load this page table in
-            (*pde) = global_kernel_page_directory[table_no-768];
-        } else {
-            // otherwise, this page isn't even mapped in the first place.
-            return 0xFFFFFFFF;
-        }
-    }
-    
-    uint32_t *table = (uint32_t*)(0xFFC00000+(table_no*0x1000));
-    uint32_t pte = table[table_offset];
-    if( (pte & 1) > 0 ) {
-        // no PTE for address
-        return 0xFFFFFFFF;
-    }
-    return table[table_offset];
-}
 
 // Allocate <n_pages> pages of virtual memory from a predefined list
 size_t paging_vmem_alloc( vaddr_range *start, size_t maximum_address, int n_pages) {
@@ -749,143 +631,4 @@ int pageframe_allocate_single(int order) {
         }
     }
     return frame_id;
-}
-
-uint32_t panic_cr2;
-uint32_t panic_ins;
-uint32_t recursive_cr2;
-uint32_t recursive_ins;
-bool in_pagefault = false;
-void paging_handle_pagefault(char error_code, uint32_t cr2, uint32_t eip, uint32_t cs) {
-    if(in_pagefault) { // don't want to recursively pagefault (yet)
-        recursive_cr2 = cr2;
-        recursive_ins = eip;
-        panic("paging: page fault in page fault handler!\npaging: initial CR2: 0x%x\npaging: recursive CR2: 0x%x", panic_cr2, recursive_cr2);
-    }
-    panic_cr2 = cr2;
-    panic_ins = eip;
-    in_pagefault = true;
-    if( (error_code & 1) == 0 ) {
-        if( !pageframes_initialized ) {
-            terminal_writestring("panic: paging: a page fault occured, but the allocator isn't ready yet!\n");
-            while(true) {
-                asm volatile("cli\n\t"
-                "hlt\n\t"
-                : : : "memory");
-            }
-        }
-        if( cr2 < 0x1000 ) { // invalid address-- first page is not and never should be mapped (NULL address page)
-            panic("paging: invalid memory access (possible NULL pointer dereference?)\nAccessed address: 0x%x\nEIP=0x%x\nCS=0x%x",
-            panic_cr2, panic_ins, cs);
-        }
-        //kprintf("Page fault!\n");
-        //kprintf("CR2: 0x%x\n", (unsigned long long int)cr2);
-        if( cr2 >= 0xC0000000 ) {
-            // map in kernel-global page
-            int table_no = (cr2 >> 22); // should always be >= 768
-            int table_offset = (cr2 >> 12) & 0x3FF;
-            uint32_t *pde = (uint32_t*)(0xFFFFF000 + (table_no*4));
-            if( ((*pde) & 1) == 0 ) {
-                if( global_kernel_page_directory[table_no-768] != 0 ) {
-                    (*pde) = global_kernel_page_directory[table_no-768];
-                    
-                    uint32_t *table = (uint32_t*)(0xFFC00000+(table_no*0x1000));
-                    uint32_t pte = table[table_offset];
-                    if( (pte & 1) > 0 ) {
-                        // we just loaded the page table holding the faulting entry.
-                        // so just return now.
-                        in_pagefault = false;
-                        panic_ins = 0;
-                        panic_cr2 = 0;
-                        return;
-                    }
-                } else {
-                    // allocate a new page
-                    int frame_id = -1; //pageframe_allocate_single(0);
-                    for(int i=0;i<n_blocks[0];i++) {
-                        if( !pageframe_get_block_status(i, 0) ) {
-                             if( !pageframe_get_block_status(i, 0) ) {
-                                int parent = i;
-                                for(int j=0;j<=BUDDY_MAX_ORDER;j++) {
-                                    pageframe_set_block_status(parent, j, true);
-                                    parent >>= 1;
-                                }
-                                frame_id = i;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    size_t addr = pageframe_get_block_addr(frame_id, 0);
-                    (*pde) = addr | 1;
-                    global_kernel_page_directory[table_no-768] = addr | 1;
-                }
-            }
-            
-            uint32_t *table = (uint32_t*)(0xFFC00000+(table_no*0x1000));
-            uint32_t pte = table[table_offset];
-            if( (pte & 1) > 0 ) {
-                // there's already a mapping present for this page.
-                // we need to evict something, but since we don't have mass-storage drivers yet...
-                in_pagefault = false;
-                panic_ins = 0;
-                panic_cr2 = 0;
-                return; 
-            }
-            
-            // map in a new page
-            int frame_id = -1; //pageframe_allocate_single(0);
-            for(int i=0;i<n_blocks[0];i++) {
-                if( !pageframe_get_block_status(i, 0) ) {
-                     if( !pageframe_get_block_status(i, 0) ) {
-                        int parent = i;
-                        for(int j=0;j<=BUDDY_MAX_ORDER;j++) {
-                            pageframe_set_block_status(parent, j, true);
-                            parent >>= 1;
-                        }
-                        frame_id = i;
-                        break;
-                    }
-                }
-            }
-            if(frame_id == -1) {
-                panic("paging: No pageframes left to allocate!");
-            }
-            paging_set_pte( (size_t)cr2 & 0xFFFFF000, pageframe_get_block_addr(frame_id, 0), 0x100 ); // load vaddr to newly allocated page (w/ GLOBAL and PRESENT flags)
-        } else {
-            // map in process-specific page
-            int frame_id = -1; //pageframe_allocate_single(0);
-            for(int i=0;i<n_blocks[0];i++) {
-                if( !pageframe_get_block_status(i, 0) ) {
-                     if( !pageframe_get_block_status(i, 0) ) {
-                        int parent = i;
-                        for(int j=0;j<=BUDDY_MAX_ORDER;j++) {
-                            pageframe_set_block_status(parent, j, true);
-                            parent >>= 1;
-                        }
-                        frame_id = i;
-                        break;
-                    }
-                }
-            }
-            if(frame_id == -1) {
-                panic("paging: No pageframes left to allocate!");
-            }
-            if( !process_current->address_space.map( (size_t)cr2 & 0xFFFFF000, pageframe_get_block_addr(frame_id, 0), 0 ) ) { // load vaddr to newly allocated page
-                panic("paging: failed to map in faulting page in process %u!", process_current->id);
-            }
-        }
-    } else {
-        // We're dealing with a protection violation.
-        if( (error_code & 0x4) == 0 ) {
-            // Supervisor mode exception.
-            panic("paging: kernel-mode memory protection violation at vaddr 0x%x.\n", (unsigned long long int)cr2);
-        } else {
-            // User mode exception.
-            //kprintf("paging: user-mode memory protection violation at vaddr 0x%x.\n", (unsigned long long int)cr2);
-        }
-    }
-    in_pagefault = false;
-    panic_ins = 0;
-    panic_cr2 = 0;
 }

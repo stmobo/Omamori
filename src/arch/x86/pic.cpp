@@ -1,5 +1,6 @@
 // pic.cpp
 #include "includes.h"
+#include "arch/x86/sys.h"
 #include "core/sys.h"
 #include "arch/x86/pic.h"
 

@@ -1,4 +1,6 @@
 // serial.cpp - serial communications
+#include "includes.h"
+#include "arch/x86/sys.h"
 #include "arch/x86/irq.h"
 #include "arch/x86/pic.h"
 #include "core/sys.h"

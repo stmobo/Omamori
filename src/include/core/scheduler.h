@@ -44,7 +44,7 @@ typedef struct page_table {
     ~page_table();  // Deallocates space for the page table.
 } page_table; 
 
-typedef struct address_space {
+typedef struct address_space { // implementation in arch/paging.cpp
     uint32_t                page_directory_physical = NULL; // paddr of the PD
     uint32_t                *page_directory = NULL;         // a pointer to the PD's vaddr
     vector<page_table*>     *page_tables = NULL;

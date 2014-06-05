@@ -1,6 +1,7 @@
 // ps2_controller.cpp 
 
 #include "includes.h"
+#include "arch/x86/sys.h"
 #include "arch/x86/irq.h"
 #include "arch/x86/pic.h"
 #include "core/scheduler.h"

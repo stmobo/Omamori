@@ -2,6 +2,7 @@
 // aka IRQ0
 
 #include "includes.h"
+#include "arch/x86/sys.h"
 #include "arch/x86/irq.h"
 #include "arch/x86/multitask.h"
 #include "core/scheduler.h"

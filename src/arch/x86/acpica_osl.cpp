@@ -18,6 +18,7 @@ extern "C" {
     #include "acpica/achware.h"
     #include "acpica/acutils.h"
 }
+#include "arch/x86/sys.h"
 #include "arch/x86/irq.h"
 #include "core/paging.h"
 #include "core/scheduler.h"

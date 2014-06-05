@@ -1,17 +1,7 @@
 #pragma once
-#include "boot/multiboot.h"
 #include "includes.h"
-
-#define PAGEDIR_4MB_PAGE            (1<<7)
-#define PAGEDIR_DIRTY               (1<<5)
-#define PAGEDIR_CACHE_DISABLE       (1<<4)
-#define PAGEDIR_WRITETHRU_CACHE     (1<<3)
-#define PAGEDIR_USER_ACCESS         (1<<2)
-#define PAGEDIR_WRITE_ACCESS        (1<<1)
-#define PAGEDIR_IN_MEMORY               1
-
-#define PAGETBL_GLOBAL              (1<<8)
-#define PAGETBL_DIRTY               (1<<6)
+#include "boot/multiboot.h"
+#include "lib/sync.h"
 
 // 1 order 8 block = 1MB
 #define BUDDY_MAX_ORDER                 8
@@ -51,6 +41,25 @@ struct vaddr_range {
 };
 
 typedef struct vaddr_range vaddr_range;
+
+extern unsigned long long int mem_avail_bytes;
+extern int mem_avail_kb;
+extern int num_pages;
+extern memory_map_t* mem_map;
+extern size_t mem_map_len;
+extern int n_mem_ranges;
+
+extern memory_range* memory_ranges;
+extern size_t **buddy_maps;
+extern int n_blocks[BUDDY_MAX_ORDER+1];
+
+extern vaddr_range k_vmem_linked_list;
+extern vaddr_range __k_vmem_allocate_start;
+
+extern uint32_t initial_heap_pagetable[1024] __attribute__((aligned(0x1000)));
+extern uint32_t global_kernel_page_directory[256]; // spans PDE nos. 768 - 1023
+
+extern bool pageframes_initialized;
 
 // various asm-exported stuff
 extern uint32_t *PageTable0;
@@ -104,6 +113,8 @@ extern void munmap(size_t);
 // misc.
 extern void copy_pageframe_range( uint32_t, uint32_t, int );
 extern page_frame* duplicate_pageframe_range( uint32_t, int );
+#ifdef __x86__
 inline void invalidate_tlb(size_t address) {
     asm volatile("invlpg (%0)" : : "r"(address) : "memory");
 }
+#endif

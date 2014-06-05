@@ -2,13 +2,6 @@
 #pragma once
 #include "core/dynmem.h"
 
-extern char io_inb(short);
-extern short io_inw(short);
-extern int io_ind(short);
-extern void io_outb(short, char);
-extern void io_outw(short, short);
-extern void io_outd(short, int);
-extern void io_wait();
 extern size_t strlen(char*);
 extern void strcpy(char*, char*, size_t=0);
 extern bool strcmp(char*, char*, size_t=0);
@@ -25,7 +18,6 @@ extern uint64_t floor(double);
 extern uint64_t ceil(double);
 extern double fractional(double);
 extern int pow(int,int);
-extern uint64_t rdtsc();
 extern bool interrupts_enabled();
 extern "C" {
     extern uint64_t __udivmoddi4( uint64_t, uint64_t, uint64_t* );
@@ -33,14 +25,25 @@ extern "C" {
     extern uint64_t __umoddi3( uint64_t, uint64_t );
 }
 
-#define get_return_address(var) asm volatile("mov 4(%%ebp), %0" : "=r"(var) : : "memory");
+#ifdef __x86__
+    #define get_return_address(var) asm volatile("mov 4(%%ebp), %0" : "=r"(var) : : "memory");
 
-#define system_halt asm volatile("cli\n\t"\
-"hlt" \
-);
-#define system_wait_for_interrupt() asm volatile("hlt" : : : "memory");
-#define system_disable_interrupts() asm volatile("cli" : : : "memory");
-#define system_enable_interrupts()  asm volatile("sti" : : : "memory");
+    #define system_halt asm volatile("cli\n\t"\
+    "hlt" \
+    : : : "memory");
+    #define system_wait_for_interrupt() asm volatile("hlt" : : : "memory");
+    #define system_disable_interrupts() asm volatile("cli" : : : "memory");
+    #define system_enable_interrupts()  asm volatile("sti" : : : "memory");
+#elif defined(__ARM__)
+    #define system_halt asm volatile("");
+    #define system_wait_for_interrupt() 
+    #define system_disable_interrupts() asm volatile("MRS r0, CPSR;\n\t"\
+                                                     "ORR r0, r0, #&0xC0\n\t"\
+                                                     "MSR r0, CPSR\n\t": : : "r0", "memory")
+    #define system_enable_interrupts()  asm volatile("MRS r0, CPSR;\n\t"\
+                                                     "AND r0, r0, #&0x3F\n\t"\
+                                                     "MSR r0, CPSR\n\t": : : "r0", "memory")
+#endif
 
 // #define DEBUG
 #define PCI_DEBUG

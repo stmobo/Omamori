@@ -2,6 +2,7 @@
 // also handles PCI Express (well, whenever I get around to writing support for it)
 
 #include "includes.h"
+#include "arch/x86/sys.h"
 #include "device/pci.h"
 #include "lib/vector.h"
 

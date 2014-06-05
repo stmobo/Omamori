@@ -7,8 +7,8 @@ INCLUDE_DIR := $(MAIN_SRC)/include
 ISO_DIR     := isodir
 
 ACPICA_SRC	:= $(MAIN_SRC)/acpica
-ARCH_SRC	:= $(MAIN_SRC)/arch/x86
-BOOT_SRC	:= $(MAIN_SRC)/boot/x86
+ARCH_SRC	:= $(MAIN_SRC)/arch/$(ARCH)
+BOOT_SRC	:= $(MAIN_SRC)/boot/$(ARCH)
 CORE_SRC	:= $(MAIN_SRC)/core
 DEVICE_SRC	:= $(MAIN_SRC)/device
 LIB_SRC 	:= $(MAIN_SRC)/lib
@@ -31,16 +31,16 @@ CRTBEGIN_OBJ  :=  $(shell $(CC) $(CFLAGS) -print-file-name=crtbegin.o)
 CRTEND_OBJ    :=  $(shell $(CC) $(CFLAGS) -print-file-name=crtend.o)
 
 # generate a link order
-LINK_ORDER_FIRST := $(MAIN_OBJ)/arch/x86/crti.o $(CRTBEGIN_OBJ) $(MAIN_OBJ)/boot/x86/early_boot.o $(MAIN_OBJ)/boot/x86/boot.o $(MAIN_OBJ)/arch/x86/isr_ll.o $(MAIN_OBJ)/core/sys.o $(MAIN_OBJ)/arch/x86/sys_ll.o
-LINK_ORDER_LAST  := $(MAIN_OBJ)/boot/x86/main.o $(CRTEND_OBJ) $(MAIN_OBJ)/arch/x86/crtn.o
+LINK_ORDER_FIRST := $(MAIN_OBJ)/arch/$(ARCH)/crti.o $(CRTBEGIN_OBJ) $(MAIN_OBJ)/boot/$(ARCH)/early_boot.o $(MAIN_OBJ)/boot/$(ARCH)/boot.o $(MAIN_OBJ)/arch/$(ARCH)/isr_ll.o $(MAIN_OBJ)/core/sys.o $(MAIN_OBJ)/arch/$(ARCH)/sys_ll.o
+LINK_ORDER_LAST  := $(MAIN_OBJ)/boot/$(ARCH)/arch_init.o $(MAIN_OBJ)/core/main.o $(CRTEND_OBJ) $(MAIN_OBJ)/arch/$(ARCH)/crtn.o
 LINK_ORDER_MID   := $(filter-out $(LINK_ORDER_FIRST) $(LINK_ORDER_LAST), $(OBJ_FILES))
 
 # remap stuff to use our cross-compiler
 AS       := $(HOME)/opt/cross/bin/i686-elf-as
 CC       := $(HOME)/opt/cross/bin/i686-elf-gcc
-CCFLAGS  := -MMD -MP -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/acpica -I$(INCLUDE_DIR)/newlib -std=gnu99 -ffreestanding -g -O2 -Wall -Wextra -Wno-unused-parameter -fno-omit-frame-pointer -fno-strict-aliasing
+CCFLAGS  := -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/acpica -I$(INCLUDE_DIR)/newlib -MMD -MP -std=gnu99 -ffreestanding -g -O2 -Wall -Wextra -Wno-unused-parameter -fno-omit-frame-pointer -fno-strict-aliasing
 CXX      := $(HOME)/opt/cross/bin/i686-elf-g++
-CXXFLAGS := -MMD -MP -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/newlib -I$(MAIN_SRC)/lib/lua -ffreestanding -g -O2 -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-conversion-null -Wno-write-strings -fno-exceptions -fno-rtti -fno-omit-frame-pointer -std=c++11
+CXXFLAGS := -MMD -MP -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/newlib -I$(MAIN_SRC)/lib/lua -D__$(ARCH)__ -ffreestanding -g -O2 -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-conversion-null -Wno-write-strings -fno-exceptions -fno-rtti -fno-omit-frame-pointer -std=c++11
 LD       := $(HOME)/opt/cross/bin/i686-elf-gcc
 LDFLAGS  := -nostdlib -ffreestanding -g -O2 -L./lib/i686-elf/lib
 LDLIBS   := -lm -lc -lgcc

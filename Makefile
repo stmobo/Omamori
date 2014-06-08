@@ -1,3 +1,13 @@
+# variables and stuff
+# if we typed in "arch=whatever" instead of "ARCH=whatever", then deal with that and move on
+ifndef ARCH
+# if we didn't select an arch at all, then just use x86 as the default.
+ifndef arch
+arch := x86
+endif
+ARCH := $(arch)
+endif
+
 #
 # Source directories and stuff:
 MAIN_SRC	:= src

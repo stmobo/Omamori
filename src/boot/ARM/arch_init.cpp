@@ -25,7 +25,7 @@ extern "C" {
 extern void _init(void);
 void kernel_init(multiboot_info_t* mb_info, unsigned int magic) {
     terminal_initialize();
-    terminal_writestring("Project Omamori now starting (arch=x86)...\n");
+    terminal_writestring("Project Omamori now starting...\n");
     gdt_init();
     idt_init();
     initialize_vmem_allocator();

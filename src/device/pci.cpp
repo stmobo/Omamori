@@ -59,19 +59,23 @@ void pci_register_function(char bus, char device, char func) {
         pci_device *new_device = new pci_device;
         if( new_device == NULL )
             panic("pci: failed to allocate new device structure!");
-        new_device->bus = bus;
-        new_device->device = device;
-        new_device->func = func;
-        new_device->class_code = pci_read_config_8( bus, device, func, 0x0B );
+        new_device->bus           = bus;
+        new_device->device        = device;
+        new_device->func          = func;
+        new_device->prog_if       = pci_read_config_8( bus, device, func, 0x09 );
         new_device->subclass_code = pci_read_config_8( bus, device, func, 0x0A );
-        new_device->header_type = pci_read_config_8(bus, device, func, 0x0E);
-        new_device->vendorID = pci_read_config_16(bus, device, func, 0);
-        new_device->deviceID = pci_read_config_16(bus, device, func, 2);
+        new_device->class_code    = pci_read_config_8( bus, device, func, 0x0B );
+        new_device->header_type   = pci_read_config_8(bus, device, func, 0x0E);
+        new_device->vendorID      = pci_read_config_16(bus, device, func, 0);
+        new_device->deviceID      = pci_read_config_16(bus, device, func, 2);
         pci_devices.add(new_device);
         char* ven_name = pci_get_ven_name(new_device->vendorID);
+        char* dev_type = pci_get_dev_type( new_device->class_code, new_device->subclass_code, new_device->prog_if );
         kprintf("pci: registered new device on b%u/d%u/f%u.\n", bus, device, func);
         kprintf("pci: deviceID: 0x%x\n", new_device->deviceID);
         kprintf("pci: vendorID: 0x%x - %s\n", new_device->vendorID, ven_name);
+        kprintf("pci: class code: 0x%x, subclass code: 0x%x, progIF: 0x%x\n", new_device->class_code, new_device->subclass_code, new_device->prog_if);
+        kprintf("pci: device type: %s.\n", dev_type);
     }
 }
 
@@ -122,7 +126,10 @@ void pci_check_all_buses() {
     }
 }
 
+// just used for prettyprinting / logging output
+
 char *pci_unknown_vendor = "Unknown Vendor";
+char *pci_unknown_devtype = "Unknown Device Type";
 
 char *pci_get_ven_name( uint16_t venID ) {
     for( unsigned int i=0;i<PCI_VENTABLE_LEN;i++ ) {
@@ -131,4 +138,15 @@ char *pci_get_ven_name( uint16_t venID ) {
         }
     }
     return pci_unknown_vendor;
+}
+
+char *pci_get_dev_type( uint8_t class_code, uint8_t subclass_code, uint8_t progif ) {
+    char *ret = NULL;
+    for( unsigned int i=0;i<PCI_CLASSCODETABLE_LEN;i++) {
+        if( (PciClassCodeTable[i].BaseClass == class_code) && (PciClassCodeTable[i].SubClass == subclass_code) && (PciClassCodeTable[i].ProgIf == progif) ) {
+            ret = concatentate_strings(PciClassCodeTable[i].BaseDesc, concatentate_strings( "-", concatentate_strings( PciClassCodeTable[i].SubDesc, concatentate_strings( "-", PciClassCodeTable[i].ProgDesc ) ) ) );
+            return ret;
+        }
+    }
+    return pci_unknown_devtype;
 }

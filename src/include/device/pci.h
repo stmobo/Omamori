@@ -20,6 +20,7 @@ struct pci_device {
     uint16_t deviceID;
     uint8_t class_code;
     uint8_t subclass_code;
+    uint8_t prog_if;
     uint8_t header_type;
 };
 
@@ -60,3 +61,4 @@ pci_get_info (
 );
 
 extern char *pci_get_ven_name( uint16_t );
+extern char *pci_get_dev_type( uint8_t, uint8_t, uint8_t );

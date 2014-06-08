@@ -33,6 +33,9 @@ static int lua_writeout_proxy(lua_State *st) {
 }
 
 void test_process_1() {
+    kprintf("Initializing serial logging.\n");
+    initialize_serial();
+    
     terminal_writestring("Initializing ACPI.\n");
     initialize_acpi();
     
@@ -43,7 +46,7 @@ void test_process_1() {
     ps2_keyboard_initialize();
     
     kprintf("Initializing PCI.\n");
-    //pci_check_bus(0);
+    pci_check_all_buses();
     uint32_t child_pid = fork();
     if( child_pid == -1 ) {
         kprintf("Whoops, something went wrong with fork!");
@@ -110,7 +113,7 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     page_frame* framez2;
     
     kprintf("Initializing multitasking.\n");
-    process *proc1 = new process( (size_t)&test_process_1, false, 0, "test_process_1", NULL, 0 );
+    process *proc1 = new process( (size_t)&test_process_1, false, 0, "init", NULL, 0 );
     //process *proc2 = new process( (size_t)&test_process_2, false, 0, "test_process_2", NULL, 0 );
     initialize_ipc();
     initialize_multitasking( proc1 );

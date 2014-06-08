@@ -36,3 +36,27 @@ extern void pci_write_config_32(char, char, char, char, uint32_t);
 extern uint8_t pci_read_config_8(char, char, char, char);
 extern uint16_t pci_read_config_16(char, char, char, char);
 extern uint32_t pci_read_config_32(char, char, char, char);
+
+extern void pci_check_bus( char );
+extern void pci_check_all_buses();
+extern void pci_check_device( char, char );
+extern void pci_check_bridge( char, char, char );
+
+extern void pci_get_info_three (
+  unsigned char		baseid,
+  unsigned char		subid,
+  unsigned char		progid,
+  char **		basedesc,
+  char **		subdesc,
+  char **		progdesc
+);
+
+void
+pci_get_info (
+  long		classcode,
+  char **	base,
+  char **	sub,
+  char **	prog
+);
+
+extern char *pci_get_ven_name( uint16_t );

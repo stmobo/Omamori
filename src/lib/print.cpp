@@ -152,7 +152,7 @@ char *append_char(char* str1, char c) {
     return out;
 }
 
-char *printf_form_final_str( va_list args, char specifier,
+char *printf_form_final_str( va_list &args, char specifier,
     char type_length, unsigned int min_width, unsigned int precision,
     bool pad_left, bool pad_zeroes, bool add_sign,
     bool add_blank, bool add_identifier ) 
@@ -667,7 +667,7 @@ void kprintf_varg(const char *str, va_list args) {
 }
 
 // Print something to screen.
-// don't call this from irq context, it might break stuff
+// don't call this from irq context, it definitely will break stuff
 void kprintf(const char *str, ...) {
     va_list args;
     va_start(args, str);

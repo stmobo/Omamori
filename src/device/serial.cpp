@@ -2,19 +2,26 @@
 #include "includes.h"
 #include "arch/x86/sys.h"
 #include "arch/x86/irq.h"
-#include "arch/x86/pic.h"
-#include "core/sys.h"
-#include "core/dynmem.h"
+#include "core/scheduler.h"
 #include "device/serial.h"
 #include "device/vga.h"
-
+#include "lib/sync.h"
 
 char input_buffer[SERIAL_BUFFER_SIZE];
-size_t input_length = 0;
-
 char output_buffer[SERIAL_BUFFER_SIZE];
-size_t output_length = 0;
 
+static unsigned int input_buffer_head = 0;
+static unsigned int input_buffer_tail = 0;
+
+static unsigned int output_buffer_head = 0;
+static unsigned int output_buffer_tail = 0;
+
+mutex     output_buffer_writers_mutex;
+mutex     input_buffer_readers_mutex;
+process *uart_read_wait_process = NULL;
+
+static process *uart_writer_process; 
+static process *uart_reader_process; 
 bool serial_initialized = false;
 
 // set_dlab - set or clear the DLAB bit.
@@ -96,34 +103,87 @@ char serial_receive(short base) {
     return io_inb(base);
 }
 
-int read_uart_fifo(short base) {
-    int bytes_read = 0;
+unsigned int read_uart_fifo(short base) {
+    unsigned int bytes_read = 0;
     while( io_inb(base+LSR_OFFSET) & LSR_DATA_READY ) {
-        input_buffer[input_length] = io_inb(base);
-        input_length += 1;
-        input_length %= SERIAL_BUFFER_SIZE;
+        input_buffer[input_buffer_head++] = io_inb(base);
+        input_buffer_head %= SERIAL_BUFFER_SIZE;
         bytes_read++;
+    }
+    if( uart_read_wait_process != NULL ) {
+        uart_read_wait_process->state = process_state::runnable;
+        process_add_to_runqueue(uart_read_wait_process);
     }
     return bytes_read;
 }
 
-int write_uart_fifo(short base) {
-    int bytes_written = 0;
-    if(output_length == 0)
-        return 0;
-    serial_disable_interrupts();
-    while((io_inb(base+LSR_OFFSET) & LSR_EMPTY_TRANS_HOLD)) {
-        if(bytes_written > output_length)
-            break;
-        io_outb(base, output_buffer[bytes_written]);
+char* serial_read(int *ret_bytes) {
+    vector<char> ret;
+    input_buffer_readers_mutex.lock();
+    uart_read_wait_process = process_current;
+    while( input_buffer_head != input_buffer_tail ) {
+        char d = input_buffer[input_buffer_tail++];
+        input_buffer_tail %= SERIAL_BUFFER_SIZE;
+        ret.add_end(d);
+    }
+    uart_read_wait_process = NULL;
+    input_buffer_readers_mutex.unlock();
+    char *ret2 = (char*)kmalloc(ret.length()+1);
+    for(int i=0;i<ret.length();i++) {
+        ret2[i] = ret[i];
+    }
+    ret2[ ret.length() ] = 0;
+    if( ret_bytes != NULL )
+        *ret_bytes = ret.length();
+    return ret2;
+}
+
+unsigned int write_uart_fifo(short base) {
+    unsigned int bytes_written = 0;
+    while( (output_buffer_head != output_buffer_tail) && (io_inb(base+LSR_OFFSET) & LSR_EMPTY_TRANS_HOLD) ) {
+        io_outb(base, output_buffer[output_buffer_tail++]);
+        output_buffer_tail %= SERIAL_BUFFER_SIZE;
         bytes_written++;
     }
-    for(int i=0;i<output_length-bytes_written;i++) {
-        output_buffer[i] = output_buffer[i+bytes_written];
-    }
-    output_length -= bytes_written;
-    serial_enable_interrupts();
     return bytes_written;
+}
+
+void serial_write(char* data) {
+    unsigned int len = strlen(data);
+    output_buffer_writers_mutex.lock();
+    
+    // might seem a bit redundant, but in the off chance that the empty semaphore is empty but the writer process' asleep...
+    // we want to make sure that the writer process eventually frees up some space
+    uart_writer_process->state = process_state::runnable;
+    process_add_to_runqueue(uart_writer_process);
+    
+    for(int i=0;i<len;i++) {
+        output_buffer[output_buffer_head++] = data[i];
+        output_buffer_head %= SERIAL_BUFFER_SIZE;
+        
+        // wake up the writer process
+        uart_writer_process->state = process_state::runnable;
+        process_add_to_runqueue(uart_writer_process);
+    }
+    output_buffer_writers_mutex.unlock();
+}
+
+// bottom half processes
+void uart_fifo_writer() {
+    while(true) {
+        if( write_uart_fifo(COM1_BASE_PORT) == 0 ) {
+            process_switch_immediate();
+        }
+    }
+}
+
+void uart_fifo_reader() {
+    while(true) {
+        if( read_uart_fifo(COM1_BASE_PORT) == 0 ) {
+            process_current->state = process_state::waiting;
+            process_switch_immediate();
+        }
+    }
 }
 
 // serial_irq - UART interrupt handler
@@ -139,59 +199,15 @@ bool serial_irq() {
     } else if( ((iir = io_inb(COM4_BASE_PORT+2)) & (IIR_INT_NOT_PENDING)) == 0 ) {
         port = COM4_BASE_PORT;
     }
+    if( (iir & 7) == 1 ) { // Transmitter holding buffer empty
+        uart_writer_process->state = process_state::runnable;
+        process_add_to_runqueue(uart_writer_process);
+    } else if( (iir & 7) == 2 ) { // Received data
+        uart_writer_process->state = process_state::runnable;
+        process_add_to_runqueue(uart_reader_process);
+    }
     
-    if(iir & (IIR_INT_RECV_DATA_AVAIL))
-        read_uart_fifo(port);
-    if(iir & (IIR_INT_THR_EMPTY))
-        write_uart_fifo(port);
-        
     return true;
-}
-
-char* serial_read(int *ret_bytes) {
-    if(input_length == 0) {
-        while( (io_inb(COM1_BASE_PORT+LSR_OFFSET) & LSR_DATA_READY) == 0 )
-            system_wait_for_interrupt();
-    }
-    
-    serial_disable_interrupts();
-    
-    char* ret = (char*)kmalloc(input_length);
-    *ret_bytes = input_length;
-    int old_i_len = input_length;
-    int ctr = input_length;
-    for(int i=0;i<old_i_len;i++) {
-        ret[i] = input_buffer[i];
-        input_buffer[i] = 0;
-        ctr--;
-    }
-    input_length = ctr;
-    
-    serial_enable_interrupts();
-    return ret;
-}
-
-void serial_write(char* data) {
-    int len = strlen(data);
-    //terminal_writestring("Entering serial_write.\n");
-    while((output_length+len) > SERIAL_BUFFER_SIZE)
-        system_wait_for_interrupt();
-    /*
-    while( (io_inb(COM1_BASE_PORT+LSR_OFFSET) & LSR_EMPTY_TRANS_HOLD) == 0 )
-        system_wait_for_interrupt();
-    */
-    
-    serial_disable_interrupts();
-    
-    int offset = output_length;
-    for(int i=0;i<len;i++) {
-        output_buffer[offset] = data[i];
-        offset++;
-    }
-    output_length = offset;
-    
-    serial_enable_interrupts();
-    //write_uart_fifo(COM1_BASE_PORT);
 }
 
 // initialize_serial - Set up a serial port.
@@ -201,16 +217,20 @@ void initialize_serial(short base, short divisor) {
     io_outb(base+LCR_OFFSET, LP_8N1);
     io_outb(base+FCR_IIR_OFFSET, FCR_FIFO_ON | FCR_FIFO_CLEAR_RECV | FCR_FIFO_CLEAR_TRANS | FCR_FIFO_INT_TRIG_14x);
     io_outb(base+MCR_OFFSET, MCR_DATA_TERM_READY | MCR_REQUEST_TO_SEND | MCR_AUX_OUT_2);
+    
+    uart_writer_process = new process( (size_t)&uart_fifo_writer, false, 0, "uart_writer", NULL, 0 );
+    uart_reader_process = new process( (size_t)&uart_fifo_reader, false, 0, "uart_reader", NULL, 0 );
     irq_add_handler(4, (size_t)&serial_irq);
     serial_enable_interrupts();
     serial_initialized = true;
 }
 
+void initialize_serial() {
+    return initialize_serial( COM1_BASE_PORT, LP_8N1 );
+}
+
 void flush_serial_buffer(void* n) {
-    while(output_length > 0) {
-        system_wait_for_interrupt();
+    while(output_buffer_head != output_buffer_tail) {
+        process_switch_immediate();
     }
-#ifdef DEBUG
-    terminal_writestring("Serial buffers flushed.\n");
-#endif
 }

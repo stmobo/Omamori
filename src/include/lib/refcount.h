@@ -39,6 +39,7 @@ class shared_ptr {
     shared_ptr<T>&        operator=(const T*);
     T&                    operator*()  { return *this->object; };
     T*                    operator->() { return this->object; };
+                          operator T*() { return this->object; };
     
     bool                  operator==(const weak_ptr<T>& rhs) { return (this->object == rhs.object); }
     bool                  operator==(const shared_ptr<T>& rhs) { return (this->object == rhs.object); }
@@ -96,9 +97,9 @@ template<class T>
 void shared_ptr<T>::invalidate() {
     if( this->rc != NULL ) {
         if( this->rc->decrement() == 0 ) {
+            shared_ptr_is_alive.set( this->rc_id, false );
             delete this->object;
             delete this->rc;
-            shared_ptr_is_alive.set( this->rc_id, false );
         }
     }
     this->object = NULL;
@@ -239,6 +240,7 @@ class unique_ptr {
     void        operator=(T*);
     T&          operator*()  { return *this->object; };
     T*          operator->() { return this->object; };
+                operator T*() { return this->object; };
     void        reset() { if(this->object != NULL) { delete this->object; this->object = NULL; } };
     
     unique_ptr() : object(NULL) {};

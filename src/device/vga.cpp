@@ -3,9 +3,6 @@
 #include "includes.h"
 #include "lib/sync.h"
 #include "device/vga.h"
-#ifdef MIRROR_VGA_SERIAL
-#include "device/serial.h"
-#endif
 
 static spinlock __vga_write_lock;
 
@@ -108,16 +105,6 @@ void terminal_putchar(char c)
 		}
 	}
     __vga_write_lock.unlock();
-#ifdef MIRROR_VGA_SERIAL
-    char d[2];
-    d[0] = c;
-    d[1] = '\0';
-    if(serial_initialized) {
-        serial_write(d);
-    }// else {
-    //    serial_print_basic(d);
-    //}
-#endif
 }
  
 // terminal_writestring - print a string to screen
@@ -130,13 +117,6 @@ void terminal_writestring(char* data)
 		terminal_putchar(data[i]);
     }
     __vga_write_lock.unlock();
-#ifdef MIRROR_VGA_SERIAL
-    if(serial_initialized) {
-        serial_write(data);
-    }// else {
-    //    serial_print_basic(data);
-    //}
-#endif
 }
 
 void terminal_writestring(char* data, size_t datalen)

@@ -5,17 +5,18 @@
 #endif
 #include "lib/sync.h"
 #include "arch/x86/debug.h"
+#include "core/scheduler.h"
 #include <stdarg.h>
 
 const char* numeric_alpha = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+static vector<char*> logger_lines_to_write;
+static mutex logger_vec_lock;
+static process *logger_process = NULL;
 
 size_t strlen(char* str)
 {
     if( (uint32_t)str < 0x1000 ) // also catches NULL pointer derefs!
         return 0;
-    if( str == (char*)0x00000001) {
-        panic("lolderp");
-    }
 	size_t ret = 0;
 	while ( str[ret] != 0 )
 		ret++;
@@ -651,19 +652,31 @@ char *ksprintf(const char *str, ...) {
     return out;
 }
 
-spinlock __kprintf_lock;
-//static spinlock __kprintf_varg_lock;
-// Print something to the screen, but take a va_list.
-void kprintf_varg(const char *str, va_list args) {
-    char *o = ksprintf_varg( str, args );
-    __kprintf_lock.lock();
+static mutex __kprintf_lock;
+inline void __logger_do_writeout(char* o) {
 #ifdef ENABLE_SERIAL_LOGGING
     if( serial_initialized ) {
         serial_write( o );
     }
 #endif
+    __kprintf_lock.lock();
     terminal_writestring( o );
     __kprintf_lock.unlock();
+}
+
+// Print something to the screen, but take a va_list.
+void kprintf_varg(const char *str, va_list args) {
+    char *o = ksprintf_varg( str, args );
+    if( logger_process == NULL ) {
+        __logger_do_writeout(o);
+        kfree(o);
+    } else {
+        logger_vec_lock.lock();
+        logger_lines_to_write.add_end(o);
+        logger_vec_lock.unlock();
+        logger_process->state = process_state::runnable;
+        process_add_to_runqueue(logger_process);
+    }
 }
 
 // Print something to screen.
@@ -673,16 +686,38 @@ void kprintf(const char *str, ...) {
     va_start(args, str);
     
     char *o = ksprintf_varg( str, args );
-    __kprintf_lock.lock();
-#ifdef ENABLE_SERIAL_LOGGING
-    if( serial_initialized ) {
-        serial_write( o );
+    
+    if( logger_process == NULL ) {
+        __logger_do_writeout(o);
+        kfree(o);
+    } else {
+        logger_vec_lock.lock();
+        logger_lines_to_write.add_end(o);
+        logger_vec_lock.unlock();
+        logger_process->state = process_state::runnable;
+        process_add_to_runqueue(logger_process);
     }
-#endif
-    terminal_writestring( o );
-    __kprintf_lock.unlock();
     
     va_end(args);
+}
+
+void logger_process_func() {
+    while(true) {
+        if(logger_lines_to_write.count() > 0) {
+            logger_vec_lock.lock();
+            char *o = logger_lines_to_write.remove();
+            logger_vec_lock.unlock();
+            __logger_do_writeout(o);
+            kfree(o);
+        } else {
+            process_current->state = process_state::waiting;
+            process_switch_immediate();
+        }
+    }
+}
+
+void logger_initialize() {
+    logger_process = new process( (size_t)&logger_process_func, false, 0, "kernel_logger", NULL, 0);
 }
 
 char *panic_str = NULL;

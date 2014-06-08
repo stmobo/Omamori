@@ -129,7 +129,7 @@ char* serial_read(int *ret_bytes) {
     uart_read_wait_process = NULL;
     input_buffer_readers_mutex.unlock();
     char *ret2 = (char*)kmalloc(ret.length()+1);
-    for(int i=0;i<ret.length();i++) {
+    for(unsigned int i=0;i<ret.length();i++) {
         ret2[i] = ret[i];
     }
     ret2[ ret.length() ] = 0;
@@ -154,16 +154,27 @@ void serial_write(char* data) {
     
     // might seem a bit redundant, but in the off chance that the empty semaphore is empty but the writer process' asleep...
     // we want to make sure that the writer process eventually frees up some space
-    uart_writer_process->state = process_state::runnable;
-    process_add_to_runqueue(uart_writer_process);
+    if( (uart_writer_process != NULL) && (uart_writer_process->state != process_state::runnable) ) {
+        uart_writer_process->state = process_state::runnable;
+        process_add_to_runqueue(uart_writer_process);
+    }
     
-    for(int i=0;i<len;i++) {
+    for(unsigned int i=0;i<len;i++) {
+        while( output_buffer_head == output_buffer_tail-1 ) { // avoid going in a full circle (spin until it works)
+            if( (uart_writer_process != NULL) && (uart_writer_process->state != process_state::runnable) ) {
+                uart_writer_process->state = process_state::runnable;
+                process_add_to_runqueue(uart_writer_process);
+            }
+            process_switch_immediate();
+        }
         output_buffer[output_buffer_head++] = data[i];
         output_buffer_head %= SERIAL_BUFFER_SIZE;
         
         // wake up the writer process
-        uart_writer_process->state = process_state::runnable;
-        process_add_to_runqueue(uart_writer_process);
+        if( (uart_writer_process != NULL) && (uart_writer_process->state != process_state::runnable) ) {
+            uart_writer_process->state = process_state::runnable;
+            process_add_to_runqueue(uart_writer_process);
+        }
     }
     output_buffer_writers_mutex.unlock();
 }

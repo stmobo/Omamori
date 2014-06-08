@@ -32,9 +32,12 @@ static int lua_writeout_proxy(lua_State *st) {
     return 1;
 }
 
-void test_process_1() {
+void test_process_1() {   
     kprintf("Initializing serial logging.\n");
     initialize_serial();
+    
+    logger_initialize();
+    kprintf("Initialized kernel logger process.\n");
     
     terminal_writestring("Initializing ACPI.\n");
     initialize_acpi();

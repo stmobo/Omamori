@@ -15,3 +15,5 @@ extern void  kprintf_varg(const char*, va_list);
 extern char* ksprintf(const char*, ...);
 extern void  kprintf(const char*, ...);
 extern void  panic(char*, ...);
+
+extern void  logger_initialize();

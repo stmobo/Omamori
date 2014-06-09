@@ -1,5 +1,8 @@
 // ata.cpp -- ATA Storage driver
 
+#pragma once
+#include "includes.h"
+
 #define ATA_SR_BSY     0x80
 #define ATA_SR_DRDY    0x40
 #define ATA_SR_DF      0x20
@@ -80,3 +83,9 @@
 #define      ATA_WRITE     0x01
 
 #define      ATA_BUS_MASTER_START       0x550
+
+
+extern void ata_initialize();
+extern bool ata_begin_transfer( unsigned int channel, bool slave, bool write, void* dma_buffer, uint64_t sector_start, size_t n_sectors );
+extern void ata_write(uint8_t channel, uint8_t reg, uint8_t data);
+extern uint8_t ata_read(uint8_t channel, uint8_t reg);

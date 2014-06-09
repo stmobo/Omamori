@@ -1,11 +1,10 @@
 // pci.h
 #pragma once
 #include "includes.h"
+#include "lib/vector.h"
 
 #define PCI_IO_CONFIG_ADDRESS       0xCF8
 #define PCI_IO_CONFIG_DATA          0xCFC
-
-extern vector<pci_device*> pci_devices;
 
 typedef struct pcie_ecs_range {
     uint32_t mmio_paddr;
@@ -14,7 +13,7 @@ typedef struct pcie_ecs_range {
     size_t   vaddr;
 } pcie_ecs_range;
 
-struct pci_device {
+typedef struct pci_device {
     uint8_t bus;
     uint8_t device;
     uint8_t func;
@@ -24,9 +23,9 @@ struct pci_device {
     uint8_t subclass_code;
     uint8_t prog_if;
     uint8_t header_type;
-};
+} pci_device;
 
-typedef struct pci_device pci_device_t;
+extern vector<pci_device*> pci_devices;
 
 extern void pci_check_bus(char);
 extern void pci_register_device(char, char, char);

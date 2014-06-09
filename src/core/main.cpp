@@ -2,10 +2,11 @@
 #include "arch/x86/multitask.h"
 #include "core/acpi.h"
 #include "core/scheduler.h"
-#include "device/serial.h"
+#include "device/ata.h"
 #include "device/pci.h"
 #include "device/ps2_controller.h"
 #include "device/ps2_keyboard.h"
+#include "device/serial.h"
 #include "device/vga.h"
 extern "C" {
     #include "lua.h"
@@ -50,6 +51,10 @@ void test_process_1() {
     
     kprintf("Initializing PCI.\n");
     pci_check_all_buses();
+    
+    kprintf("Initializing ATA storage.\n");
+    ata_initialize();
+    
     uint32_t child_pid = fork();
     if( child_pid == -1 ) {
         kprintf("Whoops, something went wrong with fork!");

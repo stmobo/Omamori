@@ -220,7 +220,7 @@ message::message( message& org ) {
         this->sender = process_current->id;
     else
         this->sender = 0;
-    if( this->data != NULL )
+    if( (this->data != NULL) && (this->data_sz > 0) )
         memcpy( this->data, org.data, org.data_sz );
 }
 
@@ -233,7 +233,7 @@ message::message( const char* type, void* data, size_t data_sz ) {
         this->sender = process_current->id;
     else
         this->sender = 0;
-    if( this->data != NULL )
+    if( (this->data != NULL) && (this->data_sz > 0) )
         memcpy( this->data, data, data_sz );
 }
 

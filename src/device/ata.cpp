@@ -3,6 +3,7 @@
 #include "includes.h"
 #include "arch/x86/sys.h"
 #include "arch/x86/irq.h"
+#include "core/paging.h"
 #include "core/scheduler.h"
 #include "device/ata.h"
 #include "device/pci.h"
@@ -36,6 +37,7 @@ static struct __ata_channel {
     uint32_t     prdt_phys;
     uint64_t     *prdt_virt;
     mutex        lock;
+    process*     current_transfer_process;
     
     void initialize( short, short );
     void select( uint8_t );
@@ -55,6 +57,7 @@ void __ata_channel::dma_write( void* dma_buffer, uint64_t sector_start, size_t n
     unsigned int n_bytes = n_sectors*512;
     this->lock.lock();
     this->wait_dma(); // wait on existing DMA transfers
+    current_transfer_process = process_current;
     // place PRD in PRDT
     this->prdt_virt[0] = ((uint64_t)1<<63)+(((uint64_t)n_bytes)<<32)+((uint32_t)dma_buffer);
     io_outb(this->bus_master, 9); // DMA bit + Write bit
@@ -205,8 +208,12 @@ bool ata_irq_handler() {
     for(int channel=0;channel<2;channel++) {
         uint8_t status = io_inb( ata_channels[channel].bus_master+2 );
         if( status & 4 ) { // did this channel cause the interrupt?
-            if( (status & 1) == 0 ) // is a DMA transfer complete?
+            if( (status & 1) == 0 ) { // is a DMA transfer complete?
+                // send a signal to the transferring process
+                message out( "ata_transfer_complete", (void*)(ata_channels[channel].prdt_virt[0]&0xFFFFFFFF), 0 );
+                ata_channels[channel].current_transfer_process->send_message( out );
                 io_outb(ata_channels[channel].bus_master, 0); // clear command register (mark DMA as complete)
+            }
             return true;
         }
     }
@@ -227,6 +234,37 @@ bool ata_begin_transfer( unsigned int channel, bool slave, bool write, void* dma
     return true;
 }
 
+void* ata_do_disk_read( unsigned int channel, bool slave, uint64_t sector_start, size_t n_sectors ) {
+    unsigned int n_pages = n_sectors & 0xFFFFFFFC;
+    if( (n_sectors & 3) > 0 ) { // round page count up
+        n_pages++;
+    }
+    
+    page_frame *frames = pageframe_allocate(n_pages);
+    size_t      buffer_virt = k_vmem_alloc(n_pages);
+    for(int i=0;i<n_pages;i++) {
+        if( (i > 0) && (frames[i-1].address != (frames[i].address+0x1000)) ) {
+            panic("ata: could not allocate contigous frames for DMA.\n");
+        }
+        paging_set_pte( buffer_virt+(i*0x1000), frames[i].address, 0 );
+    }
+    set_message_listen_status( "ata_transfer_complete", true );
+    ata_begin_transfer( channel, slave, false, (void*)frames[0].address, sector_start, n_sectors );
+    while(true) {
+        message* msg = wait_for_message();
+        if( strcmp(const_cast<char*>(msg->type), const_cast<char*>("ata_transfer_complete")) ) {
+            uint32_t buffer_target = (uint32_t)(msg->data); // ata_transfer_complete messages have the buffer as their data element
+            msg->data = NULL;
+            delete msg;
+            if( buffer_target == frames[0].address ) {
+                return (void*)buffer_virt;
+            }
+        }
+        delete msg;
+    }
+    return NULL;
+}
+
 void ata_initialize() {
     for(unsigned int i=0;i<pci_devices.count();i++) {
         pci_device *current = pci_devices[i];
@@ -241,6 +279,7 @@ void ata_initialize() {
             
             irq_add_handler( 14,(size_t)(&ata_irq_handler) );
             irq_add_handler( 15,(size_t)(&ata_irq_handler) );
+            register_channel( "ata_transfer_complete", CHANNEL_MODE_BROADCAST );
             return;
         }
     }

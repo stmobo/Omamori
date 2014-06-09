@@ -5,6 +5,8 @@
 #define PCI_IO_CONFIG_ADDRESS       0xCF8
 #define PCI_IO_CONFIG_DATA          0xCFC
 
+extern vector<pci_device*> pci_devices;
+
 typedef struct pcie_ecs_range {
     uint32_t mmio_paddr;
     char     bus_start;

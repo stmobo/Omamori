@@ -61,11 +61,22 @@ omamori.iso: omamori.elf
 		@cp omamori.elf $(ISO_DIR)/boot/omamori.elf
 		@grub-mkrescue -o omamori.iso $(ISO_DIR) > /dev/null 2>&1
 		
-omamori.elf: $(OBJ_FILES)
-		@$(LD) -T $(MAIN_SRC)/linker.ld $(LDFLAGS) -o ./omamori.elf $(LINK_ORDER_FIRST) $(LINK_ORDER_MID) $(LINK_ORDER_LAST) $(LDLIBS)
-		@mv omamori.elf omamori_embedded_debug.elf
+omamori.elf: omamori_embedded_debug.elf
 		@$(HOME)/opt/cross/bin/i686-elf-objcopy -S omamori_embedded_debug.elf omamori.elf
-
+		
+debug: omamori_embedded_debug.elf
+		@$(HOME)/opt/cross/bin/i686-elf-objcopy --only-keep-debug omamori_embedded_debug.elf omamori.sym
+		@$(HOME)/opt/cross/bin/i686-elf-readelf -s omamori.sym | sort -k 2,2 > ./symbols
+		
+omamori_embedded_debug.elf: $(OBJ_FILES)
+		@$(LD) -T $(MAIN_SRC)/linker.ld $(LDFLAGS) -o ./omamori_embedded_debug.elf $(LINK_ORDER_FIRST) $(LINK_ORDER_MID) $(LINK_ORDER_LAST) $(LDLIBS)
+		
+clean:
+		@$(RM) $(OBJ_FILES)
+		@$(RM) $(DEP_FILES)
+		@$(RM) omamori.iso
+		@$(RM) omamori.elf
+		
 $(C_OBJ_FILES): $(MAIN_OBJ)/%.o : $(MAIN_SRC)/%.c
 		@$(CC) $(CCFLAGS) -c $< -o $@
 		
@@ -76,15 +87,5 @@ $(ASM_OBJ_FILES): $(MAIN_OBJ)/%.o : $(MAIN_SRC)/%.s
 		@$(AS) -c $< -o $@
 		
 -include $(DEP_FILES)
-		
-clean:
-		@$(RM) $(OBJ_FILES)
-		@$(RM) $(DEP_FILES)
-		@$(RM) omamori.iso
-		@$(RM) omamori.elf
-		
-debug: omamori.elf
-		@$(HOME)/opt/cross/bin/i686-elf-objcopy --only-keep-debug omamori_embedded_debug.elf omamori.sym
-		@$(HOME)/opt/cross/bin/i686-elf-readelf -s omamori.sym | sort -k 2,2 > ./symbols
 		
 .PHONY: clean debug

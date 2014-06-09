@@ -9,9 +9,6 @@
 
 vector<pci_device*> pci_devices;
 
-uint32_t pcie_mmio_base = 0;
-vector<pcie_ecs_range*> ecs_ranges;
-
 uint32_t pci_read_config_32(char bus, char device, char func, char offset) {
     uint32_t config_addr = (0x80000000 | (((uint32_t)bus)<<16) | (((uint32_t)device)<<11) | (((uint32_t)func)<<8) | (offset&0xFC));
     io_outd(PCI_IO_CONFIG_ADDRESS, config_addr);
@@ -71,11 +68,11 @@ void pci_register_function(char bus, char device, char func) {
         pci_devices.add(new_device);
         char* ven_name = pci_get_ven_name(new_device->vendorID);
         char* dev_type = pci_get_dev_type( new_device->class_code, new_device->subclass_code, new_device->prog_if );
-        kprintf("pci: registered new device on b%u/d%u/f%u.\n", bus, device, func);
-        kprintf("pci: deviceID: 0x%x\n", new_device->deviceID);
-        kprintf("pci: vendorID: 0x%x - %s\n", new_device->vendorID, ven_name);
-        kprintf("pci: class code: 0x%x, subclass code: 0x%x, progIF: 0x%x\n", new_device->class_code, new_device->subclass_code, new_device->prog_if);
-        kprintf("pci: device type: %s.\n", dev_type);
+        //kprintf("pci: registered new device on b%u/d%u/f%u.\n", bus, device, func);
+        //kprintf("pci: deviceID: 0x%x\n", new_device->deviceID);
+        //kprintf("pci[%u/%u/%u]: vendorID: 0x%x - %s\n", bus, device, func, new_device->vendorID, ven_name);
+        kprintf("pci[%u/%u/%u]: class code: 0x%x, subclass code: 0x%x, progIF: 0x%x\n", bus, device, func, new_device->class_code, new_device->subclass_code, new_device->prog_if);
+        //kprintf("pci[%u/%u/%u]: device type: %s.\n", bus, device, func, dev_type);
     }
 }
 

@@ -28,72 +28,188 @@ static struct __ata_controller {
 } ata_controller;
 
 static struct __ata_channel {
-    unsigned int channel_no;
-    short        base;
-    short        control;
-    short        bus_master;
-    bool         interrupt;
-    uint8_t      selected_drive;
-    uint32_t     prdt_phys;
-    uint64_t     *prdt_virt;
-    mutex        lock;
-    process*     current_transfer_process;
+    unsigned int          channel_no;
+    short                 base;
+    short                 control;
+    short                 bus_master;
+    bool                  interrupt;
+    uint8_t               selected_drive;
+    uint32_t              prdt_phys;
+    uint64_t              *prdt_virt;
+	uint32_t              prdt_n_entries;
+	uint32_t              prdt_current;
+    mutex                 lock;
+    dma_request*          current_transfer = NULL;
+    vector<dma_request*> *read_queue = NULL;
+    vector<dma_request*> *write_queue = NULL;
+    vector<dma_request*> *current_operation = NULL; // true - reading, false - writing
+    vector<dma_request*> *current_prdt_queue = NULL;
+    bool                  currently_idle = true;
+    process*              delayed_starter;
     
     void initialize( short, short );
     void select( uint8_t );
     void wait_dma();
-    void dma_write( void*, uint64_t, size_t);
-    void dma_read( void*, uint64_t, size_t );
+    
+    void req_enqueue( dma_request*, bool, unsigned int );
+    void fill_prdt( vector<dma_request*> * );
+    void swap_operations();
+    void dma_start( bool );
 } ata_channels[2];
 
-void __ata_channel::wait_dma() {
-    while( io_inb(this->bus_master) & 1 ) { // loop until transfer is marked as complete
-        process_switch_immediate();
+typedef struct dma_request {
+    void        *buffer_phys;
+    uint64_t     sector_start;
+    size_t       n_sectors;
+    bool         to_slave;
+    bool         status;
+    process*     requesting_process;
+    
+    dma_request( void* buf, uint64_t secst, size_t nsec, bool sl ) : buffer_phys(buf), sector_start(secst), n_sectors(nsec), to_slave(st), requesting_process(process_current) {};
+} dma_request;
+
+void __ata_channel::req_enqueue( dma_request* req, bool read, unsigned int channel_no ) {
+    this->lock.lock();
+    if( read ) {
+        this->read_queue.add(req);
+    } else {
+        this->write_queue.add(req);
     }
+    if( this->currently_idle ) {
+        if( read ) {
+            this->current_operation = this->read_queue;
+        } else {
+            this->current_operation = this->write_queue;
+        }
+        this->fill_prdt( this->current_operation );
+        this->currently_idle = false;
+        if( !read )
+            io_outb(this->bus_master, 1); // set DMA bit
+        else
+            io_outb(this->bus_master, 9); // set DMA + write bits
+        this->dma_start( true );
+    }
+    this->lock.unlock();
 }
 
-// send "select" command first!
-void __ata_channel::dma_write( void* dma_buffer, uint64_t sector_start, size_t n_sectors ) {
-    unsigned int n_bytes = n_sectors*512;
+void __ata_channel::fill_prdt( vector<dma_request*>* queue ) {
     this->lock.lock();
-    this->wait_dma(); // wait on existing DMA transfers
-    current_transfer_process = process_current;
-    // place PRD in PRDT
-    this->prdt_virt[0] = ((uint64_t)1<<63)+(((uint64_t)n_bytes)<<32)+((uint32_t)dma_buffer);
-    io_outb(this->bus_master, 9); // DMA bit + Write bit
+    this->prdt_n_entries = queue->count()-1;
+    this->prdt_current = 0;
+    if( this->prdt_n_entries < 0xA0 ) {
+        for(unsigned int i=0;i<queue.count();i++) {
+            dma_request *current = queue->remove();
+            this->prdt_virt[i] = (((uint64_t)(current->n_sectors*512))<<32)+((uint32_t)current->buffer_phys);
+            if( queue.count() == 0)
+                this->prdt_virt[i] |= (uint64_t)(1<<63);
+            this->current_prdt_queue->add_end( current );
+        }
+    } else {
+        this->prdt_n_entries = 0xA0;
+        for(unsigned int i=0;i<0xA0;i++) {
+            dma_request *current = queue->remove();
+            this->prdt_virt[i] = (((uint64_t)(current->n_sectors*512))<<32)+((uint32_t)current->buffer_phys);
+            this->current_prdt_queue->add_end( current );
+        }
+        this->prdt_virt[0x98] |= (uint64_t)(1<<63);
+    }
+    this->lock.unlock();
+}
+
+void __ata_channel::swap_operations() 
+    this->lock.lock();
+    if( this->current_operation == this->read_queue ) {
+        this->current_operation = this->write_queue;
+    } else {
+        this->current_operation = this->read_queue;
+    }
+    if( this->current_operation->count() <= 0 ) { // if there aren't any transfers on this queue, then check the other one
+        if( this->current_operation == this->read_queue ) {
+            this->current_operation =  this->write_queue;
+        } else {
+            this->current_operation =  this->read_queue;
+        }
+        if( this->current_operation->count() <= 0 ) { // if there aren't any on either queue, then mark ourselves as idle
+            this->currently_idle = true;
+            this->current_prdt_queue->clear();
+            this->prdt_n_entries = 0;
+            this->prdt_current = 0;
+        } else
+            this->fill_prdt( current_operation );
+    } else
+        this->fill_prdt( current_operation );
+    this->lock.unlock();
+}
+
+void __ata_channel::dma_start( bool no_swap ) {
+    this->lock.lock();
+    if( !no_swap ) {
+        this->prdt_n_entries++;
+        if( this->prdt_n_entries >= this->prdt_current ) { // no transfers left for the current operation, do other transfers now
+            this->swap_operations();
+            if( this->currently_idle ) { // no transfers at all left
+                io_outb(this->bus_master, 0); // terminate DMA mode
+                return;
+            }
+        }
+    }
+    if( this->current_transfer != NULL ) {
+        this->current_transfer->state = true;
+        message out("ata_transfer_complete", buffer_phys, 0);
+        this->current_transfer->requesting_process->send_message( out );
+    }
+    this->current_transfer = current_prdt_queue.remove();
+    if( this->current_transfer == NULL ) {
+        return this->dma_start(no_swap); // swap operations again
+    }
+    this->select( 0x40 | ((this->current_transfer->to_slave ? 1 : 0)<<4) );
     // send DMA parameters to drive
-    ata_write( this->channel_no, ATA_REG_SECCOUNT0, n_sectors&0xFF );
-    ata_write( this->channel_no, ATA_REG_LBA3, (sector_start>>24)&0xFF );
-    ata_write( this->channel_no, ATA_REG_LBA4, (sector_start>>32)&0xFF );
-    ata_write( this->channel_no, ATA_REG_LBA5, (sector_start>>40)&0xFF );
-    ata_write( this->channel_no, ATA_REG_SECCOUNT1, (n_sectors>>8)&0xFF );
-    ata_write( this->channel_no, ATA_REG_LBA0, sector_start&0xFF );
-    ata_write( this->channel_no, ATA_REG_LBA1, (sector_start>>8)&0xFF );
-    ata_write( this->channel_no, ATA_REG_LBA2, (sector_start>>16)&0xFF );
+    ata_write( this->channel_no, ATA_REG_SECCOUNT0, this->current_transfer->n_sectors&0xFF );
+    ata_write( this->channel_no, ATA_REG_LBA3, (this->current_transfer->sector_start>>24)&0xFF );
+    ata_write( this->channel_no, ATA_REG_LBA4, (this->current_transfer->sector_start>>32)&0xFF );
+    ata_write( this->channel_no, ATA_REG_LBA5, (this->current_transfer->sector_start>>40)&0xFF );
+    ata_write( this->channel_no, ATA_REG_SECCOUNT1, (this->current_transfer->n_sectors>>8)&0xFF );
+    ata_write( this->channel_no, ATA_REG_LBA0, this->current_transfer->sector_start&0xFF );
+    ata_write( this->channel_no, ATA_REG_LBA1, (this->current_transfer->sector_start>>8)&0xFF );
+    ata_write( this->channel_no, ATA_REG_LBA2, (this->current_transfer->sector_start>>16)&0xFF );
     // send DMA command
     ata_write( this->channel_no, ATA_REG_COMMAND, ATA_CMD_WRITE_DMA_EXT );
     this->lock.unlock();
 }
 
-void __ata_channel::dma_read( void* dma_buffer, uint64_t sector_start, size_t n_sectors ) {
-    unsigned int n_bytes = n_sectors*512;
-    this->lock.lock();
-    this->wait_dma(); // wait on existing DMA transfers
-    // place PRD in PRDT
-    this->prdt_virt[0] = ((uint64_t)1<<63)+(((uint64_t)n_bytes)<<32)+((uint32_t)dma_buffer);
-    io_outb(this->bus_master, 1); // DMA bit
-    // send DMA parameters to drive
-    ata_write( this->channel_no, ATA_REG_SECCOUNT0, n_sectors&0xFF );
-    ata_write( this->channel_no, ATA_REG_LBA3, (sector_start>>24)&0xFF );
-    ata_write( this->channel_no, ATA_REG_LBA4, (sector_start>>32)&0xFF );
-    ata_write( this->channel_no, ATA_REG_LBA5, (sector_start>>40)&0xFF );
-    ata_write( this->channel_no, ATA_REG_SECCOUNT1, (n_sectors>>8)&0xFF );
-    ata_write( this->channel_no, ATA_REG_LBA0, sector_start&0xFF );
-    ata_write( this->channel_no, ATA_REG_LBA1, (sector_start>>8)&0xFF );
-    ata_write( this->channel_no, ATA_REG_LBA2, (sector_start>>16)&0xFF );
-    // send DMA command
-    ata_write( this->channel_no, ATA_REG_COMMAND, ATA_CMD_READ_DMA_EXT );
-    this->lock.unlock();
+void irq14_delayed_starter() {
+    while(true) {
+        ata_channels[0].dma_start(false);
+        process_current->state = process_state::waiting;
+        process_switch_immediate();
+    }
+}
+
+void irq15_delayed_starter() {
+    while(true) {
+        ata_channels[1].dma_start(false);
+        process_current->state = process_state::waiting;
+        process_switch_immediate();
+    }
+}
+
+bool dma_irq( unsigned int channel_no ) {
+    uint8_t status = io_inb( ata_channels[channel_no].bus_master+2 );
+    if( status & 4 ) { // did this channel cause the interrupt?
+        ata_channels[channel_no].delayed_starter->state = process_state::waiting;
+        process_add_to_runqueue(ata_channels[channel_no].delayed_starter);
+        return true;
+    }
+    return false;
+}
+
+bool irq14_handler() { return dma_irq(0); }
+bool irq15_handler() { return dma_irq(1); }
+
+void __ata_channel::wait_dma() {
+    while( io_inb(this->bus_master) & 1 ) { // loop until transfer is marked as complete
+        process_switch_immediate();
+    }
 }
 
 void __ata_channel::select( uint8_t select_val ) {
@@ -109,6 +225,10 @@ void __ata_channel::select( uint8_t select_val ) {
 void __ata_channel::initialize( short base, short control ) {
     this->base = base;
     this->control = control;
+    
+    this->read_queue        = new vector<dma_request*>;
+    this->write_queue       = new vector<dma_request*>;
+    this->current_prdt_queue        = new vector<dma_request*>;
 }
 
 void __ata_controller::initialize( uint32_t bar0, uint32_t bar1, uint32_t bar2, uint32_t bar3 ) {
@@ -133,6 +253,7 @@ void __ata_controller::initialize( uint32_t bar0, uint32_t bar1, uint32_t bar2, 
     if( test_ch0 != 0xFF ) {
         // floating bus, there's nothing here
         ata_channels[0].initialize( bar0, bar1 );
+        ata_channels[0].delayed_starter = new process( (size_t)&irq14_delayed_starter, 0, false, "ata_ch0_delayedstarter", NULL, 0 );
         
         // set PRDT addresses
         io_outb( ATA_BUS_MASTER_START+4, ( ata_channels[0].prdt_phys & 0xFF ) );
@@ -147,6 +268,7 @@ void __ata_controller::initialize( uint32_t bar0, uint32_t bar1, uint32_t bar2, 
     
     if( test_ch1 != 0xFF ) {
         ata_channels[1].initialize( bar2, bar3 );
+        ata_channels[1].delayed_starter = new process( (size_t)&irq15_delayed_starter, 0, false, "ata_ch1_delayedstarter", NULL, 0 );
         
         io_outb( ATA_BUS_MASTER_START+0xC, ( ata_channels[1].prdt_phys & 0xFF ) );
         io_outb( ATA_BUS_MASTER_START+0xD, ( (ata_channels[1].prdt_phys>>8) & 0xFF ) );
@@ -202,22 +324,6 @@ uint8_t ata_read(uint8_t channel, uint8_t reg) {
    if (reg > 0x07 && reg < 0x0C)
       ata_write(channel, ATA_REG_CONTROL, ata_channels[channel].interrupt ? 0 : 1);
    return result;
-}
-
-bool ata_irq_handler() {
-    for(int channel=0;channel<2;channel++) {
-        uint8_t status = io_inb( ata_channels[channel].bus_master+2 );
-        if( status & 4 ) { // did this channel cause the interrupt?
-            if( (status & 1) == 0 ) { // is a DMA transfer complete?
-                // send a signal to the transferring process
-                message out( "ata_transfer_complete", (void*)(ata_channels[channel].prdt_virt[0]&0xFFFFFFFF), 0 );
-                ata_channels[channel].current_transfer_process->send_message( out );
-                io_outb(ata_channels[channel].bus_master, 0); // clear command register (mark DMA as complete)
-            }
-            return true;
-        }
-    }
-    return false;
 }
 
 bool ata_begin_transfer( unsigned int channel, bool slave, bool write, void* dma_buffer, uint64_t sector_start, size_t n_sectors ) {
@@ -277,8 +383,8 @@ void ata_initialize() {
             
             ata_controller.initialize(0x1F0, 0x3F6, 0x170, 0x376);
             
-            irq_add_handler( 14,(size_t)(&ata_irq_handler) );
-            irq_add_handler( 15,(size_t)(&ata_irq_handler) );
+            irq_add_handler( 14,(size_t)(&irq14_handler) );
+            irq_add_handler( 15,(size_t)(&irq15_handler) );
             register_channel( "ata_transfer_complete", CHANNEL_MODE_BROADCAST );
             return;
         }

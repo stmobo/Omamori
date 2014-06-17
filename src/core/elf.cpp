@@ -3,9 +3,9 @@
 #include "lib/elf.h"
 
 elf_header_32* read_elf_header( void *file_data ) {
-    uint8_t *fdata_8 = file_data;
-    uint16_t *fdata_16 = file_data;
-    uint32_t *fdata_32 = file_data;
+    uint8_t *fdata_8   = (uint8_t*)file_data;
+    uint16_t *fdata_16 = (uint16_t*)file_data;
+    uint32_t *fdata_32 = (uint32_t*)file_data;
     elf_header_32 *hdr = new elf_header_32;
     
     hdr->signature          = fdata_32[0]; // 0x00 - 0x03

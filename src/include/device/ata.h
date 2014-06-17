@@ -84,8 +84,33 @@
 
 #define      ATA_BUS_MASTER_START       0x550
 
+typedef struct dma_request {
+    void        *buffer_phys;
+    uint64_t     sector_start;
+    size_t       n_sectors;
+    bool         to_slave;
+    bool         status;
+    bool         read;
+    process*     requesting_process;
+    
+    dma_request( void* buf, uint64_t secst, size_t nsec, bool sl, bool read ) : buffer_phys(buf), sector_start(secst), n_sectors(nsec), to_slave(sl), read(read), requesting_process(process_current) {};
+    void wait() { while(!this->status) { process_switch_immediate(); } };
+} dma_request;
+
+typedef struct dma_buffer {
+    void        *buffer_virt;
+    void        *buffer_phys;
+    page_frame  *frames;
+    unsigned int n_frames;
+    size_t       size;
+    
+    dma_buffer( size_t );
+} dma_buffer;
 
 extern void ata_initialize();
-extern bool ata_begin_transfer( unsigned int channel, bool slave, bool write, void* dma_buffer, uint64_t sector_start, size_t n_sectors );
+//extern bool ata_begin_transfer( unsigned int channel, bool slave, bool write, void* dma_buffer, uint64_t sector_start, size_t n_sectors );
 extern void ata_write(uint8_t channel, uint8_t reg, uint8_t data);
 extern uint8_t ata_read(uint8_t channel, uint8_t reg);
+extern void ata_start_request( dma_request* req, unsigned int channel_no );
+extern void ata_do_pio_sector_transfer( int channel, void* buffer, bool write );
+extern void ata_do_cache_flush();

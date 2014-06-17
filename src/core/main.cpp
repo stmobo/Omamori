@@ -69,6 +69,9 @@ void test_process_1() {
                     kprintf("Process %u: Up!\n", process_current->id);
                 } else if( kp->key == KEY_CurDown ) {
                     kprintf("Process %u: Down!\n", process_current->id);
+                } else if( kp->key == KEY_Enter ) {
+                    kprintf("Process %u: Forcing ATA cache flush...\n", process_current->id);
+                    ata_do_cache_flush();
                 }
             }
         }
@@ -76,17 +79,17 @@ void test_process_1() {
         kprintf("Hello from (parent) process %u!\n", process_current->id);
         kprintf("Starting lua interpretation.\n");
         lua_State *st = luaL_newstate();
-        kprintf("Opened state..\n");
+        //kprintf("Opened state..\n");
         
         luaL_openlibs( st );
-        kprintf("Opened libs..\n");
+        //kprintf("Opened libs..\n");
         lua_register( st, "writeout", lua_writeout_proxy );
-        kprintf("Registered writeout..\n");
+        //kprintf("Registered writeout..\n");
         int stat = luaL_loadstring( st, "writeout(\"hello from lua version \",_VERSION,\"!\") return 0xC0DE" );
-        kprintf("Loaded test program..\n");
+        //kprintf("Loaded test program..\n");
         
         if( stat == 0 ) { // was it loaded successfully?
-            kprintf("Performing call..\n");
+            //kprintf("Performing call..\n");
             stat = lua_pcall( st, 0, 1, 0 );
             if( stat == 0 ) { // get return values
                 int retval = lua_tonumber(st, -1);
@@ -100,7 +103,51 @@ void test_process_1() {
             lua_pop(st, 1);
         }
         lua_close(st);
-        kprintf("Closed state..\n");
+        //kprintf("Closed state..\n");
+        kprintf("Testing ATA.\n");
+        dma_buffer  read_buf( 512 );
+        dma_buffer  write_buf( 512 );
+        kprintf("Read buffer located at virtual 0x%p, physical 0x%p.\n", read_buf.buffer_virt, read_buf.buffer_phys);
+        kprintf("Write buffer located at virtual 0x%p, physical 0x%p.\n", write_buf.buffer_virt, write_buf.buffer_phys);
+        dma_request read_req( read_buf.buffer_phys, 1, 1, false, true );
+        dma_request write_req( write_buf.buffer_phys, 1, 1, false, false );
+        
+        ata_start_request( &read_req, 0 );
+        kprintf("Read request sent, waiting.\n");
+        read_req.wait();
+        
+        uint8_t* ptr = (uint8_t*)write_buf.buffer_virt;
+        for(unsigned int i=0;i<512;i++) {
+            ptr[i] = (i%0x10)*0x11;
+        }
+        
+        ata_start_request( &write_req, 0 );
+        kprintf("Write request sent, waiting.\n");
+        write_req.wait();
+        /*
+        unsigned long long int last_ticked = get_sys_time_counter();
+        //timer t(1000, true, true, NULL);
+        while(true) {
+            if(last_ticked+5000 <= get_sys_time_counter()) {
+                break;
+            }
+        }
+        kprintf("Write request (assumed to be) complete.\n");
+        */
+        
+        
+        /*
+        last_ticked = get_sys_time_counter();
+        //timer t(1000, true, true, NULL);
+        while(true) {
+            if(last_ticked+5000 <= get_sys_time_counter()) {
+                break;
+            }
+        }
+        
+        kprintf("Read request (assumed to be) complete.\n");
+        */
+        kprintf("First four bytes: 0x%x.\n", *((uint32_t*)read_buf.buffer_virt));
     }
 }
 

@@ -1,6 +1,4 @@
 // irq.cpp - IRQ handlers
-// aka "A demonstration in what NOT to do with size_t's and pointers"
-// then again, it's pretty safe.
 
 #include "includes.h"
 #include "core/sys.h"

@@ -6,16 +6,37 @@
 #include "arch/x86/irq.h"
 #include "lib/vector.h"
 
+// remove this line at some point (it's just for debugging)
+#include "arch/x86/multitask.h"
+
 vector<size_t> irq_handlers[16];
 signed int waiting_for = -1;
 bool do_wait = false;
 bool in_irq_context = false;
+
+bool in_irq7 = false;
+bool in_irq15 = false;
 
 void do_irq(size_t irq_num, size_t eip, size_t cs) {
     /*
     if(irq_num == waiting_for)
         waiting_for = -1;
     */
+    if( irq_num == 7 ) {
+        if( in_irq7 || ((pic_get_isr() & 0x80) == 0) ) { // check to see if IRQ7 is actually happening (and don't enter the IRQ7 routine twice)
+            return;
+        } else {
+            in_irq7 = true;
+        }
+    }
+    if( irq_num == 15 ) {
+        if( in_irq15 || ((pic_get_isr() & 0x8000) == 0) ) { // same thing as above, but with irq15
+            return;
+        } else {
+            in_irq15 = true;
+        }
+    }
+    
     in_irq_context = true;
     if(irq_handlers[irq_num].length() > 0) {
         for( unsigned int i=0;i<irq_handlers[irq_num].length();i++ ) {
@@ -26,6 +47,12 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
         }
     }
     pic_end_interrupt(irq_num);
+    if( irq_num == 7 ) {
+        in_irq7 = false;
+    }
+    if( irq_num == 15 ) {
+        in_irq15 = false;
+    }
     in_irq_context = false;
     return;
 }

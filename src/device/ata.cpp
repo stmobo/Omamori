@@ -7,7 +7,14 @@
 #include "core/scheduler.h"
 #include "device/ata.h"
 #include "device/pci.h"
+#include "device/pit.h"
 #include "lib/sync.h"
+
+static process* err_chk;
+static process* dma_chk;
+
+void ata_error_checker();
+void ata_dma_poller();
 
 // I assume that there's only one ATA controller in a system.
 static struct __ata_controller {
@@ -33,18 +40,17 @@ static struct __ata_channel {
     short                 control;
     short                 bus_master;
     bool                  interrupt;
+    bool                  currently_idle = true;
     uint8_t               selected_drive = 0;
     uint32_t              prdt_phys;
-    uint64_t              *prdt_virt;
+    uint32_t              *prdt_virt;
 	uint32_t              prdt_n_entries;
 	uint32_t              prdt_current;
     mutex                 lock;
-    dma_request*          current_transfer = NULL;
-    vector<dma_request*> *read_queue = NULL;
-    vector<dma_request*> *write_queue = NULL;
-    vector<dma_request*> *current_operation = NULL; // true - reading, false - writing
-    vector<dma_request*> *current_prdt_queue = NULL;
-    bool                  currently_idle = true;
+    ata_transfer_request* current_transfer = NULL;
+    vector<ata_transfer_request*> *read_queue = NULL;
+    vector<ata_transfer_request*> *write_queue = NULL;
+    bool                  current_operation = false; // false - read, true - write
     process*              delayed_starter;
     
     void                 *dev1_ident;
@@ -62,86 +68,11 @@ static struct __ata_channel {
     void cache_flush();
     void wait_dma();
     void wait_bsy();
+    void enqueue_request( ata_transfer_request* );
     
-    void req_enqueue( dma_request* );
-    void fill_prdt();
-    void swap_operations();
-    void dma_start( bool );
+    void transfer_start( ata_transfer_request* );
+    void transfer_cycle();
 } ata_channels[2];
-
-void __ata_channel::req_enqueue( dma_request* req ) {
-    this->lock.lock();
-    if( req->read ) {
-        this->read_queue->add(req);
-    } else {
-        this->write_queue->add(req);
-    }
-    if( this->currently_idle ) {
-        if( req->read ) {
-            this->current_operation = this->read_queue;
-        } else {
-            this->current_operation = this->write_queue;
-        }
-        this->currently_idle = false;
-        this->dma_start( true );
-    }
-    this->lock.unlock();
-}
-
-void __ata_channel::fill_prdt() {
-    this->lock.lock();
-    this->prdt_n_entries = this->current_operation->count();
-    this->prdt_current = 0;
-    io_outb(this->bus_master, 0); // terminate DMA mode (so we can change the PRDT safely)
-    if( this->prdt_n_entries < 0xA0 ) {
-        for(unsigned int i=0;i<this->current_operation->count();i++) {
-            dma_request *current = this->current_operation->remove();
-            this->prdt_virt[i] = (((uint64_t)((uint16_t)(current->n_sectors*512)))<<32) | (uint64_t)current->buffer_phys; // cast to both avoid and uilize integer overflow (use for the multiply, avoid for the shift)
-            this->current_prdt_queue->add_end( current );
-        }
-        this->prdt_virt[this->prdt_n_entries-1] |= ((uint64_t)1<<63);
-    } else {
-        this->prdt_n_entries = 0xA0;
-        for(unsigned int i=0;i<0xA0;i++) {
-            dma_request *current = this->current_operation->remove();
-            this->prdt_virt[i] = (((uint64_t)((uint16_t)(current->n_sectors*512)))<<32) | (uint64_t)current->buffer_phys;
-            this->current_prdt_queue->add_end( current );
-        }
-        this->prdt_virt[0x98] |= ((uint64_t)1<<63);
-    }
-    if( this->current_operation == this->read_queue )
-        io_outb(this->bus_master, 9); // set DMA + read bits
-    else
-        io_outb(this->bus_master, 1); // set DMA bit
-    this->lock.unlock();
-}
-
-void __ata_channel::swap_operations() {
-    this->lock.lock();
-    if( this->current_operation == this->read_queue ) {
-        this->current_operation = this->write_queue;
-    } else {
-        this->current_operation = this->read_queue;
-    }
-    if( this->current_operation->count() <= 0 ) { // if there aren't any transfers on this queue, then check the other one
-        if( this->current_operation == this->read_queue ) {
-            this->current_operation =  this->write_queue;
-        } else {
-            this->current_operation =  this->read_queue;
-        }
-        if( this->current_operation->count() <= 0 ) { // if there aren't any on either queue, then mark ourselves as idle
-            this->currently_idle = true;
-            this->current_prdt_queue->clear();
-            this->prdt_n_entries = 0;
-            this->prdt_current = 0;
-        } else {
-            this->fill_prdt();
-        }
-    } else {
-        this->fill_prdt();
-    }
-    this->lock.unlock();
-}
 
 void __ata_channel::do_identify() {
     this->dev1_ident = kmalloc(512);
@@ -188,89 +119,168 @@ void __ata_channel::do_identify() {
     }
 }
 
-void __ata_channel::dma_start( bool no_swap ) {
+void __ata_channel::enqueue_request( ata_transfer_request* req ) {
+    if( req->read ) {
+        this->read_queue->add_end( req );
+    } else {
+        this->write_queue->add_end( req );
+    }
+    
+    if( this->currently_idle ) {
+        this->current_operation = req->read;
+        this->transfer_cycle();
+    }
+}
+
+void __ata_channel::transfer_cycle() {
+    this->current_operation = !this->current_operation;
+    if( (this->current_operation ? this->write_queue : this->read_queue)->count() == 0 ) {
+        this->current_operation = !this->current_operation;
+        if( (this->current_operation ? this->write_queue : this->read_queue)->count() == 0 ) {
+            this->current_transfer = NULL;
+            this->currently_idle = true;
+            return;
+        }
+    }
+    
+    if( this->current_transfer != NULL ) {
+        this->current_transfer->status = true;
+        if( this->current_transfer->requesting_process != NULL ) {
+            message out("ata_transfer_complete", this->current_transfer->buffer, 0);
+            this->current_transfer->requesting_process->send_message( out );
+        }
+    }
+    
+    this->current_transfer = (this->current_operation ? this->write_queue : this->read_queue)->remove();
+    this->transfer_start( this->current_transfer );
+    this->currently_idle = false;
+}
+
+void __ata_channel::transfer_start( ata_transfer_request *req ) {
+    if(req == NULL) {
+        return;
+    }
     bool is_lba48 = false;
-    kprintf("ata: beginning DMA access.\n");
-    this->lock.lock();
-    if( !no_swap ) {
-        this->prdt_current++;
-        if( this->prdt_current >= this->prdt_n_entries ) { // no transfers left for the current operation, do other transfers now
-            this->swap_operations();
-            if( this->currently_idle ) { // no transfers at all left
-                return;
+    kprintf("ata: beginning transfer.\n");
+    if( req->dma ) {
+        this->prdt_virt[0] = ((uint32_t)req->buffer);
+        this->prdt_virt[1] = (1<<31) | ((uint16_t)(req->n_sectors*512));
+    }
+    if( req->to_slave ) {
+        is_lba48 = this->dev2_lba48;
+    } else {
+        is_lba48 = this->dev1_lba48;
+    }
+    if( (!is_lba48) && ( req->sector_start > 0x0FFFFFFF) ) {
+        kprintf("ata: transfer attempted to access past LBA28 limit! (sector=%llu)\n", req->sector_start);
+        return;
+    }
+    this->wait_bsy();
+    
+    if( req->dma ) {
+        io_inb( this->bus_master );
+        io_inb( this->bus_master+2 );
+        if( req->read )
+            io_outb(this->bus_master, 9); // set DMA + read bits
+        else
+            io_outb(this->bus_master, 1); // set DMA bit
+        if( (io_inb( this->bus_master+2 ) & 1) == 0 )
+            kprintf("ata: Bus didn't go into DMA mode?\n");
+        io_inb( this->bus_master );
+    }
+    
+    // send DMA parameters to drive
+    if( is_lba48 ) {
+        if(req->to_slave)
+            this->select( 0xF0 );
+        else
+            this->select( 0xE0 );
+        kprintf("ata: sending transfer parameters.\n * n_sectors = %u\n * sector_start(LBA48) = %u\n", req->n_sectors, req->sector_start);
+        io_outb( this->base+2, (req->n_sectors>>8)    & 0xFF );
+        io_outb( this->base+3, (req->sector_start>>24)& 0xFF );
+        io_outb( this->base+4, (req->sector_start>>32)& 0xFF );
+        io_outb( this->base+5, (req->sector_start>>40)& 0xFF );
+        
+        io_outb( this->base+2, req->n_sectors         & 0xFF );
+        io_outb( this->base+3, req->sector_start      & 0xFF );
+        io_outb( this->base+4, (req->sector_start>>8) & 0xFF );
+        io_outb( this->base+5, (req->sector_start>>16)& 0xFF );
+        // send DMA command
+        //kprintf("ata: sending DMA command.\n");
+        if( req->dma ) {
+            if( req->read ) {
+                kprintf("ata: sending ATA_CMD_READ_DMA_EXT.\n");
+                io_outb( this->base+7, ATA_CMD_READ_DMA_EXT );
+            } else {
+                kprintf("ata: sending ATA_CMD_WRITE_DMA_EXT.\n");
+                io_outb( this->base+7, ATA_CMD_WRITE_DMA_EXT );
+            }
+        } else {
+            if( req->read ) {
+                kprintf("ata: sending ATA_CMD_READ_PIO_EXT.\n");
+                io_outb( this->base+7, ATA_CMD_READ_PIO_EXT );
+            } else {
+                kprintf("ata: sending ATA_CMD_WRITE_PIO_EXT.\n");
+                io_outb( this->base+7, ATA_CMD_WRITE_PIO_EXT );
             }
         }
     } else {
-        this->fill_prdt();
+        if(req->to_slave)
+            this->select( 0xF0 | ( (req->sector_start >> 24) & 0x0F ) );
+        else
+            this->select( 0xE0 | ( (req->sector_start >> 24) & 0x0F ) );
+        kprintf("ata: sending transfer parameters.\n * n_sectors = %u\n * sector_start(LBA28) = %u\n", req->n_sectors, req->sector_start);
+        io_outb( this->base+2, req->n_sectors         & 0xFF );
+        io_outb( this->base+3, req->sector_start      & 0xFF );
+        io_outb( this->base+4, (req->sector_start>>8) & 0xFF );
+        io_outb( this->base+5, (req->sector_start>>16)& 0xFF );
+        // send DMA command
+        //kprintf("ata: sending DMA command.\n");
+        if( req->dma ) {
+            if( req->read ) {
+                kprintf("ata: sending ATA_CMD_READ_DMA.\n");
+                io_outb( this->base+7, ATA_CMD_READ_DMA );
+            } else {
+                kprintf("ata: sending ATA_CMD_WRITE_DMA.\n");
+                io_outb( this->base+7, ATA_CMD_WRITE_DMA );
+            }
+        } else {
+            if( req->read ) {
+                kprintf("ata: sending ATA_CMD_READ_PIO.\n");
+                io_outb( this->base+7, ATA_CMD_READ_PIO );
+            } else {
+                kprintf("ata: sending ATA_CMD_WRITE_PIO.\n");
+                io_outb( this->base+7, ATA_CMD_WRITE_PIO );
+            }
+        }
     }
-    if( this->current_transfer != NULL ) {
-        this->cache_flush();
-        this->current_transfer->status = true;
-        message out("ata_transfer_complete", this->current_transfer->buffer_phys, 0);
-        this->current_transfer->requesting_process->send_message( out );
-    }
-    this->current_transfer = current_prdt_queue->remove();
-    if( this->current_transfer == NULL ) {
-        return this->dma_start( false ); // swap operations
-    }
-    kprintf("ata: selecting drive.\n");
     
-    if( this->current_transfer->to_slave ) {
-        is_lba48 = this->dev2_lba48;
-        if( !this->dev2_lba48 && ( this->current_transfer->sector_start > 0x0FFFFFFF) ) { // are we trying to do LBA48 transfers on an LBA28 drive?
-            kprintf("ata: transfer to slave drive attempted to access past LBA28 limit!");
-            return this->dma_start( true );
+    if( !req->dma ) {
+        for( unsigned int i=0;i<req->n_sectors;i++ ) {
+            uint16_t* current = (uint16_t*)req->buffer;
+            while( ((io_inb( this->control ) & 0x80) > 0) || ((io_inb( this->control ) & 0x8) == 0) );
+            for(unsigned int j=0;i<256;i++) {
+                if( req->read )
+                    *current++ = io_inw( this->base );
+                else
+                    io_outw( this->base, *current++ );
+            }
+            for(int i=0;i<4;i++) // 400 ns delay
+                io_inb( this->control );
         }
-    } else {
-        is_lba48 = this->dev1_lba48;
-        if( !this->dev1_lba48 && ( this->current_transfer->sector_start > 0x0FFFFFFF) ) { // are we trying to do LBA48 transfers on an LBA28 drive?
-            kprintf("ata: transfer to master drive attempted to access past LBA28 limit!");
-            return this->dma_start( true );
-        }
+        this->cache_flush();
+        kprintf("ata: PIO transfer complete.\n");
+        this->delayed_starter->state = process_state::runnable; // indirectly schedule ourselves to run later
+        process_add_to_runqueue(this->delayed_starter);
     }
-    this->wait_bsy();
-    // send DMA parameters to drive
-    if( is_lba48 ) {
-        this->select( 0x40 + ( this->current_transfer->to_slave ? 0x10 : 0 ) );
-        kprintf("ata: sending DMA parameters.\n * n_sectors = %u\n * sector_start(LBA48) = %u\n", this->current_transfer->n_sectors, this->current_transfer->sector_start);
-        io_outb( this->base+2, (this->current_transfer->n_sectors>>8)    & 0xFF );
-        io_outb( this->base+3, (this->current_transfer->sector_start>>24)& 0xFF );
-        io_outb( this->base+4, (this->current_transfer->sector_start>>32)& 0xFF );
-        io_outb( this->base+5, (this->current_transfer->sector_start>>40)& 0xFF );
-        
-        io_outb( this->base+2, this->current_transfer->n_sectors         & 0xFF );
-        io_outb( this->base+3, this->current_transfer->sector_start      & 0xFF );
-        io_outb( this->base+4, (this->current_transfer->sector_start>>8) & 0xFF );
-        io_outb( this->base+5, (this->current_transfer->sector_start>>16)& 0xFF );
-        // send DMA command
-        kprintf("ata: sending DMA command.\n");
-        if( this->current_transfer->read )
-            io_outb( this->base+7, ATA_CMD_READ_DMA_EXT );
-        else
-            io_outb( this->base+7, ATA_CMD_WRITE_DMA_EXT );
-    } else {
-        this->select( 0xE0  | ( this->current_transfer->to_slave ? 0x10 : 0 ) | ( (this->current_transfer->sector_start >> 24) & 0x0F ) );
-        kprintf("ata: sending DMA parameters.\n * n_sectors = %u\n * sector_start(LBA28) = %u\n", this->current_transfer->n_sectors, this->current_transfer->sector_start);
-        io_outb( this->base+2, this->current_transfer->n_sectors         & 0xFF );
-        io_outb( this->base+3, this->current_transfer->sector_start      & 0xFF );
-        io_outb( this->base+4, (this->current_transfer->sector_start>>8) & 0xFF );
-        io_outb( this->base+5, (this->current_transfer->sector_start>>16)& 0xFF );
-        // send DMA command
-        kprintf("ata: sending DMA command.\n");
-        if( this->current_transfer->read )
-            io_outb( this->base+7, ATA_CMD_READ_DMA );
-        else
-            io_outb( this->base+7, ATA_CMD_WRITE_DMA );
-    }
-    this->lock.unlock();
 }
 
 void irq14_delayed_starter() {
     while(true) {
         process_current->state = process_state::waiting;
         process_switch_immediate();
-        ata_channels[0].dma_start(false);
-        kprintf("IRQ14!\n");
+        ata_channels[0].transfer_cycle();
+        //kprintf("IRQ14!\n");
     }
 }
 
@@ -278,28 +288,91 @@ void irq15_delayed_starter() {
     while(true) {
         process_current->state = process_state::waiting;
         process_switch_immediate();
-        ata_channels[1].dma_start(false);
-        kprintf("IRQ15!\n");
+        ata_channels[1].transfer_cycle();
+        //kprintf("IRQ15!\n");
     }
 }
 
+void ata_print_error( uint8_t err ) {
+    if( err & 0x80 ) kprintf("ata: Bad block mark detected.\n");
+    if( err & 0x40 ) kprintf("ata: Uncorrectable data error.\n");
+    if( err & 0x20 ) kprintf("ata: No Media / Media Error (MC).\n");
+    if( err & 0x10 ) kprintf("ata: Sector ID field could not be found.\n");
+    if( err & 0x08 ) kprintf("ata: No Media / Media Error (MCR).\n");
+    if( err & 0x04 ) kprintf("ata: Command aborted.\n");
+    if( err & 0x02 ) kprintf("ata: Track 0 could not be found.\n");
+    if( err & 0x01 ) kprintf("ata: Data address mark not found.\n");
+}
+
 void ata_error_checker() {
+    uint64_t last_time = 0;
     while(true) {
-        uint8_t stat_0 = io_inb( ata_channels[0].base+1 );
-        uint8_t stat_1 = io_inb( ata_channels[1].base+1 );
-        if( ((stat_0 & 0x80) == 0) && ((stat_0 && 1) > 0) ) {
-            kprintf("ata: Error on channel 0.\n");
-        }
-        if( ((stat_0 & 0x80) == 0) && ((stat_0 && 1) > 0) ) {
-            kprintf("ata: Error on channel 1.\n");
+        if( get_sys_time_counter() >= (last_time+1000) ) {
+            uint8_t stat_0 = io_inb( ata_channels[0].control );
+            uint8_t stat_1 = io_inb( ata_channels[1].control );
+            if( ((stat_0 & 0x80) == 0) && ( ((stat_0 & 1) > 0) || ((stat_0 & 0x20) > 0) ) ) {
+                kprintf("ata: Error on channel 0.\n");
+                if( ((stat_0 & 1) > 0) )
+                    ata_print_error( io_inb( ata_channels[0].base+1 ) );
+                else if((stat_0 & 0x20) > 0)
+                    kprintf("ata: Drive fault.\n");
+                
+                last_time = get_sys_time_counter();
+            }
+            if( ((stat_1 & 0x80) == 0) && ( ((stat_1 & 1) > 0) || ((stat_1 & 0x20) > 0) ) ) {
+                kprintf("ata: Error on channel 1.\n");
+                if( ((stat_1 & 1) > 0) )
+                    ata_print_error( io_inb( ata_channels[1].base+1 ) );
+                else if((stat_1 & 0x20) > 0)
+                    kprintf("ata: Drive fault.\n");
+                    
+                last_time = get_sys_time_counter();
+            }
         }
         process_switch_immediate();
     }
 }
 
+void ata_dma_poller() { // stop-gap measure until I can get interrupts working
+    while(true) {
+        uint8_t stat_0 = io_inb( ata_channels[0].bus_master+2 );
+        uint8_t cmd_0 = io_inb( ata_channels[0].bus_master );
+        
+        uint8_t stat_1 = io_inb( ata_channels[1].bus_master+2 );
+        uint8_t cmd_1 = io_inb( ata_channels[1].bus_master );
+        
+        if( !ata_channels[0].currently_idle ) {
+            if( ((stat_0 & 0x01) == 0) && ((cmd_0 & 1) == 1) ) {
+                kprintf("ata: DMAs complete on channel 0.\n");
+                if( (stat_0 & 0x02) ) {
+                    kprintf("ata: DMA error on channel 0.\n");
+                }
+                ata_channels[0].transfer_cycle();
+            } else if( ((cmd_0 & 1) == 1) && (stat_0 != 0) ) {
+                kprintf("ata: DMAs in progress on channel 0.\n");
+            }
+        }
+        
+        if( !ata_channels[1].currently_idle ) {
+            if( ((stat_1 & 0x01) == 0) && ((cmd_1 & 1) == 1) ) {
+                kprintf("ata: DMAs complete on channel 1.\n");
+                if( (stat_1 & 0x02) ) {
+                    kprintf("ata: DMA error on channel 1.\n");
+                }
+                ata_channels[1].transfer_cycle();
+            } else if( ((cmd_1 & 1) == 1) && (stat_1 != 0) ) {
+                kprintf("ata: DMAs in progress on channel 1.\n");
+            }
+        }
+        process_switch_immediate();
+    }
+}
+
+
 bool dma_irq( unsigned int channel_no ) {
     uint8_t status = io_inb( ata_channels[channel_no].bus_master+2 );
     if( status & 4 ) { // did this channel cause the interrupt?
+        kprintf("ata: channel %u irq\n", channel_no);
         io_inb( ata_channels[channel_no].base+7 ); // if so, then read regular status register
         ata_channels[channel_no].delayed_starter->state = process_state::runnable;
         process_add_to_runqueue(ata_channels[channel_no].delayed_starter);
@@ -310,7 +383,7 @@ bool dma_irq( unsigned int channel_no ) {
 
 bool irq14_handler() { /* kprintf("IRQ14!\n"); */ return dma_irq(0); }
 bool irq15_handler() { /* kprintf("IRQ15!\n"); */ return dma_irq(1); }
-bool ata_dual_handler() { kprintf("IRQ14!\n"); return ( dma_irq(0) || dma_irq(1) ); }
+bool ata_dual_handler() { /* kprintf("IRQ14!\n"); */ return ( dma_irq(0) || dma_irq(1) ); }
 
 void __ata_channel::wait_dma() {
     while( io_inb(this->bus_master) & 1 ) { // loop until transfer is marked as complete
@@ -364,9 +437,14 @@ void __ata_channel::initialize( short base, short control, short bus_master ) {
     this->base = base;
     this->control = control;
     
-    this->read_queue         = new vector<dma_request*>;
-    this->write_queue        = new vector<dma_request*>;
-    this->current_prdt_queue = new vector<dma_request*>;
+    // reset control register (both devices)
+    this->select( 0x40 );
+    io_outb( control, 0 );
+    this->select( 0x50 );
+    io_outb( control, 0 );
+    
+    this->read_queue         = new vector<ata_transfer_request*>;
+    this->write_queue        = new vector<ata_transfer_request*>;
     this->bus_master         = bus_master;
     
     // set PRDT addresses
@@ -414,8 +492,10 @@ void __ata_channel::initialize( short base, short control, short bus_master ) {
     } else {
         dev2_n_sectors = ((uint32_t*)this->dev2_ident)[30];
     }
-    kprintf("    * master: %s (SN: %s), %s, %u sectors addressable\n", this->dev1_model, this->dev1_serial, ( this->dev1_lba48 ? "LBA48 supported" : "LBA48 not supported" ), dev1_n_sectors);
-    kprintf("    * slave:  %s (SN: %s), %s, %u sectors addressable\n", this->dev2_model, this->dev2_serial, ( this->dev2_lba48 ? "LBA48 supported" : "LBA48 not supported" ), dev2_n_sectors);
+    kprintf("    * master: %s\n", this->dev1_model);
+    kprintf("    * %s, %u sectors addressable\n", ( this->dev1_lba48 ? "LBA48 supported" : "LBA48 not supported" ), dev1_n_sectors);
+    kprintf("    * slave: %s\n", this->dev2_model);
+    kprintf("    * %s, %u sectors addressable\n", ( this->dev2_lba48 ? "LBA48 supported" : "LBA48 not supported" ), dev2_n_sectors);
 }
 
 void __ata_controller::initialize( uint32_t bar0, uint32_t bar1, uint32_t bar2, uint32_t bar3 ) {
@@ -444,6 +524,10 @@ void __ata_controller::initialize( uint32_t bar0, uint32_t bar1, uint32_t bar2, 
         kprintf("ata: controller IRQ assignment required\n");
         irq_add_handler(14, (size_t)(&ata_dual_handler));
         pci_write_config_8( this->bus, this->device, this->func, 0x3C, 14 );
+        if( pci_read_config_8( this->bus, this->device, this->func, 0x3C ) != 14 ) {
+            // write didn't go through?
+            kprintf("ata: controller IRQ assignment didn't go through?\n");
+        }
     } else {
         // device doesn't need an IRQ assignment, is it PATA?
         if( (this->progif == 0x8A) || (this->progif == 0x80) ) {
@@ -454,7 +538,7 @@ void __ata_controller::initialize( uint32_t bar0, uint32_t bar1, uint32_t bar2, 
         } else {
             // in this case we must be using the APIC (Interrupt Line field is R/O)
             // well, just do nothing in this case (we don't support the APIC yet)
-            kprintf("ata: Interrupt Line field is read-only\n");
+            kprintf("ata: Interrupt Line field is for APIC\n");
         }
     }
     
@@ -470,9 +554,9 @@ void __ata_controller::initialize( uint32_t bar0, uint32_t bar1, uint32_t bar2, 
         if( (frame != NULL) && (prdt_virt != NULL) ) {
             paging_set_pte( prdt_virt, frame->address, 0 );
             ata_channels[0].prdt_phys = frame->address;
-            ata_channels[0].prdt_virt = (uint64_t*)prdt_virt;
+            ata_channels[0].prdt_virt = (uint32_t*)prdt_virt;
             ata_channels[1].prdt_phys = frame->address+0x500;
-            ata_channels[1].prdt_virt = (uint64_t*)(prdt_virt+0x500);
+            ata_channels[1].prdt_virt = (uint32_t*)(prdt_virt+0x500);
             kprintf("PRDTs located at:\n");
             kprintf(" * virtual 0x%p and 0x%p.\n", ata_channels[0].prdt_virt, ata_channels[1].prdt_virt);
             kprintf(" * physical 0x%x and 0x%x.\n", ata_channels[0].prdt_phys, ata_channels[1].prdt_phys);
@@ -482,9 +566,8 @@ void __ata_controller::initialize( uint32_t bar0, uint32_t bar1, uint32_t bar2, 
     if( test_ch0 != 0xFF ) {
         ata_channels[0].initialize( bar0, bar1, ATA_BUS_MASTER_START );
         ata_channels[0].delayed_starter = new process( (size_t)&irq14_delayed_starter, 0, false, "ata_ch0_delayedstarter", NULL, 0 );
-
-        // reset control register
-        io_outb( bar1, 0 );
+        spawn_process( ata_channels[0].delayed_starter );
+        
         kprintf("ata: devices connected on channel 0 (not floating).\n");
     } else {
         // floating bus, there's nothing here
@@ -494,8 +577,8 @@ void __ata_controller::initialize( uint32_t bar0, uint32_t bar1, uint32_t bar2, 
     if( test_ch1 != 0xFF ) {
         ata_channels[1].initialize( bar2, bar3, ATA_BUS_MASTER_START+8 );
         ata_channels[1].delayed_starter = new process( (size_t)&irq15_delayed_starter, 0, false, "ata_ch1_delayedstarter", NULL, 0 );
+        spawn_process( ata_channels[1].delayed_starter );
         
-        io_outb( bar3, 0 );
         kprintf("ata: devices connected on channel 1 (not floating).\n");
     } else {
         kprintf("ata: no devices connected on channel 1.\n");
@@ -529,9 +612,9 @@ uint8_t ata_read(uint8_t channel, uint8_t reg) {
 }
 */
 
-dma_buffer::dma_buffer( size_t sz ) {
-    this->size = sz;
-    this->n_frames = ( (sz-(sz%0x1000)) / 0x1000 )+1;
+ata_transfer_buffer::ata_transfer_buffer( unsigned int n_sectors ) {
+    this->size = n_sectors*512;
+    this->n_frames = ( (this->size-(this->size%0x1000)) / 0x1000 )+1;
     
     this->frames = pageframe_allocate( this->n_frames );
     this->buffer_virt = (void*)k_vmem_alloc( n_frames );
@@ -539,7 +622,7 @@ dma_buffer::dma_buffer( size_t sz ) {
     for(unsigned int i=0;i<this->n_frames;i++) {
         if( !((i <= 0) || (this->frames[i].address == (this->frames[i-1].address+0x1000))) )
             panic("ata: Could not allocate contiguous frames for DMA buffer!\n");
-        paging_set_pte( ((size_t)buffer_virt)+(i*0x1000), this->frames[i].address,0 );
+        paging_set_pte( ((size_t)this->buffer_virt)+(i*0x1000), this->frames[i].address,1 );
     }
 };
 
@@ -602,19 +685,25 @@ void ata_initialize() {
             ata_controller.initialize(0x1F0, 0x3F6, 0x170, 0x376);
             
             register_channel( "ata_transfer_complete", CHANNEL_MODE_BROADCAST );
+            err_chk = new process( (size_t)&ata_error_checker, 0, false, "ata_error_checker", NULL, 0 );
+            dma_chk = new process( (size_t)&ata_dma_poller, 0, false, "ata_dma_checker", NULL, 0 );
+            
+            spawn_process( err_chk );
+            spawn_process( dma_chk );
             return;
         }
     }
 }
 
-void ata_start_request( dma_request* req, unsigned int channel_no ) {
+void ata_start_request( ata_transfer_request* req, unsigned int channel_no ) {
     if( (channel_no != 0) && (channel_no != 1) )
         return;
-    ata_channels[channel_no].req_enqueue( req );
+    ata_channels[channel_no].enqueue_request( req );
 }
 
 void ata_do_pio_sector_transfer( int channel, void* buffer, bool write ) {
     uint16_t* current = (uint16_t*)buffer;
+    while( ((io_inb( ata_channels[channel].control ) & 0x80) > 0) || ((io_inb( ata_channels[channel].control ) & 0x8) == 0) ); // busy-wait on DRQ
     for(unsigned int i=0;i<256;i++) {
         if( write )
             io_outw( ata_channels[channel].base, *current++ );

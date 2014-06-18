@@ -105,25 +105,29 @@ void test_process_1() {
         lua_close(st);
         //kprintf("Closed state..\n");
         kprintf("Testing ATA.\n");
-        dma_buffer  read_buf( 512 );
-        dma_buffer  write_buf( 512 );
+        set_message_listen_status( "ata_transfer_complete", true );
+        ata_transfer_buffer  read_buf( 1 );
+        ata_transfer_buffer  write_buf( 1 );
         kprintf("Read buffer located at virtual 0x%p, physical 0x%p.\n", read_buf.buffer_virt, read_buf.buffer_phys);
         kprintf("Write buffer located at virtual 0x%p, physical 0x%p.\n", write_buf.buffer_virt, write_buf.buffer_phys);
-        dma_request read_req( read_buf.buffer_phys, 1, 1, false, true );
-        dma_request write_req( write_buf.buffer_phys, 1, 1, false, false );
-        
-        ata_start_request( &read_req, 0 );
-        kprintf("Read request sent, waiting.\n");
-        read_req.wait();
+        ata_transfer_request *read_req  = new ata_transfer_request( read_buf,  0, 1, false, true,  false );
+        ata_transfer_request *write_req = new ata_transfer_request( write_buf, 0, 1, false, false, false );
         
         uint8_t* ptr = (uint8_t*)write_buf.buffer_virt;
         for(unsigned int i=0;i<512;i++) {
             ptr[i] = (i%0x10)*0x11;
         }
         
-        ata_start_request( &write_req, 0 );
+        ata_start_request( write_req, 0 );
+        ata_start_request( read_req, 0 );
         kprintf("Write request sent, waiting.\n");
-        write_req.wait();
+        kprintf("Read request sent, waiting.\n");
+        while(true) {
+            kprintf("First four bytes: 0x%x.\n", *((uint32_t*)read_buf.buffer_virt));
+            if( *((uint32_t*)read_buf.buffer_virt) != 0 ) {
+                break;
+            }
+        }
         /*
         unsigned long long int last_ticked = get_sys_time_counter();
         //timer t(1000, true, true, NULL);

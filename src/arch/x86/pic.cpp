@@ -10,7 +10,7 @@ void pic_end_interrupt(int irq) {
     io_outb(MASTER_PIC_BASE, PIC_CMD_END_INTERRUPT);
 }
 
-void pic_initialize(char vector_offset_1, char vector_offset_2) {
+void pic_initialize(char vector_offset_1) {
     // ICW1 - tell PICs to go to initialization mode
     io_outb(MASTER_PIC_BASE, PIC_CMD_INITIALIZE);
     io_wait();
@@ -19,7 +19,7 @@ void pic_initialize(char vector_offset_1, char vector_offset_2) {
     // ICW2 - tell PICs their vector offsets
     io_outb(MASTER_PIC_BASE+1, vector_offset_1);
     io_wait();
-    io_outb(SLAVE_PIC_BASE+1, vector_offset_2);
+    io_outb(SLAVE_PIC_BASE+1, vector_offset_1+8);
     io_wait();
     // ICW3
     io_outb(MASTER_PIC_BASE+1, 4);
@@ -40,14 +40,12 @@ void pic_initialize(char vector_offset_1, char vector_offset_2) {
 }
 
 uint16_t pic_get_mask() {
-    return io_inb(MASTER_PIC_BASE+1) | ( io_inb(SLAVE_PIC_BASE+1)<<8 );
+    return ((uint16_t)io_inb(MASTER_PIC_BASE+1)) | ( ((uint16_t)io_inb(SLAVE_PIC_BASE+1))<<8 );
 }
 
 void pic_set_mask(uint16_t mask) {
-    unsigned char master = mask & 0xFF;
-    unsigned char slave = mask & (0xFF<<8);
-    io_outb(MASTER_PIC_BASE+1, master);
-    io_outb(SLAVE_PIC_BASE+1, slave);
+    io_outb(MASTER_PIC_BASE+1, mask & 0xFF);
+    io_outb(SLAVE_PIC_BASE+1, ((mask>>8) & 0xFF));
 }
 
 uint16_t pic_get_isr() {

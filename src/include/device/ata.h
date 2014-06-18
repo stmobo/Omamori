@@ -84,33 +84,42 @@
 
 #define      ATA_BUS_MASTER_START       0x550
 
-typedef struct dma_request {
-    void        *buffer_phys;
-    uint64_t     sector_start;
-    size_t       n_sectors;
-    bool         to_slave;
-    bool         status;
-    bool         read;
-    process*     requesting_process;
-    
-    dma_request( void* buf, uint64_t secst, size_t nsec, bool sl, bool read ) : buffer_phys(buf), sector_start(secst), n_sectors(nsec), to_slave(sl), read(read), requesting_process(process_current) {};
-    void wait() { while(!this->status) { process_switch_immediate(); } };
-} dma_request;
-
-typedef struct dma_buffer {
+typedef struct ata_transfer_buffer {
     void        *buffer_virt;
     void        *buffer_phys;
     page_frame  *frames;
     unsigned int n_frames;
     size_t       size;
     
-    dma_buffer( size_t );
-} dma_buffer;
+    ata_transfer_buffer( unsigned int );
+} ata_transfer_buffer;
+
+
+typedef struct ata_transfer_request {
+    void        *buffer;
+    uint64_t     sector_start;
+    size_t       n_sectors;
+    bool         to_slave;
+    bool         status = false;
+    bool         read;
+    bool         dma;
+    process*     requesting_process;
+    
+    ata_transfer_request( ata_transfer_buffer buf, uint64_t secst, size_t nsec, bool sl, bool rd, bool dma ) : sector_start(secst), n_sectors(nsec), to_slave(sl), read(rd), dma(dma), requesting_process(process_current)
+    {
+        if(dma)
+            this->buffer = buf.buffer_phys;
+        else
+            this->buffer = buf.buffer_virt;
+    };
+    void wait() { while(!this->status) { process_switch_immediate(); } };
+} ata_transfer_request;
 
 extern void ata_initialize();
 //extern bool ata_begin_transfer( unsigned int channel, bool slave, bool write, void* dma_buffer, uint64_t sector_start, size_t n_sectors );
 extern void ata_write(uint8_t channel, uint8_t reg, uint8_t data);
 extern uint8_t ata_read(uint8_t channel, uint8_t reg);
-extern void ata_start_request( dma_request* req, unsigned int channel_no );
+extern void ata_start_request( ata_transfer_request* req, unsigned int channel_no );
 extern void ata_do_pio_sector_transfer( int channel, void* buffer, bool write );
 extern void ata_do_cache_flush();
+extern bool ata_dual_handler();

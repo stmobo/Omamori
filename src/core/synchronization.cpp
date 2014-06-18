@@ -1,6 +1,4 @@
 // synchronize.cpp -- multithreaded synchronization
-// really, we don't need this quite yet -- we don't have SMP support
-// but oh well.
 
 #include "includes.h"
 #include "lib/sync.h"
@@ -16,15 +14,15 @@ spinlock::spinlock() {
     this->lock_value = SPINLOCK_UNLOCKED_VALUE;
 }
 
-// granted, this "spinlock" isn't really a spinlock at all, but this is a single-processor OS, so...
+// granted, this "spinlock" isn't really a spinlock at all, but this is a single-processor OS (for now), so...
 
 // Lock / Unlock, No interrupt disabling
 void spinlock::lock() {
     if(multitasking_enabled) { // No point in locking if we're the only thing running THIS early on
         if( (process_current != NULL) && (this->locker != process_current->id) ) { // don't lock if we've already locked this lock, but be safe about it
             while(!cas(&this->lock_value, SPINLOCK_UNLOCKED_VALUE, SPINLOCK_LOCKED_VALUE)) {
-                process_switch_immediate();
-                //asm volatile("pause" : : : "memory");
+                //process_switch_immediate();
+                asm volatile("pause" : : : "memory");
             }
             if( process_current != NULL ) {
                 this->locker = process_current->id;
@@ -42,33 +40,17 @@ void spinlock::unlock() {
 }
 
 // Lock / Unlock w/ interrupt disabling
-uint32_t retaddr_panic;
-extern spinlock __kprintf_lock;
-void *errant_lock;
 void spinlock::lock_cli() {
     if( this == NULL ) {
         panic("lock_cli: this==NULL!\n");
     }
     if (multitasking_enabled && (process_current != NULL) ) {
         if( this->locker != process_current->id ) {
-            /*
-            if( this != &__kprintf_lock ) {
-                kprintf("%s (%u): locking spinlock.\n", process_current->name, (unsigned long long int)(process_current->id));
-                errant_lock = this;
-            }
-            */
             while(!cas(&this->lock_value, SPINLOCK_UNLOCKED_VALUE, SPINLOCK_LOCKED_VALUE)) {
-                /*
-                if( this != &__kprintf_lock ) {
-                    process *locker_process = get_process_by_pid( this->locker );
-                    if(locker_process)
-                        kprintf("%s (%u): waiting on spinlock held by %u (%s).\n", process_current->name, (unsigned long long int)(process_current->id), (unsigned long long int)locker_process->id, locker_process->name);
-                }
-                */
-                process_switch_immediate();
-                //asm volatile("pause" : : : "memory");
+                //process_switch_immediate();
+                asm volatile("pause" : : : "memory");
             }
-        
+
             if( process_current != NULL ) {
                 this->int_status = interrupts_enabled();
                 asm volatile("cli" : : : "memory");
@@ -81,11 +63,6 @@ void spinlock::lock_cli() {
 void spinlock::unlock_cli() {
     if(multitasking_enabled) {
         asm volatile("" : : : "memory");
-        /*
-        if( this != &__kprintf_lock ) {
-            kprintf("%s (%u): unlocking spinlock.\n", process_current->name, (unsigned long long int)(process_current->id));
-        }
-        */
         this->lock_value = SPINLOCK_UNLOCKED_VALUE;
         this->locker = 0;
         if(this->int_status) {
@@ -149,14 +126,14 @@ void reentrant_mutex::lock() {
             }
             */
             this->control_lock.lock_cli();
-            if( (this->uid == ~0) || (this->uid == process_current->id) ){ // okay, it's not taken yet (or we've already taken it), acquire it
+            if( (this->uid == -1) || (this->uid == process_current->id) ){ // okay, it's not taken yet (or we've already taken it), acquire it
                 this->uid = process_current->id;
             } else {
                 this->control_lock.unlock_cli();
                 while( true ) {
                     process_switch_immediate(); // go to sleep
                     this->control_lock.lock_cli(); // okay, checking again
-                    if( (this->uid == ~0) || (this->uid == uid) ) { // is it still locked?
+                    if( (this->uid == -1) || (this->uid == process_current->id) ) { // is it still locked?
                         this->uid = process_current->id; // okay it is, acquire it
                         break;
                     } else {

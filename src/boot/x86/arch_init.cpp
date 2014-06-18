@@ -52,7 +52,7 @@ void kernel_init(multiboot_info_t* mb_info, unsigned int magic) {
     kprintf("Kernel ends at physical address 0x%x, corresponding to pageframe ID %u.\n", (unsigned long long int)(&kernel_end_phys), (unsigned long long int)(pageframe_get_block_from_addr( (size_t)&kernel_end_phys )) );
     
     terminal_writestring("\nInitializing PICs.\n");
-    pic_initialize(PIC_IRQ_OFFSET_1, PIC_IRQ_OFFSET_2);
+    pic_initialize(PIC_IRQ_OFFSET_1);
     set_all_irq_status(true);
     
     terminal_writestring("Initializing PIT.\n");

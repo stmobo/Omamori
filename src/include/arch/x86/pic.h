@@ -12,10 +12,10 @@
 #define PIC_CMD_READ_ISR            0x000B
 
 #define PIC_IRQ_OFFSET_1              32
-#define PIC_IRQ_OFFSET_2              40
+#define PIC_IRQ_OFFSET_2              PIC_IRQ_OFFSET_1+8
 
 extern void pic_end_interrupt(int);
-extern void pic_initialize(char, char);
+extern void pic_initialize(char);
 extern void pic_set_mask(uint16_t);
 extern uint16_t pic_get_mask(void);
 extern uint16_t pic_get_isr();

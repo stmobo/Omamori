@@ -126,7 +126,7 @@ extern int send_message_all( message msg );
 // process stuff
 extern void process_scheduler();
 extern void process_add_to_runqueue( process* );
-extern process* get_process_by_pid( int );
+extern process* get_process_by_pid( unsigned int );
 extern void spawn_process( process* to_add, bool sched_immediate=true );
 extern uint32_t do_fork();
 extern "C" {

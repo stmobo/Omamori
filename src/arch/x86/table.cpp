@@ -301,6 +301,7 @@ void idt_init() {
     add_irq_entry(5, (size_t)&_isr_irq_5);
     add_irq_entry(6, (size_t)&_isr_irq_6);
     add_irq_entry(7, (size_t)&_isr_irq_7);
+    
     add_irq_entry(8, (size_t)&_isr_irq_8);
     add_irq_entry(9, (size_t)&_isr_irq_9);
     add_irq_entry(10, (size_t)&_isr_irq_10);

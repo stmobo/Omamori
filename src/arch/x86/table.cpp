@@ -128,7 +128,7 @@ void tss::read_active() {
 
 void add_irq_entry(int irq_num, size_t func) {
     idt_structs[PIC_IRQ_OFFSET_1+irq_num].offset = func;
-    idt_structs[PIC_IRQ_OFFSET_1+irq_num].type_attr = IDT_ATTR_PRESENT | IDT_ATTR_PRIV3 | IDT_INT_GATE_32;
+    idt_structs[PIC_IRQ_OFFSET_1+irq_num].type_attr = IDT_ATTR_PRESENT | IDT_ATTR_PRIV0 | IDT_INT_GATE_32;
     idt_structs[PIC_IRQ_OFFSET_1+irq_num].selector = 0x08;
 }
 

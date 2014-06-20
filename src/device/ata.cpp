@@ -8,6 +8,7 @@
 #include "device/ata.h"
 #include "device/pci.h"
 #include "device/pit.h"
+#include "device/vga.h"
 #include "lib/sync.h"
 
 static process* err_chk;
@@ -133,27 +134,29 @@ void __ata_channel::enqueue_request( ata_transfer_request* req ) {
 }
 
 void __ata_channel::transfer_cycle() {
-    this->current_operation = !this->current_operation;
-    if( (this->current_operation ? this->write_queue : this->read_queue)->count() == 0 ) {
+    if( ata_controller.ready ) {
         this->current_operation = !this->current_operation;
         if( (this->current_operation ? this->write_queue : this->read_queue)->count() == 0 ) {
-            this->current_transfer = NULL;
-            this->currently_idle = true;
-            return;
+            this->current_operation = !this->current_operation;
+            if( (this->current_operation ? this->write_queue : this->read_queue)->count() == 0 ) {
+                this->current_transfer = NULL;
+                this->currently_idle = true;
+                return;
+            }
         }
-    }
-    
-    if( this->current_transfer != NULL ) {
-        this->current_transfer->status = true;
-        if( this->current_transfer->requesting_process != NULL ) {
-            message out("ata_transfer_complete", this->current_transfer->buffer, 0);
-            this->current_transfer->requesting_process->send_message( out );
+        
+        if( this->current_transfer != NULL ) {
+            this->current_transfer->status = true;
+            if( this->current_transfer->requesting_process != NULL ) {
+                message out("ata_transfer_complete", this->current_transfer->buffer, 0);
+                this->current_transfer->requesting_process->send_message( out );
+            }
         }
+        
+        this->current_transfer = (this->current_operation ? this->write_queue : this->read_queue)->remove();
+        this->transfer_start( this->current_transfer );
+        this->currently_idle = false;
     }
-    
-    this->current_transfer = (this->current_operation ? this->write_queue : this->read_queue)->remove();
-    this->transfer_start( this->current_transfer );
-    this->currently_idle = false;
 }
 
 void __ata_channel::transfer_start( ata_transfer_request *req ) {
@@ -181,11 +184,9 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
         io_inb( this->bus_master );
         io_inb( this->bus_master+2 );
         if( req->read )
-            io_outb(this->bus_master, 9); // set DMA + read bits
+            io_outb(this->bus_master, 8);
         else
-            io_outb(this->bus_master, 1); // set DMA bit
-        if( (io_inb( this->bus_master+2 ) & 1) == 0 )
-            kprintf("ata: Bus didn't go into DMA mode?\n");
+            io_outb(this->bus_master, 0);
         io_inb( this->bus_master );
     }
     
@@ -272,6 +273,9 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
         kprintf("ata: PIO transfer complete.\n");
         this->delayed_starter->state = process_state::runnable; // indirectly schedule ourselves to run later
         process_add_to_runqueue(this->delayed_starter);
+    } else {
+        uint8_t current_bmdma_cmd = io_inb( this->bus_master ); // start DMA
+        io_outb(this->bus_master, current_bmdma_cmd | 1);
     }
 }
 
@@ -383,7 +387,7 @@ bool dma_irq( unsigned int channel_no ) {
 
 bool irq14_handler() { /* kprintf("IRQ14!\n"); */ return dma_irq(0); }
 bool irq15_handler() { /* kprintf("IRQ15!\n"); */ return dma_irq(1); }
-bool ata_dual_handler() { /* kprintf("IRQ14!\n"); */ return ( dma_irq(0) || dma_irq(1) ); }
+bool ata_dual_handler() { terminal_writestring("IRQ14!\n"); return ( dma_irq(0) || dma_irq(1) ); }
 
 void __ata_channel::wait_dma() {
     while( io_inb(this->bus_master) & 1 ) { // loop until transfer is marked as complete
@@ -448,11 +452,14 @@ void __ata_channel::initialize( short base, short control, short bus_master ) {
     this->bus_master         = bus_master;
     
     // set PRDT addresses
+    
     io_outb( this->bus_master+4,  this->prdt_phys      & 0xFF );
     io_outb( this->bus_master+5, (this->prdt_phys>>8)  & 0xFF );
     io_outb( this->bus_master+6, (this->prdt_phys>>16) & 0xFF );
     io_outb( this->bus_master+7, (this->prdt_phys>>24) & 0xFF );
-    
+    /*
+    io_outd( this->bus_master+4, this->prdt_phys );
+    */
     this->do_identify();
     this->dev1_lba48 = ( (((uint16_t*)this->dev1_ident)[83] & 0x400) );
     this->dev2_lba48 = ( (((uint16_t*)this->dev2_ident)[83] & 0x400) );
@@ -506,7 +513,7 @@ void __ata_controller::initialize( uint32_t bar0, uint32_t bar1, uint32_t bar2, 
     this->dma_control_base  = ATA_BUS_MASTER_START;
     
     // PCI programming interface register:
-    //pci_write_config_32( this->bus, this->device, this->func, 0x09, 0x5 ); // enable Native PCI mode
+    //pci_write_config_8( this->bus, this->device, this->func, 0x09, 0x5 ); // enable Native PCI mode
     // BARs:
     pci_write_config_32( this->bus, this->device, this->func, 0x10, bar0 );
     pci_write_config_32( this->bus, this->device, this->func, 0x14, bar1 );
@@ -514,7 +521,7 @@ void __ata_controller::initialize( uint32_t bar0, uint32_t bar1, uint32_t bar2, 
     pci_write_config_32( this->bus, this->device, this->func, 0x1C, bar3 );
     pci_write_config_32( this->bus, this->device, this->func, 0x20, ATA_BUS_MASTER_START );
     // PCI command register:
-    pci_write_config_32( this->bus, this->device, this->func, 0x04, 0x5 ); // Bus Master Enable | I/O Space Enable
+    pci_write_config_16( this->bus, this->device, this->func, 0x04, 0x5 ); // Bus Master Enable | I/O Space Enable
     
     // determine IRQs:
     pci_read_config_8( this->bus, this->device, this->func, 0x3C );
@@ -552,7 +559,7 @@ void __ata_controller::initialize( uint32_t bar0, uint32_t bar1, uint32_t bar2, 
         page_frame *frame = pageframe_allocate(1);
         size_t prdt_virt = k_vmem_alloc(1);
         if( (frame != NULL) && (prdt_virt != NULL) ) {
-            paging_set_pte( prdt_virt, frame->address, 0 );
+            paging_set_pte( prdt_virt, frame->address, 0x81 );
             ata_channels[0].prdt_phys = frame->address;
             ata_channels[0].prdt_virt = (uint32_t*)prdt_virt;
             ata_channels[1].prdt_phys = frame->address+0x500;
@@ -622,7 +629,7 @@ ata_transfer_buffer::ata_transfer_buffer( unsigned int n_sectors ) {
     for(unsigned int i=0;i<this->n_frames;i++) {
         if( !((i <= 0) || (this->frames[i].address == (this->frames[i-1].address+0x1000))) )
             panic("ata: Could not allocate contiguous frames for DMA buffer!\n");
-        paging_set_pte( ((size_t)this->buffer_virt)+(i*0x1000), this->frames[i].address,1 );
+        paging_set_pte( ((size_t)this->buffer_virt)+(i*0x1000), this->frames[i].address,0x81 );
     }
 };
 
@@ -673,6 +680,7 @@ void* ata_do_disk_read( unsigned int channel, bool slave, uint64_t sector_start,
 }
 */
 void ata_initialize() {
+    register_channel( "ata_transfer_complete", CHANNEL_MODE_BROADCAST );
     for(unsigned int i=0;i<pci_devices.count();i++) {
         pci_device *current = pci_devices[i];
         if( (current->class_code == 0x01) && (current->subclass_code == 0x01) ) {
@@ -684,12 +692,11 @@ void ata_initialize() {
             
             ata_controller.initialize(0x1F0, 0x3F6, 0x170, 0x376);
             
-            register_channel( "ata_transfer_complete", CHANNEL_MODE_BROADCAST );
             err_chk = new process( (size_t)&ata_error_checker, 0, false, "ata_error_checker", NULL, 0 );
-            dma_chk = new process( (size_t)&ata_dma_poller, 0, false, "ata_dma_checker", NULL, 0 );
+            //dma_chk = new process( (size_t)&ata_dma_poller, 0, false, "ata_dma_checker", NULL, 0 );
             
             spawn_process( err_chk );
-            spawn_process( dma_chk );
+            //spawn_process( dma_chk );
             return;
         }
     }

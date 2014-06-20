@@ -40,7 +40,7 @@ void pic_initialize(char vector_offset_1) {
 }
 
 uint16_t pic_get_mask() {
-    return ((uint16_t)io_inb(MASTER_PIC_BASE+1)) | ( ((uint16_t)io_inb(SLAVE_PIC_BASE+1))<<8 );
+    return ( ((uint16_t)io_inb(SLAVE_PIC_BASE+1))<<8 ) | ((uint16_t)io_inb(MASTER_PIC_BASE+1));
 }
 
 void pic_set_mask(uint16_t mask) {
@@ -51,11 +51,11 @@ void pic_set_mask(uint16_t mask) {
 uint16_t pic_get_isr() {
     io_outb(MASTER_PIC_BASE, PIC_CMD_READ_ISR);
     io_outb(SLAVE_PIC_BASE, PIC_CMD_READ_ISR);
-    return ((io_inb(SLAVE_PIC_BASE) << 8) | io_inb(MASTER_PIC_BASE));
+    return ((((uint16_t)io_inb(SLAVE_PIC_BASE)) << 8) | io_inb(MASTER_PIC_BASE));
 }
 
 uint16_t pic_get_irr() {
     io_outb(MASTER_PIC_BASE, PIC_CMD_READ_IRR);
     io_outb(SLAVE_PIC_BASE, PIC_CMD_READ_IRR);
-    return ((io_inb(SLAVE_PIC_BASE) << 8) | io_inb(MASTER_PIC_BASE));
+    return ((((uint16_t)io_inb(SLAVE_PIC_BASE)) << 8) | io_inb(MASTER_PIC_BASE));
 }

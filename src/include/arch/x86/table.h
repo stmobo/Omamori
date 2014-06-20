@@ -4,8 +4,8 @@
 // Set this bit for all valid descriptors
 #define GDT_ACCESS_PRESENT 0x80
 
-// decriptor privilege levels (not sure what these do)
-// You need to have at least one of these in an access byte, though (there's a required 1 bit that these set as well)
+// decriptor privilege levels
+// You need to have at least one of these in an access byte (there's a required 1 bit that these set as well)
 #define GDT_ACCESS_PRIV0   0x10
 #define GDT_ACCESS_PRIV1   0x30
 #define GDT_ACCESS_PRIV2   0x50

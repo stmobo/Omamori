@@ -55,3 +55,7 @@ inline void vendorid(uint32_t ret[3]) {
                  : "=b"(ret[0]), "=d"(ret[1]), "=c"(ret[2])
                  : : "%eax");
 }
+
+inline void flushCache() {
+    asm volatile("wbinvd" : : : "memory");
+}

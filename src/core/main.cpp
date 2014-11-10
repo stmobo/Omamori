@@ -105,60 +105,9 @@ void test_process_1() {
         }
         lua_close(st);
         //kprintf("Closed state..\n");
-        kprintf("Testing ATA.\n");
-        set_message_listen_status( "ata_transfer_complete", true );
-        ata_transfer_buffer  read_buf( 1 );
-        ata_transfer_buffer  write_buf( 1 );
-        kprintf("Read buffer located at virtual 0x%p, physical 0x%p.\n", read_buf.buffer_virt, read_buf.buffer_phys);
-        kprintf("Write buffer located at virtual 0x%p, physical 0x%p.\n", write_buf.buffer_virt, write_buf.buffer_phys);
-        ata_transfer_request *read_req  = new ata_transfer_request( read_buf,  0, 1, false, true,  true );
-        ata_transfer_request *write_req = new ata_transfer_request( write_buf, 0, 1, false, false, true );
-        
-        uint8_t* ptr = (uint8_t*)write_buf.buffer_virt;
-        for(unsigned int i=0;i<512;i++) {
-            ptr[i] = (i%0x10)*0x11;
-        }
-        
-        /*
-        ata_start_request( write_req, 0 );
-        ata_start_request( read_req, 0 );
-        kprintf("Write request sent, waiting.\n");
-        kprintf("Read request sent, waiting.\n");
-        while(true) {
-            //kprintf("First four bytes: 0x%x.\n", *((uint32_t*)read_buf.buffer_virt));
-            if( *((uint32_t*)read_buf.buffer_virt) != 0 ) {
-                break;
-            }
-        }
-        */
         
         kprintf("Initializing AHCI.\n");
         ahci_initialize();
-        
-        /*
-        unsigned long long int last_ticked = get_sys_time_counter();
-        //timer t(1000, true, true, NULL);
-        while(true) {
-            if(last_ticked+5000 <= get_sys_time_counter()) {
-                break;
-            }
-        }
-        kprintf("Write request (assumed to be) complete.\n");
-        */
-        
-        
-        /*
-        last_ticked = get_sys_time_counter();
-        //timer t(1000, true, true, NULL);
-        while(true) {
-            if(last_ticked+5000 <= get_sys_time_counter()) {
-                break;
-            }
-        }
-        
-        kprintf("Read request (assumed to be) complete.\n");
-        */
-        kprintf("First four bytes: 0x%x.\n", *((uint32_t*)read_buf.buffer_virt));
     }
 }
 
@@ -197,16 +146,16 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     
     terminal_writestring("Test: ");
     terminal_writestring(int_to_decimal(test2));
-    kprintf("\nTest 2: %u / 0x%x\n.", (unsigned long long int)test2, (unsigned long long int)test2);
+    kprintf("\nTest 2: %u / 0x%x\n.", test2, test2);
     
     atexit(&flush_serial_buffer, NULL);
     
     //block_for_interrupt(1);
-    kprintf("Time since system startup: %u ticks.", (unsigned long long int)get_sys_time_counter());
+    kprintf("Time since system startup: %u ticks.", get_sys_time_counter());
     
     kprintf("Testing kernel vmem allocation.\n");
     size_t vmem_test = k_vmem_alloc( 5 );
-    kprintf("Virtual allocation starts at address 0x%x.\n", (unsigned long long int)vmem_test);
+    kprintf("Virtual allocation starts at address 0x%x.\n", vmem_test);
     k_vmem_free( vmem_test );
     
     // Remap the VGA memory space.

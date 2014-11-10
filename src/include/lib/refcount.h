@@ -253,14 +253,14 @@ class unique_ptr {
 template<class T>
 unique_ptr<T>::unique_ptr(unique_ptr<T>&& ptr) {
     this->object = ptr.object;
-    ptr.reset();
+    ptr.object = NULL;
 }
 
 template<class T>
 void unique_ptr<T>::operator=(unique_ptr<T>&& ptr) {
     this->reset();
     this->object = ptr.object;
-    ptr.reset();
+    ptr.object = NULL;
 }
 
 template<class T>

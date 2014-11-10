@@ -679,6 +679,8 @@ void kprintf_varg(const char *str, va_list args) {
     }
 }
 
+static uint32_t stat = 0;
+
 // Print something to screen.
 // don't call this from irq context, it definitely will break stuff
 void kprintf(const char *str, ...) {
@@ -694,6 +696,7 @@ void kprintf(const char *str, ...) {
         logger_vec_lock.lock();
         logger_lines_to_write.add_end(o);
         logger_vec_lock.unlock();
+        __sync_bool_compare_and_swap( &stat, 0, 1 );
         logger_process->state = process_state::runnable;
         process_add_to_runqueue(logger_process);
     }
@@ -710,9 +713,16 @@ void logger_process_func() {
             __logger_do_writeout(o);
             kfree(o);
         } else {
+            __sync_bool_compare_and_swap( &stat, 1, 0 );
             process_current->state = process_state::waiting;
             process_switch_immediate();
         }
+    }
+}
+
+void logger_flush_buffer() {
+    while( stat == 1 ) {
+        process_switch_immediate();
     }
 }
 

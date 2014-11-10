@@ -1,6 +1,7 @@
 // ahci.cpp - AHCI Driver
 
 #include "includes.h"
+#include "arch/x86/sys.h"
 #include "core/paging.h"
 #include "core/scheduler.h"
 #include "device/ahci.h"
@@ -82,7 +83,7 @@ struct fis_data {
     uint8_t pmport; // last 4 bits are reserved
     uint16_t rsvd = 0;
     
-    uint32_t *payload;
+    uint32_t payload[1];
 } __attribute__((packed));
 
 struct fis_pio_setup {
@@ -136,8 +137,10 @@ struct fis_dev_bits {
 } __attribute__((packed));
 
 struct hba_port {
-    uint64_t   cmd_list; // command list base
-    uint64_t   fis_base; // received FIS base
+    uint32_t   cmd_list; // command list base
+    uint32_t   cmd_list_u;
+    uint32_t   fis_base; // received FIS base
+    uint32_t   fis_base_u;
     //uint32_t cmd_list;
     //uint32_t cmd_list_upper;
     //uint32_t fis_base;
@@ -218,7 +221,8 @@ struct cmd_header {
 } __attribute__((packed));
 
 struct prdt_entry {
-    uint64_t dba; // bit zero must be zero
+    uint32_t dba; // bit zero must be zero
+    uint32_t dba_u;
     uint32_t rsvd = 0;
     uint32_t count; // bits 22:30 are reserved, bit 31 indicates whether to fire an interrupt after completion.
 } __attribute__((packed));
@@ -230,19 +234,19 @@ struct cmd_table {
     
     uint8_t rsvd[48];
     
-    prdt_entry *prdt;
+    volatile prdt_entry prdt[1];
 } __attribute__((packed)); // for ATAPI commands / devices: issue ATAPI_PACKET command, set atapi_cmd (above), and set the ATAPI bit in the cmd_header structure. 
 
 volatile static hba_mem *hba;
 
-#define is_port_active(i) ( ((hba->pi&(1<<i)) > 0) ? true : false )
+#define is_port_active(i) ((hba->pi&(1<<i)) > 0)
 
 void ahci_initialize() {
     register_channel( "ahci_transfer_complete", CHANNEL_MODE_BROADCAST );
-    for(unsigned int i=0;i<pci_devices.count();i++) {
-        pci_device *current = pci_devices[i];
+    for(unsigned int i_dont_even=0;i_dont_even<pci_devices.count();i_dont_even++) {
+        pci_device *current = pci_devices[i_dont_even];
         if( (current->class_code == 0x01) && (current->subclass_code == 0x06) ) {
-            kprintf("ahci: found controller (device ID: %u [%u/%u/%u])\n", i, current->bus, current->device, current->func);
+            kprintf("ahci: found controller (device ID: %u [%u/%u/%u])\n", i_dont_even, current->bus, current->device, current->func);
             
             size_t tmp_vaddr = k_vmem_alloc(2);
             
@@ -268,66 +272,99 @@ void ahci_initialize() {
             // PCI command register:
             //pci_write_config_16( current->bus, current->device, current->func, 0x04, 0x6 ); // Bus Master Enable | Memory Space Enable
             for(unsigned int i=0;i<32;i++) {
-                if( is_port_active(i) )
+                if( is_port_active(i) ) {
                     n_ports++;
+                    ahci_stop_port( i );
+                }
             }
             
+            if( n_ports <= 29 ) {
+                pageframe_allocate_at( abar, 1 );
+            } else {
+                pageframe_allocate_at( abar, 2 );
+            }
+            
+            hba->ghc |= 0x80000000; // set AE
+            
+            n_cmd_list = ((hba->cap&0x1F00)>>8) & 0x1F; 
             unsigned int n_fis_pages = ((n_ports+(0x10-(n_ports%0x10))) / 0x10)+1; // each RFIS is 256 bytes long, so 16 RFISes take up a page.
             // so we only need 2 pages for all 32 ports.
             
-            if( n_ports >= 16 ) {
-                page_frame *frames = pageframe_allocate(2);
-                size_t      vaddr  = k_vmem_alloc(2);
-                
-                paging_set_pte( vaddr, frames[0].address, 0x81 );
-                paging_set_pte( vaddr+0x1000, frames[1].address, 0x81 );
-                
-                for(unsigned int i=0;i<16;i++) {
-                    recv_fis_virt[i] = vaddr+(i*0x100);
-                    recv_fis_phys[i] = frames[0].address+(i*0x100);
+            for(unsigned int i=0;i<n_ports;i++) {
+                cmd_list_virt[i] = k_vmem_alloc(1);
+                if( hba->ports[i].cmd_list != 0 ) {
+                    pageframe_allocate_at( hba->ports[i].cmd_list, 1 );
+                    cmd_list_phys[i] = hba->ports[i].cmd_list;
+                } else {
+                    page_frame *frame = pageframe_allocate(1);
+                    cmd_list_phys[i] = frame->address;
+                    delete frame;
                 }
-                
-                for(unsigned int i=16;i<n_ports;i++) {
-                    recv_fis_virt[i] = vaddr+(i*0x100);
-                    recv_fis_phys[i] = frames[1].address+((16-i)*0x100);
-                }
-                delete frames;
-            } else {
-                page_frame *frame = pageframe_allocate(1);
-                size_t      vaddr = k_vmem_alloc(1);
-                
-                paging_set_pte( vaddr, frame->address, 0x81 );
-                
-                for(unsigned int i=0;i<n_ports;i++) {
-                    recv_fis_virt[i] = vaddr+(i*0x100);
-                    recv_fis_phys[i] = frame->address+(i*0x100);
-                }
-                delete frame;
+                paging_set_pte( cmd_list_virt[i], cmd_list_phys[i], 0x81 );
+                kprintf("ahci: port %u: command list at 0x%x.\n", i, cmd_list_phys[i] );
             }
             
-            n_cmd_list = ((hba->cap&0x1F00)>>8) & 0x1F; 
+            size_t      fis_vaddr  = k_vmem_alloc( (n_ports / 4)+1 );
+            page_frame* fis_frames = pageframe_allocate( (n_ports / 4)+1 );
             
-            page_frame *frames = pageframe_allocate( n_ports );
-            size_t      vaddr  = k_vmem_alloc( n_ports );
+            size_t fis_current_v = fis_vaddr;
+            size_t fis_current_p = fis_frames->address;
             
-            for(unsigned int i=0;i<n_ports;i++) {
-                paging_set_pte( vaddr+(i*0x1000), frames[i].address, 0x81 ); // again, set as Uncachable
-                cmd_list_phys[i] = frames[i].address;
-                cmd_list_virt[i] = vaddr+(i*0x1000);
+            for( int i=0;i<=(n_ports / 4);i++ ) {
+                paging_set_pte( fis_vaddr+(i*0x1000), fis_frames[i].address, 0x81 );
             }
             
-            delete frames;
-            
-            for(unsigned int i=0;i<n_ports;i++) {
-                hba->ports[i].cmd_list = cmd_list_phys[i];
-                hba->ports[i].fis_base = recv_fis_phys[i];
-                //hba->ports[i].cmd_stat |= 0x10; // set FIS Receive Enable
+            for(unsigned int i=0;i<n_ports;i++) { // note to self: find a more efficient way to map this
+                recv_fis_phys[i] = fis_current_p;
+                recv_fis_virt[i] = fis_current_v;
+                
+                fis_current_v += 256;
+                fis_current_p += 256;
             }
             
             kprintf("ahci: controller capability flags are 0x%x.\n", hba->cap );
-            kprintf("ahci: controller port 0 signature is 0x%x.\n", hba->ports[0].sig );
             kprintf("ahci: controller supports %u ports with %u command entries per list.\n", n_ports, n_cmd_list );
             
+            for(unsigned int i=0;i<n_ports;i++) {
+                hba->ports[i].fis_base = recv_fis_phys[i];
+                hba->ports[i].fis_base_u = 0;
+                
+                hba->ports[i].cmd_list = cmd_list_phys[i];
+                hba->ports[i].cmd_list_u = 0;
+                hba->ports[i].sata_error = 0xFFFFFFFF;
+                
+                while( (hba->ports[i].cmd_stat & 0x8000) > 0 );
+        
+                hba->ports[i].cmd_stat |= 0x10; // set FIS Recv. Enable
+                hba->ports[i].int_enable = 0x7FC0007F;
+                
+                switch( ahci_get_type( i ) ) {
+                    case SATA_DEV_SATA:
+                        kprintf("ahci: device %u is a SATA drive.\n", i);
+                        break;
+                    case SATA_DEV_SATAPI:
+                        kprintf("ahci: device %u is a SATAPI device.\n", i);
+                        break;
+                    case SATA_DEV_SEMB:
+                        kprintf("ahci: device %u is an enclosure management bridge.\n", i);
+                        break;
+                    case SATA_DEV_PM:
+                        kprintf("ahci: device %u is a port multiplier.\n", i);
+                        break;
+                    case SATA_DEV_NULL:
+                        kprintf("ahci: device %u is not present.\n", i);
+                        break;
+                    default:
+                        kprintf("ahci: device %u is unknown.\n", i);
+                        break;
+                }
+            }
+            
+            flushCache();
+            
+            hba->ghc |= 2; // Interrupt Enable
+            
+            flushCache();
             return;
         }
     }
@@ -337,25 +374,146 @@ void ahci_stop_port( unsigned int port ) {
     if( is_port_active(port) ) {
         hba->ports[port].cmd_stat &= ~0x01; // clear Start
         
-        while(true) {
-            if (hba->ports[port].cmd_stat & 0xC000) // wait for Cmd. Running and FIS Recv. Running to clear
-                continue;
-            break;
-        }
+        while( (hba->ports[port].cmd_stat & 0xC000) > 0 );
         
-        hba->ports[port].cmd_stat &= 0x10; // clear FIS Recv. Enable
+        hba->ports[port].cmd_stat &= ~0x10; // clear FIS Recv. Enable
     }
 }
 
 void ahci_start_port( unsigned int port ) {
     if( is_port_active(port) ) {
-        while(true) {
-            if (hba->ports[port].cmd_stat & 0x8000) // wait for Cmd. Running to clear
-                continue;
-            break;
-        }
+        while( (hba->ports[port].cmd_stat & 0x8000) > 0 );
         
         hba->ports[port].cmd_stat |= 0x10; // set FIS Recv. Enable
         hba->ports[port].cmd_stat |= 0x01; // set Start
     }
+}
+
+unsigned int ahci_get_type( unsigned int port ) {
+    uint32_t ssts = hba->ports[port].sata_stat;
+    uint8_t  det  = ssts & 0x0F;
+    uint8_t  ipm  = (ssts>>8) & 0x0F;
+    if( (det == 3) && (ipm == 1) ) {
+        switch( hba->ports[port].sig ) {
+            case SATA_SIG_SATA:
+                return SATA_DEV_SATA;
+            case SATA_SIG_SATAPI:
+                return SATA_DEV_SATAPI;
+            case SATA_SIG_SEMB:
+                return SATA_DEV_SEMB;
+            case SATA_SIG_PM:
+                return SATA_DEV_PM;
+            default:
+                return SATA_DEV_SATA;
+        }
+    } else {
+        return SATA_DEV_NULL;
+    }
+}
+
+int ahci_find_command_slot( unsigned int port ) {
+    uint32_t slot_status = ( hba->ports[port].sata_active | hba->ports[port].cmd_issue );
+    for(unsigned int i=0;i<n_cmd_list;i++) {
+        if( (slot_status & 1) == 0 ) { // check if bit is not set in either SACT or CI.
+            return i;
+        } else
+            slot_status >>= 1;
+    }
+    return -1;
+}
+
+// Issue a data command
+unsigned int ahci_issue_data( unsigned int port, uint64_t lba_start, uint16_t sector_count, void* buffer, bool read ) {
+    kprintf("ahci: beginning AHCI transaction.\n");
+    hba->ports[port].int_status = 0xFFFFFFFF; // clear Interrupt Status
+    int cmd_slot = ahci_find_command_slot( port );
+    if( cmd_slot == -1 ) {
+        kprintf("ahci: could not complete request: no free command slots found for port %u.\n", port);
+        return AHCI_ERR_NO_SLOT;
+    }
+    
+    kprintf("ahci: using command slot %u.\n", cmd_slot);
+    
+    cmd_header *hdr = (cmd_header*)(cmd_list_virt[port]);
+    hdr += cmd_slot;
+    hdr->lo_params = (sizeof(fis_reg_h2d) / 4) | ( read ? 0 : (1<<6) );
+    hdr->hi_params = 0;
+    hdr->prdt_length = ((sector_count-1)>>4)+1;
+    kprintf("ahci: prdt length is %u.\n", hdr->prdt_length);
+    
+    // okay, maybe find a better / more efficient way to reserve physical memory?
+    unsigned int n_pages = ((sizeof(cmd_table) + ((hdr->prdt_length-1)*sizeof(prdt_entry))) / 0x1000)+1;
+    size_t tbl_vmem = k_vmem_alloc(n_pages);
+    if( hdr->cmdt_addr == NULL ) {
+        page_frame *tbl_frames = pageframe_allocate(n_pages);
+        logger_flush_buffer();
+        hdr->cmdt_addr = tbl_frames->address;
+    }
+    for(int i=0;i<n_pages;i++) {
+        paging_set_pte( tbl_vmem+(i*0x1000), hdr->cmdt_addr+(i*0x1000), 0x81 );
+    }
+    cmd_table *tbl = (cmd_table*)(tbl_vmem);
+    memclr( (void*)tbl, sizeof(cmd_table) + ((hdr->prdt_length-1)*sizeof(prdt_entry)) );
+    uint32_t buf_tmp = (uint32_t)buffer;
+    uint32_t cnt_tmp = (uint32_t)sector_count;
+    
+    for(unsigned int i=0;i<hdr->prdt_length-1;i++) {
+        tbl->prdt[i].dba   = buf_tmp;
+        tbl->prdt[i].dba_u = 0;
+        tbl->prdt[i].count = 0x2000 | 0x80000000;
+        buf_tmp += 0x2000;
+        cnt_tmp -= 16;
+    }
+    tbl->prdt[ hdr->prdt_length-1 ].dba   = buf_tmp;
+    tbl->prdt[ hdr->prdt_length-1 ].dba_u = 0;
+    tbl->prdt[ hdr->prdt_length-1 ].count = (cnt_tmp<<9) | 0x80000000;
+    
+    fis_reg_h2d *cmd_fis = (fis_reg_h2d*)(tbl->cmd_fis);
+    cmd_fis->fis_type = FIS_TYPE_REG_H2D;
+    cmd_fis->pmport_c = 0x80;
+    cmd_fis->cmd = ( read ? ATA_CMD_READ_DMA_EXT : ATA_CMD_WRITE_DMA_EXT );
+    
+    cmd_fis->lba_0 = (uint8_t)(lba_start & 0xFF);
+    cmd_fis->lba_1 = (uint8_t)((lba_start>>8) & 0xFF);
+    cmd_fis->lba_2 = (uint8_t)((lba_start>>16) & 0xFF);
+    cmd_fis->dev_sel = (1<<6);
+    
+    cmd_fis->lba_3 = (uint8_t)((lba_start>>24) & 0xFF);
+    cmd_fis->lba_4 = (uint8_t)((lba_start>>32) & 0xFF);
+    cmd_fis->lba_5 = (uint8_t)((lba_start>>40) & 0xFF);
+    
+    cmd_fis->count_lo = (uint8_t)(sector_count&0xFF);
+    cmd_fis->count_hi = (uint8_t)((sector_count>>8)&0xFF);
+    
+    flushCache();
+    
+    uint64_t start_time = get_sys_time_counter();
+    while( ( hba->ports[port].task_fdata & (ATA_SR_BSY | ATA_SR_DRQ) ) && (start_time+5000 <= get_sys_time_counter()) );
+    if( (start_time+5000 <= get_sys_time_counter()) ) {
+        kprintf("ahci: could not complete request: port %u is hung.\n", port);
+        return AHCI_ERR_TIMEOUT;
+    }
+    
+    kprintf("ahci: sending command.\n");
+    hba->ports[port].cmd_stat |= 1; // Start Command Engine
+    
+    hba->ports[port].sata_active = (1<<cmd_slot);
+    hba->ports[port].cmd_issue   = (1<<cmd_slot);
+    
+    flushCache();
+    
+    start_time = get_sys_time_counter();
+    while( true ) {
+        if( ((hba->ports[port].cmd_issue) & (1<<cmd_slot)) == 0 ) {
+            break;
+        }
+    
+        if( ( hba->ports[port].int_status & (1<<30) ) > 0 ) {
+            kprintf("ahci: could not complete request: disk read error on port %u.\n", port);
+            return AHCI_ERR_DISK;
+        }
+    }
+    
+    hba->ports[port].cmd_stat &= ~1; // Stop Command Engine
+    return 0;
 }

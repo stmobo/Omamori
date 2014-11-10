@@ -429,13 +429,13 @@ extern "C" {
      */
     
     void AcpiOsVprintf(const char* format, va_list args) {
-        kprintf_varg(format, args);
+        kvprintf(format, args);
     }
     
     void AcpiOsPrintf(const char* format, ...) {
         va_list args;
         va_start(args, format);
-        kprintf_varg(format, args);
+        kvprintf(format, args);
         va_end(args);
     }
     

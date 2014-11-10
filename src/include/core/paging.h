@@ -118,3 +118,4 @@ inline void invalidate_tlb(size_t address) {
     asm volatile("invlpg (%0)" : : "r"(address) : "memory");
 }
 #endif
+// add a def for ARM here

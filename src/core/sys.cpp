@@ -24,20 +24,20 @@ void operator delete[](void* ptr) {
 }
 
 void memcpy(void* dst, void* src, size_t len) {
-    char *d = (char*)dst;
-    char *s = (char*)src;
+    uint8_t *d = (uint8_t*)dst;
+    uint8_t *s = (uint8_t*)src;
     for(size_t i=0;i<len;i++)
         d[i] = s[i];
 }
 
-void memset(void* dst, char byte, size_t len) {
-    char *d = (char*)dst;
+void memset(void* dst, uint8_t byte, size_t len) {
+    uint8_t *d = (uint8_t*)dst;
     for(size_t i=0;i<len;i++)
         d[i] = byte;
 }
 
 void memclr(void* dst, size_t len) {
-    char *d = (char*)dst;
+    uint8_t *d = (uint8_t*)dst;
     for(size_t i=0;i<len;i++)
         d[i] = 0;
 }

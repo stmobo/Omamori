@@ -2,6 +2,7 @@
 
 #pragma once
 #include "includes.h"
+#include "core/io.h"
 
 #define ATA_SR_BSY     0x80
 #define ATA_SR_DRDY    0x40
@@ -84,36 +85,14 @@
 
 #define      ATA_BUS_MASTER_START       0x550
 
-typedef struct ata_transfer_buffer {
-    void        *buffer_virt;
-    void        *buffer_phys;
-    page_frame  *frames;
-    unsigned int n_frames;
-    size_t       size;
+// teeny-tiny little helper class (since the "default" transfer_request struct can't differentate between requests to slave/master drives).
+struct ata_transfer_request : public transfer_request {
+    bool to_slave;
+    bool dma = false; // "hardwire" DMA mode as disabled for now
     
-    ata_transfer_buffer( unsigned int );
-} ata_transfer_buffer;
-
-
-typedef struct ata_transfer_request {
-    void        *buffer;
-    uint64_t     sector_start;
-    size_t       n_sectors;
-    bool         to_slave;
-    bool         status = false;
-    bool         read;
-    bool         dma;
-    process*     requesting_process;
-    
-    ata_transfer_request( ata_transfer_buffer buf, uint64_t secst, size_t nsec, bool sl, bool rd, bool dma ) : sector_start(secst), n_sectors(nsec), to_slave(sl), read(rd), dma(dma), requesting_process(process_current)
-    {
-        if(dma)
-            this->buffer = buf.buffer_phys;
-        else
-            this->buffer = buf.buffer_virt;
-    };
-    void wait() { while(!this->status) { process_switch_immediate(); } };
-} ata_transfer_request;
+    ata_transfer_request( transfer_request& cpy ) : transfer_request(cpy) {};
+    ata_transfer_request( ata_transfer_request& cpy ) : transfer_request(cpy), to_slave(cpy.to_slave), dma(cpy.dma) {};
+};
 
 extern void ata_initialize();
 //extern bool ata_begin_transfer( unsigned int channel, bool slave, bool write, void* dma_buffer, uint64_t sector_start, size_t n_sectors );

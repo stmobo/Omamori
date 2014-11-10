@@ -10,20 +10,21 @@ endif
 
 #
 # Source directories and stuff:
-MAIN_SRC	:= src
-MAIN_OBJ    := obj
+MAIN_SRC	:= ./src
+MAIN_OBJ    := ./obj
 INCLUDE_DIR := $(MAIN_SRC)/include
 
-ISO_DIR     := isodir
+ISO_DIR     := ./isodir
 
 ACPICA_SRC	:= $(MAIN_SRC)/acpica
 ARCH_SRC	:= $(MAIN_SRC)/arch/$(ARCH)
 BOOT_SRC	:= $(MAIN_SRC)/boot/$(ARCH)
 CORE_SRC	:= $(MAIN_SRC)/core
 DEVICE_SRC	:= $(MAIN_SRC)/device
+FS_SRC 	    := $(MAIN_SRC)/fs
 LIB_SRC 	:= $(MAIN_SRC)/lib
 SRC_DIRS    := $(ACPICA_SRC) $(ARCH_SRC) $(BOOT_SRC) $(CORE_SRC) $(DEVICE_SRC) $(LIB_SRC)
-OBJ_DIRS    := $(subst src/,obj/,$(SRC_DIRS))
+OBJ_DIRS    := $(subst $(MAIN_SRC),$(MAIN_OBJ),$(SRC_DIRS))
 
 # find all files of a certain type
 HDR_FILES    := $(shell find $(INCLUDE_DIR) -type f -name *.h)
@@ -37,8 +38,8 @@ CPP_OBJ_FILES :=  $(subst src/,obj/,$(patsubst %.cpp, %.o, $(CPP_FILES)))
 ASM_OBJ_FILES :=  $(subst src/,obj/,$(patsubst %.s, %.o, $(ASM_FILES)))
 OBJ_FILES     :=  $(ASM_OBJ_FILES) $(C_OBJ_FILES) $(CPP_OBJ_FILES)
 DEP_FILES     :=  $(patsubst %.o, %.d, $(CPP_OBJ_FILES) $(C_OBJ_FILES))
-CRTBEGIN_OBJ  :=  $(shell $(CC) $(CFLAGS) -print-file-name=crtbegin.o)
-CRTEND_OBJ    :=  $(shell $(CC) $(CFLAGS) -print-file-name=crtend.o)
+CRTBEGIN_OBJ  :=  $(shell $(HOME)/opt/cross/bin/i686-elf-gcc -print-file-name=crtbegin.o)
+CRTEND_OBJ    :=  $(shell $(HOME)/opt/cross/bin/i686-elf-gcc -print-file-name=crtend.o)
 
 # generate a link order
 LINK_ORDER_FIRST := $(MAIN_OBJ)/arch/$(ARCH)/crti.o $(CRTBEGIN_OBJ) $(MAIN_OBJ)/boot/$(ARCH)/early_boot.o $(MAIN_OBJ)/boot/$(ARCH)/boot.o $(MAIN_OBJ)/arch/$(ARCH)/isr_ll.o $(MAIN_OBJ)/core/sys.o $(MAIN_OBJ)/arch/$(ARCH)/sys_ll.o

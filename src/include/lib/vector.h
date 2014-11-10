@@ -25,7 +25,7 @@ class vector {
     void add( T );
     void add_end( T );
     T remove_end(); // removes from end   (FILO)
-    T remove(int);     // removes from start (FIFO)
+    T remove(int n=0);     // removes from start (FIFO)
     
     vector( vector<T>& );
     vector();
@@ -132,7 +132,7 @@ T vector<T>::remove_end() {
 }
 
 template <class T>
-T vector<T>::remove( int n=0 ) {
+T vector<T>::remove( int n ) {
     if( this->n_elements > n ) {
         T elem = this->elements[n];
         for(int i=n;i<(this->n_elements-1);i++) {

@@ -3,6 +3,7 @@
 #include "includes.h"
 #include "arch/x86/sys.h"
 #include "arch/x86/irq.h"
+#include "core/io.h"
 #include "core/paging.h"
 #include "core/scheduler.h"
 #include "device/ata.h"
@@ -18,11 +19,8 @@ void ata_error_checker();
 void ata_dma_poller();
 
 // I assume that there's only one ATA controller in a system.
-static struct __ata_controller {
-    unsigned char bus    = 0;
-    unsigned char device = 0;
-    unsigned char func   = 0;
-    unsigned char progif = 0;
+struct __ata_controller {
+    pci_device *device;
     
     unsigned short primary_channel   = 0;
     unsigned short primary_control   = 0;
@@ -32,10 +30,21 @@ static struct __ata_controller {
     
     bool ready = false;
     
-    void initialize( uint32_t, uint32_t, uint32_t, uint32_t );
+    void initialize();
 } ata_controller;
 
-static struct __ata_channel {
+struct ata_device {
+    void* ident;
+    uint64_t n_sectors;
+    bool  lba48;
+    bool  present;
+    char  model[41];
+    char  serial[21];
+    
+    void initialize();
+};
+
+struct __ata_channel {
     unsigned int          channel_no;
     short                 base;
     short                 control;
@@ -54,14 +63,8 @@ static struct __ata_channel {
     bool                  current_operation = false; // false - read, true - write
     process*              delayed_starter;
     
-    void                 *dev1_ident;
-    void                 *dev2_ident;
-    bool                  dev1_lba48;
-    bool                  dev2_lba48;
-    char                  dev1_model[41];
-    char                  dev2_model[41];
-    char                  dev1_serial[21];
-    char                  dev2_serial[21];
+    bool                  devices_present = false;
+    ata_device            devices[2];
     
     void initialize( short, short, short );
     void do_identify();
@@ -75,46 +78,74 @@ static struct __ata_channel {
     void transfer_cycle();
 } ata_channels[2];
 
+struct ata_io_disk : public io_disk {
+    __ata_channel *channel;
+    bool           to_slave;
+    
+    void send_request( transfer_request* );
+    unsigned int  get_sector_size() { return 512; };
+    unsigned int  get_total_size();
+};
+
+unsigned int ata_io_disk::get_total_size() {
+    if( !this->to_slave ) {
+        return (this->channel->devices[0].n_sectors)*512;
+    } else {
+        return (this->channel->devices[1].n_sectors)*512;
+    }
+}
+
+void ata_io_disk::send_request( transfer_request* req ) {
+    ata_transfer_request *new_req = new ata_transfer_request( *req );
+    new_req->to_slave = this->to_slave;
+    this->channel->enqueue_request( new_req );
+}
+
 void __ata_channel::do_identify() {
-    this->dev1_ident = kmalloc(512);
-    this->dev2_ident = kmalloc(512);
-    if( this->dev1_ident != NULL ) {
-        this->select( 0xA0 );
-        io_outb( this->base+2, 0 );
-        io_outb( this->base+3, 0 );
-        io_outb( this->base+4, 0 );
-        io_outb( this->base+5, 0 );
-        io_outb( this->base+7, ATA_CMD_IDENTIFY );
-        
-        uint8_t stat = io_inb( this->control );
-        if( stat > 0 ) {
-            // okay, there actually IS something here
-            while( (io_inb( this->control ) & 0x80) > 0 ); // wait for BSY to clear
-            if( !((io_inb( this->base+4 ) > 0) || (io_inb( this->base+5 ) > 0)) ) { // check for non-spec ATAPI devices
-                while( (io_inb( this->control ) & 0x09) == 0 ); // wait for either DRQ or ERR to set
-                if( (io_inb( this->control ) & 0x01) == 0 ) { // is ERR clear?
-                    ata_do_pio_sector_transfer( this->channel_no, this->dev1_ident, false ); // read 256 words of PIO data
-                }
+    this->devices[0].ident = kmalloc(512);
+    this->devices[1].ident = kmalloc(512);
+    
+    kassert( ((this->devices[0].ident != NULL) && (this->devices[1].ident != NULL)), "Could not allocate space for IDENTIFY command!\n" );
+    
+    this->select( 0xA0 );
+    io_outb( this->base+2, 0 );
+    io_outb( this->base+3, 0 );
+    io_outb( this->base+4, 0 );
+    io_outb( this->base+5, 0 );
+    io_outb( this->base+7, ATA_CMD_IDENTIFY );
+    
+    this->devices[0].present = false;
+    
+    uint8_t stat = io_inb( this->control );
+    if( stat > 0 ) {
+        // okay, there actually IS something here
+        while( (io_inb( this->control ) & 0x80) > 0 ); // wait for BSY to clear
+        if( !((io_inb( this->base+4 ) > 0) || (io_inb( this->base+5 ) > 0)) ) { // check for non-spec ATAPI devices
+            while( (io_inb( this->control ) & 0x09) == 0 ); // wait for either DRQ or ERR to set
+            if( (io_inb( this->control ) & 0x01) == 0 ) { // is ERR clear?
+                ata_do_pio_sector_transfer( this->channel_no, this->devices[0].ident, false ); // read 256 words of PIO data
+                this->devices[0].present = true;
             }
         }
     }
     
-    if( this->dev2_ident != NULL ) {
-        this->select( 0xB0 );
-        io_outb( this->base+2, 0 );
-        io_outb( this->base+3, 0 );
-        io_outb( this->base+4, 0 );
-        io_outb( this->base+5, 0 );
-        io_outb( this->base+7, ATA_CMD_IDENTIFY );
-        
-        uint8_t stat = io_inb( this->control );
-        if( stat > 0 ) {
-            while( (io_inb( this->control ) & 0x80) > 0 );
-            if( !((io_inb( this->base+4 ) > 0) || (io_inb( this->base+5 ) > 0)) ) {
-                while( (io_inb( this->control ) & 0x09) == 0 );
-                if( (io_inb( this->control ) & 0x01) == 0 ) {
-                    ata_do_pio_sector_transfer( this->channel_no, this->dev2_ident, false );
-                }
+    this->select( 0xB0 );
+    io_outb( this->base+2, 0 );
+    io_outb( this->base+3, 0 );
+    io_outb( this->base+4, 0 );
+    io_outb( this->base+5, 0 );
+    io_outb( this->base+7, ATA_CMD_IDENTIFY );
+    
+    this->devices[1].present = false;
+    
+    stat = io_inb( this->control );
+    if( stat > 0 ) {
+        while( (io_inb( this->control ) & 0x80) > 0 );
+        if( !((io_inb( this->base+4 ) > 0) || (io_inb( this->base+5 ) > 0)) ) {
+            while( (io_inb( this->control ) & 0x09) == 0 );
+            if( (io_inb( this->control ) & 0x01) == 0 ) {
+                ata_do_pio_sector_transfer( this->channel_no, this->devices[1].ident, false );
+                this->devices[1].present = true;
             }
         }
     }
@@ -148,7 +179,7 @@ void __ata_channel::transfer_cycle() {
         if( this->current_transfer != NULL ) {
             this->current_transfer->status = true;
             if( this->current_transfer->requesting_process != NULL ) {
-                message out("ata_transfer_complete", this->current_transfer->buffer, 0);
+                message out("ata_transfer_complete", this->current_transfer->buffer.buffer_virt, 0);
                 this->current_transfer->requesting_process->send_message( out );
             }
         }
@@ -166,13 +197,13 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
     bool is_lba48 = false;
     kprintf("ata: beginning transfer.\n");
     if( req->dma ) {
-        this->prdt_virt[0] = ((uint32_t)req->buffer);
+        this->prdt_virt[0] = ((uint32_t)req->buffer.buffer_phys);
         this->prdt_virt[1] = (1<<31) | ((uint16_t)(req->n_sectors*512));
     }
     if( req->to_slave ) {
-        is_lba48 = this->dev2_lba48;
+        is_lba48 = this->devices[1].lba48;
     } else {
-        is_lba48 = this->dev1_lba48;
+        is_lba48 = this->devices[0].lba48;
     }
     if( (!is_lba48) && ( req->sector_start > 0x0FFFFFFF) ) {
         kprintf("ata: transfer attempted to access past LBA28 limit! (sector=%llu)\n", req->sector_start);
@@ -258,7 +289,7 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
     
     if( !req->dma ) {
         for( unsigned int i=0;i<req->n_sectors;i++ ) {
-            uint16_t* current = (uint16_t*)req->buffer;
+            uint16_t* current = (uint16_t*)req->buffer.buffer_virt;
             while( ((io_inb( this->control ) & 0x80) > 0) || ((io_inb( this->control ) & 0x8) == 0) );
             for(unsigned int j=0;i<256;i++) {
                 if( req->read )
@@ -271,6 +302,7 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
         }
         this->cache_flush();
         kprintf("ata: PIO transfer complete.\n");
+        req->status = true;
         this->delayed_starter->state = process_state::runnable; // indirectly schedule ourselves to run later
         process_add_to_runqueue(this->delayed_starter);
     } else {
@@ -422,7 +454,7 @@ void __ata_channel::select( uint8_t select_val ) {
 void __ata_channel::cache_flush() {
     this->select( ATA_MASTER );
     this->wait_bsy();
-    if( this->dev1_lba48 ) {
+    if( this->devices[0].lba48 ) {
         io_outb( this->base+7, ATA_CMD_CACHE_FLUSH_EXT );
     } else {
         io_outb( this->base+7, ATA_CMD_CACHE_FLUSH );
@@ -430,10 +462,34 @@ void __ata_channel::cache_flush() {
     
     this->select( ATA_SLAVE );
     this->wait_bsy();
-    if( this->dev2_lba48 ) {
+    if( this->devices[1].lba48 ) {
         io_outb( this->base+7, ATA_CMD_CACHE_FLUSH_EXT );
     } else {
         io_outb( this->base+7, ATA_CMD_CACHE_FLUSH );
+    }
+}
+
+void ata_device::initialize() {
+    this->lba48 = ( (((uint16_t*)this->ident)[83] & 0x400) );
+    
+    for(unsigned int i=0;i<40;i+=2) {
+        this->model[i+1] = ((char*)this->ident)[54+i];
+        this->model[i] = ((char*)this->ident)[55+i];
+    }
+    
+    this->model[40] = 0;
+    
+    for(unsigned int i=0;i<20;i+=2) {
+        this->serial[i+1] =  ((char*)this->ident)[20+i];
+        this->serial[i] =  ((char*)this->ident)[21+i];
+    }
+    
+    this->serial[20] = 0;
+    
+    if( this->lba48 ) {
+        this->n_sectors = ((uint64_t*)this->ident)[25];
+    } else {
+        this->n_sectors = ((uint32_t*)this->ident)[30];
     }
 }
 
@@ -461,83 +517,42 @@ void __ata_channel::initialize( short base, short control, short bus_master ) {
     io_outd( this->bus_master+4, this->prdt_phys );
     */
     this->do_identify();
-    this->dev1_lba48 = ( (((uint16_t*)this->dev1_ident)[83] & 0x400) );
-    this->dev2_lba48 = ( (((uint16_t*)this->dev2_ident)[83] & 0x400) );
     
-    for(unsigned int i=0;i<40;i+=2) {
-        this->dev1_model[i+1] = ((char*)this->dev1_ident)[54+i];
-        this->dev1_model[i] = ((char*)this->dev1_ident)[55+i];
-        
-        this->dev2_model[i+1] = ((char*)this->dev2_ident)[54+i];
-        this->dev2_model[i] = ((char*)this->dev2_ident)[55+i];
-    }
+    this->devices[0].initialize();
+    this->devices[1].initialize();
     
-    this->dev1_model[40] = 0;
-    this->dev2_model[40] = 0;
-    
-    for(unsigned int i=0;i<20;i+=2) {
-        this->dev1_serial[i+1] = ((char*)this->dev1_ident)[20+i];
-        this->dev1_serial[i] = ((char*)this->dev1_ident)[21+i];
-        
-        this->dev2_serial[i+1] = ((char*)this->dev2_ident)[20+i];
-        this->dev2_serial[i] = ((char*)this->dev2_ident)[21+i];
-    }
-    
-    this->dev1_serial[20] = 0;
-    this->dev2_serial[20] = 0;
-    
-    uint64_t dev1_n_sectors;
-    uint64_t dev2_n_sectors;
-    kprintf("ata: channel %u devices: \n", this->channel_no);
-    if( this->dev1_lba48 ) {
-        dev1_n_sectors = ((uint64_t*)this->dev1_ident)[25];
-    } else {
-        dev1_n_sectors = ((uint32_t*)this->dev1_ident)[30];
-    }
-    if( this->dev2_lba48 ) {
-        dev2_n_sectors = ((uint64_t*)this->dev2_ident)[25];
-    } else {
-        dev2_n_sectors = ((uint32_t*)this->dev2_ident)[30];
-    }
-    kprintf("    * master: %s\n", this->dev1_model);
-    kprintf("    * %s, %u sectors addressable\n", ( this->dev1_lba48 ? "LBA48 supported" : "LBA48 not supported" ), dev1_n_sectors);
-    kprintf("    * slave: %s\n", this->dev2_model);
-    kprintf("    * %s, %u sectors addressable\n", ( this->dev2_lba48 ? "LBA48 supported" : "LBA48 not supported" ), dev2_n_sectors);
+    kprintf("    * master: %s\n", this->devices[0].model);
+    kprintf("    * %s, %u sectors addressable\n", ( this->devices[0].lba48 ? "LBA48 supported" : "LBA48 not supported" ), this->devices[0].n_sectors);
+    kprintf("    * slave: %s\n", this->devices[1].model);
+    kprintf("    * %s, %u sectors addressable\n", ( this->devices[1].lba48 ? "LBA48 supported" : "LBA48 not supported" ), this->devices[1].n_sectors);
 }
 
-void __ata_controller::initialize( uint32_t bar0, uint32_t bar1, uint32_t bar2, uint32_t bar3 ) {
-    this->primary_channel   = bar0;
-    this->primary_control   = bar1;
-    this->secondary_channel = bar2;
-    this->secondary_control = bar3;
-    this->dma_control_base  = ATA_BUS_MASTER_START;
+void __ata_controller::initialize() {
+    this->primary_channel   = this->device->registers[0].raw;
+    this->primary_control   = this->device->registers[1].raw;
+    this->secondary_channel = this->device->registers[2].raw;
+    this->secondary_control = this->device->registers[3].raw;
+    this->dma_control_base  = this->device->registers[4].raw;
     
-    // PCI programming interface register:
-    //pci_write_config_8( this->bus, this->device, this->func, 0x09, 0x5 ); // enable Native PCI mode
-    // BARs:
-    pci_write_config_32( this->bus, this->device, this->func, 0x10, bar0 );
-    pci_write_config_32( this->bus, this->device, this->func, 0x14, bar1 );
-    pci_write_config_32( this->bus, this->device, this->func, 0x18, bar2 );
-    pci_write_config_32( this->bus, this->device, this->func, 0x1C, bar3 );
-    pci_write_config_32( this->bus, this->device, this->func, 0x20, ATA_BUS_MASTER_START );
+    kprintf("ata: controller BMIDE registers at %s address 0x%x.\n", (this->device->registers[4].io_space ? "IO" : "Memory"), this->device->registers[4].raw);
     // PCI command register:
-    pci_write_config_16( this->bus, this->device, this->func, 0x04, 0x5 ); // Bus Master Enable | I/O Space Enable
+    pci_write_config_16( this->device->bus, this->device->device, this->device->func, 0x04, 0x5 ); // Bus Master Enable | I/O Space Enable
     
     // determine IRQs:
-    pci_read_config_8( this->bus, this->device, this->func, 0x3C );
-    pci_write_config_8( this->bus, this->device, this->func, 0x3C, 0xFE );
-    if( pci_read_config_8( this->bus, this->device, this->func, 0x3C ) == 0xFE ) {
+    pci_read_config_8( this->device->bus, this->device->device, this->device->func, 0x3C );
+    pci_write_config_8( this->device->bus, this->device->device, this->device->func, 0x3C, 0xFE );
+    if( pci_read_config_8( this->device->bus, this->device->device, this->device->func, 0x3C ) == 0xFE ) {
         // device needs IRQ assignment (we'll just use IRQ14 in this case)
         kprintf("ata: controller IRQ assignment required\n");
         irq_add_handler(14, (size_t)(&ata_dual_handler));
-        pci_write_config_8( this->bus, this->device, this->func, 0x3C, 14 );
-        if( pci_read_config_8( this->bus, this->device, this->func, 0x3C ) != 14 ) {
+        pci_write_config_8( this->device->bus, this->device->device, this->device->func, 0x3C, 14 );
+        if( pci_read_config_8( this->device->bus, this->device->device, this->device->func, 0x3C ) != 14 ) {
             // write didn't go through?
             kprintf("ata: controller IRQ assignment didn't go through?\n");
         }
     } else {
         // device doesn't need an IRQ assignment, is it PATA?
-        if( (this->progif == 0x8A) || (this->progif == 0x80) ) {
+        if( (this->device->prog_if == 0x8A) || (this->device->prog_if == 0x80) ) {
             // it's PATA, so we just assign IRQs 14 and 15.
             kprintf("ata: controller is PATA, no IRQ assignment required\n");
             irq_add_handler(14, (size_t)(&irq14_handler));
@@ -549,8 +564,8 @@ void __ata_controller::initialize( uint32_t bar0, uint32_t bar1, uint32_t bar2, 
         }
     }
     
-    uint8_t test_ch0 = io_inb(bar0+7);
-    uint8_t test_ch1 = io_inb(bar2+7);
+    uint8_t test_ch0 = io_inb(this->device->registers[0].raw+7);
+    uint8_t test_ch1 = io_inb(this->device->registers[2].raw+7);
     
     ata_channels[0].channel_no = 0;
     ata_channels[1].channel_no = 1;
@@ -571,10 +586,11 @@ void __ata_controller::initialize( uint32_t bar0, uint32_t bar1, uint32_t bar2, 
     }
     
     if( test_ch0 != 0xFF ) {
-        ata_channels[0].initialize( bar0, bar1, ATA_BUS_MASTER_START );
+        ata_channels[0].initialize( this->device->registers[0].phys_address, this->device->registers[1].phys_address, this->device->registers[4].phys_address );
         ata_channels[0].delayed_starter = new process( (size_t)&irq14_delayed_starter, 0, false, "ata_ch0_delayedstarter", NULL, 0 );
         spawn_process( ata_channels[0].delayed_starter );
         
+        ata_channels[0].devices_present = true;
         kprintf("ata: devices connected on channel 0 (not floating).\n");
     } else {
         // floating bus, there's nothing here
@@ -582,10 +598,11 @@ void __ata_controller::initialize( uint32_t bar0, uint32_t bar1, uint32_t bar2, 
     }
     
     if( test_ch1 != 0xFF ) {
-        ata_channels[1].initialize( bar2, bar3, ATA_BUS_MASTER_START+8 );
+        ata_channels[1].initialize( this->device->registers[2].phys_address, this->device->registers[3].phys_address, this->device->registers[4].phys_address+8 );
         ata_channels[1].delayed_starter = new process( (size_t)&irq15_delayed_starter, 0, false, "ata_ch1_delayedstarter", NULL, 0 );
         spawn_process( ata_channels[1].delayed_starter );
         
+        ata_channels[0].devices_present = true;
         kprintf("ata: devices connected on channel 1 (not floating).\n");
     } else {
         kprintf("ata: no devices connected on channel 1.\n");
@@ -618,20 +635,6 @@ uint8_t ata_read(uint8_t channel, uint8_t reg) {
    return result;
 }
 */
-
-ata_transfer_buffer::ata_transfer_buffer( unsigned int n_sectors ) {
-    this->size = n_sectors*512;
-    this->n_frames = ( (this->size-(this->size%0x1000)) / 0x1000 )+1;
-    
-    this->frames = pageframe_allocate( this->n_frames );
-    this->buffer_virt = (void*)k_vmem_alloc( n_frames );
-    this->buffer_phys = (void*)this->frames[0].address;
-    for(unsigned int i=0;i<this->n_frames;i++) {
-        if( !((i <= 0) || (this->frames[i].address == (this->frames[i-1].address+0x1000))) )
-            panic("ata: Could not allocate contiguous frames for DMA buffer!\n");
-        paging_set_pte( ((size_t)this->buffer_virt)+(i*0x1000), this->frames[i].address,0x81 );
-    }
-};
 
 /*
 bool ata_begin_transfer( unsigned int channel, bool slave, bool write, void* dma_buffer, uint64_t sector_start, size_t n_sectors ) {
@@ -679,24 +682,42 @@ void* ata_do_disk_read( unsigned int channel, bool slave, uint64_t sector_start,
     return NULL;
 }
 */
+
+#define ___ata_register_io_disk(channel_no, device_no) do { \
+    if( ata_channels[channel_no].devices[device_no].present ) { \
+        ata_io_disk *disk = new ata_io_disk;\
+        disk->to_slave = (device_no == 1);\
+        io_register_disk( disk );\
+    } \
+} while(0)
+
 void ata_initialize() {
     register_channel( "ata_transfer_complete", CHANNEL_MODE_BROADCAST );
     for(unsigned int i=0;i<pci_devices.count();i++) {
         pci_device *current = pci_devices[i];
         if( (current->class_code == 0x01) && (current->subclass_code == 0x01) ) {
             kprintf("ata: found controller (device ID: %u [%u/%u/%u])\n", i, current->bus, current->device, current->func);
-            ata_controller.bus    = current->bus;
-            ata_controller.device = current->device;
-            ata_controller.func   = current->func;
-            ata_controller.progif = current->prog_if;
+            ata_controller.device = current;
             
-            ata_controller.initialize(0x1F0, 0x3F6, 0x170, 0x376);
+            ata_controller.initialize();
             
             err_chk = new process( (size_t)&ata_error_checker, 0, false, "ata_error_checker", NULL, 0 );
             //dma_chk = new process( (size_t)&ata_dma_poller, 0, false, "ata_dma_checker", NULL, 0 );
             
             spawn_process( err_chk );
             //spawn_process( dma_chk );
+            
+            // register disks
+            if( ata_channels[0].devices_present ) {
+                ___ata_register_io_disk(0, 0);
+                ___ata_register_io_disk(0, 1);
+            }
+            
+            if( ata_channels[1].devices_present ) {
+                ___ata_register_io_disk(1, 0);
+                ___ata_register_io_disk(1, 1);
+            }
+            
             return;
         }
     }

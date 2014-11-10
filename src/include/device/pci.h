@@ -13,6 +13,26 @@ typedef struct pcie_ecs_range {
     size_t   vaddr;
 } pcie_ecs_range;
 
+typedef struct pci_bar {
+    uint32_t raw;
+    uint32_t phys_address;
+    uint32_t virt_address;
+    bool io_space;
+    char loc_area;
+    bool cacheable;
+    uint32_t size;
+    
+    void writeb( uint32_t offset, uint8_t data );
+    void writew( uint32_t offset, uint16_t data );
+    void writed( uint32_t offset, uint32_t data );
+    
+    uint8_t  readb( uint32_t offset );
+    uint16_t readw( uint32_t offset );
+    uint32_t readd( uint32_t offset );
+    
+    void allocate_mmio();
+} pci_bar;
+
 typedef struct pci_device {
     uint8_t bus;
     uint8_t device;
@@ -23,26 +43,27 @@ typedef struct pci_device {
     uint8_t subclass_code;
     uint8_t prog_if;
     uint8_t header_type;
+    pci_bar registers[6];
 } pci_device;
 
 extern vector<pci_device*> pci_devices;
 
-extern void pci_check_bus(char);
-extern void pci_register_device(char, char, char);
-extern char pci_check_device(char, char, char);
+extern void pci_check_bus(uint8_t);
+extern void pci_register_device(uint8_t, uint8_t, uint8_t);
+extern uint8_t pci_check_device(uint8_t, uint8_t, uint8_t);
 
-extern void pci_write_config_8(char, char, char, char, uint8_t);
-extern void pci_write_config_16(char, char, char, char, uint16_t);
-extern void pci_write_config_32(char, char, char, char, uint32_t);
+extern void pci_write_config_8(uint8_t, uint8_t, uint8_t, uint8_t, uint8_t);
+extern void pci_write_config_16(uint8_t, uint8_t, uint8_t, uint8_t, uint16_t);
+extern void pci_write_config_32(uint8_t, uint8_t, uint8_t, uint8_t, uint32_t);
 
-extern uint8_t pci_read_config_8(char, char, char, char);
-extern uint16_t pci_read_config_16(char, char, char, char);
-extern uint32_t pci_read_config_32(char, char, char, char);
+extern uint8_t pci_read_config_8(uint8_t, uint8_t, uint8_t, uint8_t);
+extern uint16_t pci_read_config_16(uint8_t, uint8_t, uint8_t, uint8_t);
+extern uint32_t pci_read_config_32(uint8_t, uint8_t, uint8_t, uint8_t);
 
-extern void pci_check_bus( char );
+extern void pci_check_bus( uint8_t );
 extern void pci_check_all_buses();
-extern void pci_check_device( char, char );
-extern void pci_check_bridge( char, char, char );
+extern void pci_check_device( uint8_t, uint8_t );
+extern void pci_check_bridge( uint8_t, uint8_t, uint8_t );
 
 extern void pci_get_info_three (
   unsigned char		baseid,

@@ -48,7 +48,8 @@ typedef struct message {
 #define CHANNEL_MODE_UNICAST        3
 
 extern bool set_message_listen_status( char*, bool );
-extern message* wait_for_message(); 
+extern bool get_message_listen_status( char* );
+extern message* wait_for_message( char* type=NULL ); 
 extern message* get_latest_message(); 
 extern bool send_message( message );
 extern void wake_all_in_queue( char* ) ;

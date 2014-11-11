@@ -9,6 +9,8 @@
 #include "device/ps2_keyboard.h"
 #include "device/serial.h"
 #include "device/vga.h"
+#include "fs/fat.h"
+#include "core/vfs.h"
 extern "C" {
     #include "lua.h"
     #include "lualib.h"
@@ -49,6 +51,9 @@ void test_process_1() {
     
     kprintf("Initializing PS/2 keyboard.\n");
     ps2_keyboard_initialize();
+    
+    kprintf("Initializing I/O.\n");
+    io_initialize();
     
     kprintf("Initializing PCI.\n");
     pci_check_all_buses();
@@ -108,6 +113,17 @@ void test_process_1() {
         
         kprintf("Initializing AHCI.\n");
         ahci_initialize();
+        
+        // hacked-together ls:
+        kprintf("Reading partition 1 as FAT32...");
+        fat32_fs *fs = new fat32_fs( 1 );
+        kprintf("Reading root directory...\n");
+        vfs_directory *root = fs->read_directory(0);
+        /*
+        for( int i=0;i<root->files.count();i++ ) {
+            kprintf("* %u - %s\n", i, root->files[i]->name);
+        }
+        */
     }
 }
 

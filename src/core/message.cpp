@@ -114,7 +114,7 @@ message* get_latest_message() {
 bool process::send_message( message msg ) {
     if( this->state != process_state::dead ) {
         message* copy = new message( msg );
-        if(copy->data != NULL) {
+        if(copy != NULL) {
             this->message_queue->add_end(copy);
             return true;
         } else {
@@ -125,31 +125,84 @@ bool process::send_message( message msg ) {
     return false;
 }
 
-message* wait_for_message() {
+message* wait_for_message( char *type ) {
     //kprintf("process %u (%s): Waiting for message!\n", (unsigned long long int)process_current->id, process_current->name);
-    process_current->state = process_state::waiting;
-    while( true ) {
-        if( process_current->message_queue->length() > 0 ) {
-            //kprintf("wait_for_message: length is now %u.\n", (unsigned long long int)process_current->message_queue.length());
-            break;
+    if( type != NULL )
+        process_current->message_waiting_on = type; // juuuust in case we get preempted inbetween these two steps
+    if( type != NULL ) {
+        process_current->message_queue_lock.lock();
+            
+        sort_message_queue( *process_current->message_queue );
+        for(int i=0;i<process_current->message_queue->count();i++) {
+            //kprintf("[precheck] process %u received message of type %s\n", process_current->id, process_current->message_queue->get(i)->type);
+            if( strcmp( const_cast<char*>(process_current->message_queue->get(i)->type), type, 0 ) ) {
+                message *ret = process_current->message_queue->remove(i);
+                process_current->message_waiting_on = NULL;
+                process_current->message_queue_lock.unlock();
+                return ret;
+            }
         }
-        process_switch_immediate();
+        
+        process_current->message_queue_lock.unlock();
+        process_current->state = process_state::waiting;
+        
+        //kprintf("[wait] process %u waiting for message of type %s\n", process_current->id, type);
+        while(true) {
+            process_switch_immediate();
+            process_current->state = process_state::runnable;
+            
+            process_current->message_queue_lock.lock();
+            
+            sort_message_queue( *process_current->message_queue );
+            for(int i=0;i<process_current->message_queue->count();i++) {
+                //kprintf("[wait] process %u received message of type %s\n", process_current->id, process_current->message_queue->get(i)->type);
+                if( strcmp( const_cast<char*>(process_current->message_queue->get(i)->type), type, 0 ) ) {
+                    message *ret = process_current->message_queue->remove(i);
+                    process_current->message_waiting_on = NULL;
+                    process_current->message_queue_lock.unlock();
+                    return ret;
+                }
+            }
+            
+            process_current->message_queue_lock.unlock();
+        }
+    } else {
+        process_current->state = process_state::waiting;
+        while( true ) {
+            if( process_current->message_queue->length() > 0 ) {
+                //kprintf("wait_for_message: length is now %u.\n", (unsigned long long int)process_current->message_queue.length());
+                break;
+            }
+            process_switch_immediate();
+        }
+        process_current->state = process_state::runnable;
+        message* ret;
+        process_current->message_queue_lock.lock();
+        //kprintf("wait_for_message: count is now %u.\n", process_current->message_queue->count());
+        sort_message_queue( *process_current->message_queue );
+        for(int i=0;i<process_current->message_queue->count();i++) {
+            //kprintf("[wait-any] process %u received message of type %s\n", process_current->id, process_current->message_queue->get(i)->type);
+            ret = process_current->message_queue->get(i);
+            if( ret != NULL ) {
+                process_current->message_queue->remove(i);
+                break;
+            }
+        }
+        process_current->message_queue_lock.unlock();
+        //kprintf("process %u (%s): Got a message of type %s! (cycled %u times)\n", (unsigned long long int)process_current->id, process_current->name, ret->type, (unsigned long long int)n_times_cycled);
+        return ret;
     }
-    process_current->state = process_state::runnable;
-    message* ret;
-    int n_times_cycled = 0;
-    process_current->message_queue_lock.lock();
-    //kprintf("wait_for_message: count is now %u.\n", process_current->message_queue->count());
-    sort_message_queue( *process_current->message_queue );
-    while( true ) {
-        ret = process_current->message_queue->remove();
-        if( ret != NULL )
-            break;
-        n_times_cycled++;
+}
+
+bool get_message_listen_status( char* event_name ) {
+    channel* ch = (*message_queues)[event_name];
+    vector<process*>* queue = ch->listeners;
+    for(unsigned int i=0;i<queue->length();i++) {
+        if( queue->get(i)->id == process_current->id ) {
+            return true;
+        }
     }
-    process_current->message_queue_lock.unlock();
-    //kprintf("process %u (%s): Got a message of type %s! (cycled %u times)\n", (unsigned long long int)process_current->id, process_current->name, ret->type, (unsigned long long int)n_times_cycled);
-    return ret;
+    return false;
 }
 
 bool set_message_listen_status( char* event_name, bool status ) {

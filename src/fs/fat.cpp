@@ -4,10 +4,10 @@
 #include "fs/fat.h"
 #include "core/vfs.h"
 
-fat32_fs::fat32_fs( unsigned int disk_no ) {
-    io_read_disk( disk_no, (void*)(this->sector_one), 0, 512 );
+fat32_fs::fat32_fs( unsigned int part_no ) {
+    io_read_partition( part_no, (void*)(this->sector_one), 0, 512 );
     
-    this->disk_no = disk_no;
+    this->part_no = part_no;
     //this->bytes_per_sector     = *( (uint16_t*)( (uintptr_t)(sector_one+11) ) );
     this->sectors_per_cluster  = *( (uint8_t*) ( (uintptr_t)(sector_one+13) ) );
     this->n_reserved_sectors   = *( (uint16_t*)( (uintptr_t)(sector_one+14) ) );
@@ -18,20 +18,31 @@ fat32_fs::fat32_fs( unsigned int disk_no ) {
     } else {
         this->n_sectors        = *( (uint16_t*)( (uintptr_t)(sector_one+19) ) );
     }
-    this->n_hidden_sectors     = *( (uint32_t*)( (uintptr_t)(sector_one+21) ) );
+    this->n_hidden_sectors     = *( (uint32_t*)( (uintptr_t)(sector_one+28) ) );
     this->fat_size_sectors     = *( (uint32_t*)( (uintptr_t)(sector_one+36) ) );
     this->root_cluster         = *( (uint32_t*)( (uintptr_t)(sector_one+44) ) );
     this->fsinfo               = *( (uint16_t*)( (uintptr_t)(sector_one+48) ) );
     this->backup_boot_sector   = *( (uint16_t*)( (uintptr_t)(sector_one+50) ) );
     
     this->first_usable_cluster = this->n_reserved_sectors + (this->n_fats * this->fat_size_sectors);
+    
+    kprintf("fat32: reading partition %u as FAT32\n", part_no);
+    kprintf("fat32: %u sectors per cluster\n", this->sectors_per_cluster);
+    kprintf("fat32: %u FATs\n", this->n_fats);
+    kprintf("fat32: %u directory entries\n", this->n_directory_entries);
+    kprintf("fat32: %u hidden sectors\n", this->n_hidden_sectors);
+    kprintf("fat32: %u reserved sectors\n", this->n_reserved_sectors);
+    kprintf("fat32: %u sectors per FAT\n", this->fat_size_sectors);
+    kprintf("fat32: root cluster located at cluster %u\n", this->root_cluster);
+    
+    //while(true) { asm volatile("hlt"); }
 }
 
 void *fat32_fs::get_cluster( uint32_t cluster ) {
     uint64_t lba = this->cluster_to_lba( cluster );
     void *buf = kmalloc( this->sectors_per_cluster * 512 );
     
-    io_read_disk( this->disk_no, buf, lba*512, this->sectors_per_cluster * 512 );
+    io_read_partition( this->part_no, buf, lba*512, this->sectors_per_cluster * 512 );
     return buf;
 }
 
@@ -39,7 +50,7 @@ void *fat32_fs::get_clusters( vector<uint32_t> *clusters ) {
     void *buf = kmalloc( clusters->count() * this->sectors_per_cluster * 512 );
     void *out = buf;
     for( int i=0;i<clusters->count();i++ ) {
-        io_read_disk( this->disk_no, buf, this->cluster_to_lba( clusters->get(i) )*512, this->sectors_per_cluster * 512 );
+        io_read_partition( this->part_no, buf, this->cluster_to_lba( clusters->get(i) )*512, this->sectors_per_cluster * 512 );
         buf += (this->sectors_per_cluster * 512);
     }
     return out;
@@ -56,7 +67,7 @@ vector<uint32_t> *fat32_fs::read_cluster_chain( uint32_t start, uint64_t* n_clus
         uint32_t fat_sector = this->n_reserved_sectors + ( ( current * 4 ) / 512 );
         uint32_t fat_offset = (current*4) % 512;
         
-        io_read_disk( this->disk_no, buf, fat_sector*512, 512 );
+        io_read_partition( this->part_no, buf, fat_sector*512, 512 );
         
         uint8_t* cluster = (uint8_t*)buf;
         

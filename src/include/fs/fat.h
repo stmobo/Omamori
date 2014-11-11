@@ -8,7 +8,7 @@ class fat32_fs {
     uint8_t sector_one[512];
     
     public:
-    unsigned int disk_no;
+    unsigned int part_no;
     //uint16_t bytes_per_sector;    // offset 11
     uint8_t sectors_per_cluster;  // offset 13
     uint16_t n_reserved_sectors;  // offset 14
@@ -23,6 +23,7 @@ class fat32_fs {
     uint32_t first_usable_cluster;
     
     fat32_fs(unsigned int);
+    fat32_fs( unsigned int device_no, unsigned int part_no ) : fat32_fs( io_part_ids_to_global(device_no, part_no) ) {};
     vfs_directory *read_directory( uint32_t );
     vector<uint32_t> *read_cluster_chain( uint32_t start, uint64_t* n_clusters=NULL );
     void *get_cluster_chain(uint32_t, uint64_t* );

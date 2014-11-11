@@ -13,10 +13,12 @@ typedef struct transfer_buffer {
     size_t       size;
     
     transfer_buffer( unsigned int );
+    void* remap();
 } transfer_buffer;
 
 
 typedef struct transfer_request {
+    uint64_t        id;
     transfer_buffer buffer;
     uint64_t        sector_start;
     size_t          n_sectors;
@@ -24,10 +26,10 @@ typedef struct transfer_request {
     bool            read;
     process*        requesting_process;
     
-    transfer_request( transfer_buffer buf, uint64_t secst, size_t nsec, bool rd ) : buffer(buf), sector_start(secst), n_sectors(nsec), read(rd), requesting_process(process_current) {};
-    transfer_request( transfer_buffer *buf, uint64_t secst, size_t nsec, bool rd ) : buffer(*buf), sector_start(secst), n_sectors(nsec), read(rd), requesting_process(process_current) {};
-    transfer_request( transfer_request& cpy ) : buffer(cpy.buffer), sector_start(cpy.sector_start), n_sectors(cpy.n_sectors), read(cpy.read), requesting_process(cpy.requesting_process) {};
-    void wait() { while(!this->status) { process_switch_immediate(); } };
+    transfer_request( transfer_buffer, uint64_t, size_t, bool );
+    transfer_request( transfer_buffer*, uint64_t, size_t, bool );
+    transfer_request( transfer_request& );
+    void wait();
 } transfer_request;
 
 struct io_disk {
@@ -40,6 +42,7 @@ struct io_disk {
 
 struct io_partition {
     unsigned int device;
+    unsigned int global_id;
     unsigned int part_id;
     uint32_t start;
     uint32_t size;
@@ -48,6 +51,14 @@ struct io_partition {
 
 extern void io_register_disk( io_disk* );
 extern io_disk* io_get_disk( unsigned int );
+extern io_partition* io_get_partition( unsigned int );
+extern io_partition* io_get_partition( unsigned int, unsigned int );
+extern unsigned int io_part_ids_to_global( unsigned int, unsigned int );
+extern void io_read_partition( unsigned int, void*, uint64_t, uint64_t );
+extern void io_read_partition( unsigned int, unsigned int, void*, uint64_t, uint64_t );
+extern void io_write_partition( unsigned int, void*, uint64_t, uint64_t );
+extern void io_write_partition( unsigned int, unsigned int, void*, uint64_t, uint64_t );
 extern unsigned int io_get_disk_count();
 extern void io_read_disk(  unsigned int, void*, uint64_t, uint64_t );
 extern void io_write_disk( unsigned int, void*, uint64_t, uint64_t );
+extern void io_initialize();

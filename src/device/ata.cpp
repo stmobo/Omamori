@@ -77,6 +77,7 @@ struct __ata_channel {
     
     void transfer_start( ata_transfer_request* );
     void transfer_cycle();
+    bool transfer_available();
 } ata_channels[2];
 
 struct ata_io_disk : public io_disk {
@@ -172,8 +173,11 @@ void __ata_channel::enqueue_request( ata_transfer_request* req ) {
     
     if( this->currently_idle ) {
         this->current_operation = req->read;
-        this->transfer_cycle();
+        this->currently_idle = false;
+        //this->transfer_cycle();
     }
+    this->delayed_starter->state = process_state::runnable; // indirectly schedule ourselves to run later
+    process_add_to_runqueue(this->delayed_starter);
 }
 
 void __ata_channel::transfer_cycle() {
@@ -191,8 +195,9 @@ void __ata_channel::transfer_cycle() {
         if( this->current_transfer != NULL ) {
             this->current_transfer->status = true;
             if( this->current_transfer->requesting_process != NULL ) {
-                message out("ata_transfer_complete", this->current_transfer->buffer.buffer_virt, 0);
+                message out("transfer_complete", this->current_transfer, sizeof(ata_transfer_request));
                 this->current_transfer->requesting_process->send_message( out );
+                process_add_to_runqueue( this->current_transfer->requesting_process );
             }
         }
         
@@ -202,12 +207,23 @@ void __ata_channel::transfer_cycle() {
     }
 }
 
+bool __ata_channel::transfer_available() {
+    bool op = this->current_operation;
+    if( (op ? this->write_queue : this->read_queue).count() == 0 ) {
+        op = !op;
+        if( (op ? this->write_queue : this->read_queue).count() == 0 ) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void __ata_channel::transfer_start( ata_transfer_request *req ) {
     if(req == NULL) {
         return;
     }
     bool is_lba48 = false;
-    kprintf("ata: beginning transfer.\n");
+    //kprintf("ata: beginning transfer.\n");
     if( req->dma ) {
         this->prdt_virt[0] = ((uint32_t)req->buffer.buffer_phys);
         this->prdt_virt[1] = (1<<31) | ((uint16_t)(req->n_sectors*512));
@@ -239,7 +255,7 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
             this->select( 0xF0 );
         else
             this->select( 0xE0 );
-        kprintf("ata: sending transfer parameters.\n * n_sectors = %u\n * sector_start(LBA48) = %u\n", req->n_sectors, req->sector_start);
+        //kprintf("ata: sending transfer parameters.\n * n_sectors = %u\n * sector_start(LBA48) = %u\n", req->n_sectors, req->sector_start);
         io_outb( this->base+2, (req->n_sectors>>8)    & 0xFF );
         io_outb( this->base+3, (req->sector_start>>24)& 0xFF );
         io_outb( this->base+4, (req->sector_start>>32)& 0xFF );
@@ -254,18 +270,18 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
         this->error_handled = false;
         if( req->dma ) {
             if( req->read ) {
-                kprintf("ata: sending ATA_CMD_READ_DMA_EXT.\n");
+                //kprintf("ata: sending ATA_CMD_READ_DMA_EXT.\n");
                 io_outb( this->base+7, ATA_CMD_READ_DMA_EXT );
             } else {
-                kprintf("ata: sending ATA_CMD_WRITE_DMA_EXT.\n");
+                //kprintf("ata: sending ATA_CMD_WRITE_DMA_EXT.\n");
                 io_outb( this->base+7, ATA_CMD_WRITE_DMA_EXT );
             }
         } else {
             if( req->read ) {
-                kprintf("ata: sending ATA_CMD_READ_PIO_EXT.\n");
+                //kprintf("ata: sending ATA_CMD_READ_PIO_EXT.\n");
                 io_outb( this->base+7, ATA_CMD_READ_PIO_EXT );
             } else {
-                kprintf("ata: sending ATA_CMD_WRITE_PIO_EXT.\n");
+                //kprintf("ata: sending ATA_CMD_WRITE_PIO_EXT.\n");
                 io_outb( this->base+7, ATA_CMD_WRITE_PIO_EXT );
             }
         }
@@ -284,26 +300,26 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
         this->error_handled = false;
         if( req->dma ) {
             if( req->read ) {
-                kprintf("ata: sending ATA_CMD_READ_DMA.\n");
+                //kprintf("ata: sending ATA_CMD_READ_DMA.\n");
                 io_outb( this->base+7, ATA_CMD_READ_DMA );
             } else {
-                kprintf("ata: sending ATA_CMD_WRITE_DMA.\n");
+                //kprintf("ata: sending ATA_CMD_WRITE_DMA.\n");
                 io_outb( this->base+7, ATA_CMD_WRITE_DMA );
             }
         } else {
             if( req->read ) {
-                kprintf("ata: sending ATA_CMD_READ_PIO.\n");
+                //kprintf("ata: sending ATA_CMD_READ_PIO.\n");
                 io_outb( this->base+7, ATA_CMD_READ_PIO );
             } else {
-                kprintf("ata: sending ATA_CMD_WRITE_PIO.\n");
+                //kprintf("ata: sending ATA_CMD_WRITE_PIO.\n");
                 io_outb( this->base+7, ATA_CMD_WRITE_PIO );
             }
         }
     }
     
     if( !req->dma ) {
+        uint16_t* current = (uint16_t*)req->buffer.remap();
         for( unsigned int i=0;i<req->n_sectors;i++ ) {
-            uint16_t* current = (uint16_t*)req->buffer.buffer_virt;
             while( ((io_inb( this->control ) & 0x80) > 0) || ((io_inb( this->control ) & 0x8) == 0) );
             for(unsigned int j=0;i<256;i++) {
                 if( req->read )
@@ -315,8 +331,12 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
                 io_inb( this->control );
         }
         this->cache_flush();
-        kprintf("ata: PIO transfer complete.\n");
+        //kprintf("ata: PIO transfer complete.\n");
         req->status = true;
+        message out("transfer_complete", req, sizeof(ata_transfer_request));
+        req->requesting_process->send_message( out );
+        k_vmem_free( (size_t)current );
+        process_add_to_runqueue( req->requesting_process );
         this->delayed_starter->state = process_state::runnable; // indirectly schedule ourselves to run later
         process_add_to_runqueue(this->delayed_starter);
     } else {
@@ -327,18 +347,24 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
 
 void irq14_delayed_starter() {
     while(true) {
-        process_current->state = process_state::waiting;
-        process_switch_immediate();
-        ata_channels[0].transfer_cycle();
+        if( ata_channels[0].transfer_available() ) {
+            ata_channels[0].transfer_cycle();
+        } else {
+            process_current->state = process_state::waiting;
+            process_switch_immediate();
+        }
         //kprintf("IRQ14!\n");
     }
 }
 
 void irq15_delayed_starter() {
     while(true) {
-        process_current->state = process_state::waiting;
-        process_switch_immediate();
-        ata_channels[1].transfer_cycle();
+        if( ata_channels[1].transfer_available() ) {
+            ata_channels[1].transfer_cycle();
+        } else {
+            process_current->state = process_state::waiting;
+            process_switch_immediate();
+        }
         //kprintf("IRQ15!\n");
     }
 }
@@ -717,7 +743,6 @@ void* ata_do_disk_read( unsigned int channel, bool slave, uint64_t sector_start,
 } while(0)
 
 void ata_initialize() {
-    register_channel( "ata_transfer_complete", CHANNEL_MODE_BROADCAST );
     for(unsigned int i=0;i<pci_devices.count();i++) {
         pci_device *current = pci_devices[i];
         if( (current->class_code == 0x01) && (current->subclass_code == 0x01) ) {

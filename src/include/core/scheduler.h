@@ -83,6 +83,7 @@ typedef struct process {
     uint32_t                       break_val = PROCESS_BREAK_START;
     vector< process* >             children;
     process_times                  times;
+    char*                          message_waiting_on;
     
     bool operator==( const process& rhs ) { return (rhs.id == this->id); };
     bool operator!=( const process& rhs ) { return (rhs.id != this->id); };
@@ -116,12 +117,6 @@ extern vector<process*> system_processes;
 // initialization stuff
 extern void initialize_multitasking( process* );
 extern void multitasking_start_init();
-
-// messaging stuff
-extern message *wait_for_message( int, ... );
-extern message *wait_for_message();
-extern message *get_latest_message();
-extern int send_message_all( message msg );
 
 // process stuff
 extern void process_scheduler();

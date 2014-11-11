@@ -15,8 +15,9 @@ void io_register_disk( io_disk *dev ) {
     
     // read partitions:
     void *buf = kmalloc(512);
-    if( *((uint16_t*)(buf+0x1FE)) == 0xAA55 ) {
-        kprintf("io: found MBR on disk %u\n", dev->device_id);
+    io_read_disk( dev->device_id, buf, 0, 512 );
+    if( *((uint16_t*)(((uint32_t)buf)+510)) == 0xAA55 ) {
+        kprintf("io: found MBR on disk %u, buf=%#p\n", dev->device_id, buf);
         void *table = (buf+0x1BE);
         for( int i=0;i<4;i++ ) {
             void *cur_entry = (table+(i*16));
@@ -32,8 +33,13 @@ void io_register_disk( io_disk *dev ) {
             }
         }
     } else {
-        kprintf("io: found no MBR on disk %u (signature=%#x)\n", dev->device_id, *((uint16_t*)(buf+0x1FE)));
+        kprintf("io: found no MBR on disk %u (signature=%#x, buf=%#p)\n", dev->device_id, *((uint16_t*)(buf+0x1FE)), buf);
     }
+    /*
+    while( true ) {
+        asm volatile("hlt");
+    }
+    */
     kfree(buf);
 }
 

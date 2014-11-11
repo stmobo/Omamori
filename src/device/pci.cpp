@@ -126,19 +126,26 @@ void pci_register_function(uint8_t bus, uint8_t device, uint8_t func) {
         new_device->deviceID      = pci_read_config_16(bus, device, func, 2);
         // read BARs:
         for(int i=0;i<6;i++) {
-            pci_write_config_32(bus, device, func, 0x10 + (i*4), 0xFFFFFFFF);
             uint32_t bar = new_device->registers[i].raw = pci_read_config_32(bus, device, func, 0x10 + (i*4));
-            new_device->registers[i].phys_address   =  bar & 0xFFFFFFF0;
             new_device->registers[i].io_space  = (bar & 1);
+            if( bar & 1 ) {
+                new_device->registers[i].phys_address = bar & 0xFFFFFFFC;
+                new_device->registers[i].virt_address = new_device->registers[i].phys_address;
+            } else {
+                new_device->registers[i].phys_address = bar & 0xFFFFFFF0;
+            }
             new_device->registers[i].loc_area  = (bar & 6) >> 1;
             new_device->registers[i].cacheable = (bar & 8);
             
             // determine zero-forced bits
-            uint32_t tmp = (bar >> 4); // shift out RO bits
+            pci_write_config_32(bus, device, func, 0x10 + (i*4), 0xFFFFFFFF);
+            uint32_t n =  pci_read_config_32(bus, device, func, 0x10 + (i*4));
+            uint32_t tmp = (n >> 4); // shift out RO bits
             tmp = ~tmp & 0x0FFFFFFF;   // find out what's been set to 1
             tmp++;                     // now all of the masked bits should be set, so add one to bring it to a power of two
             
             new_device->registers[i].size      = tmp;
+            pci_write_config_32(bus, device, func, 0x10 + (i*4), bar);
         }
         pci_devices.add(new_device);
         char* ven_name = pci_get_ven_name(new_device->vendorID);

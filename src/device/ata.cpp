@@ -58,13 +58,14 @@ struct __ata_channel {
 	uint32_t              prdt_current;
     mutex                 lock;
     ata_transfer_request* current_transfer = NULL;
-    vector<ata_transfer_request*> *read_queue = NULL;
-    vector<ata_transfer_request*> *write_queue = NULL;
+    vector<ata_transfer_request*> read_queue;
+    vector<ata_transfer_request*> write_queue;
     bool                  current_operation = false; // false - read, true - write
     process*              delayed_starter;
     
     bool                  devices_present = false;
     ata_device            devices[2];
+    bool                  error_handled = false;
     
     void initialize( short, short, short );
     void do_identify();
@@ -107,6 +108,8 @@ void __ata_channel::do_identify() {
     
     kassert( ((this->devices[0].ident != NULL) && (this->devices[1].ident != NULL)), "Could not allocate space for IDENTIFY command!\n" );
     
+    this->error_handled = false;
+    
     this->select( 0xA0 );
     io_outb( this->base+2, 0 );
     io_outb( this->base+3, 0 );
@@ -119,13 +122,18 @@ void __ata_channel::do_identify() {
     uint8_t stat = io_inb( this->control );
     if( stat > 0 ) {
         // okay, there actually IS something here
-        while( (io_inb( this->control ) & 0x80) > 0 ); // wait for BSY to clear
-        if( !((io_inb( this->base+4 ) > 0) || (io_inb( this->base+5 ) > 0)) ) { // check for non-spec ATAPI devices
-            while( (io_inb( this->control ) & 0x09) == 0 ); // wait for either DRQ or ERR to set
-            if( (io_inb( this->control ) & 0x01) == 0 ) { // is ERR clear?
-                ata_do_pio_sector_transfer( this->channel_no, this->devices[0].ident, false ); // read 256 words of PIO data
-                this->devices[0].present = true;
+        if( !( (io_inb(this->base + 7) & 1) || ( (io_inb(this->base+4) == 0x14) && (io_inb(this->base+5) == 0xEB) ) ) ) { // is this an ATAPI / SATA device?
+            // if not, continue..
+            while( (io_inb( this->control ) & 0x80) > 0 ); // wait for BSY to clear
+            if( !((io_inb( this->base+4 ) > 0) || (io_inb( this->base+5 ) > 0)) ) { // check for non-spec ATAPI devices
+                while( (io_inb( this->control ) & 0x09) == 0 ); // wait for either DRQ or ERR to set
+                if( (io_inb( this->control ) & 0x01) == 0 ) { // is ERR clear?
+                    ata_do_pio_sector_transfer( this->channel_no, this->devices[0].ident, false ); // read 256 words of PIO data
+                    this->devices[0].present = true;
+                }
             }
+        } else {
+            this->error_handled = true;
         }
     }
     
@@ -140,22 +148,26 @@ void __ata_channel::do_identify() {
     
     stat = io_inb( this->control );
     if( stat > 0 ) {
-        while( (io_inb( this->control ) & 0x80) > 0 );
-        if( !((io_inb( this->base+4 ) > 0) || (io_inb( this->base+5 ) > 0)) ) {
-            while( (io_inb( this->control ) & 0x09) == 0 );
-            if( (io_inb( this->control ) & 0x01) == 0 ) {
-                ata_do_pio_sector_transfer( this->channel_no, this->devices[1].ident, false );
-                this->devices[1].present = true;
+        if( !( (io_inb(this->base + 7) & 1) || ( (io_inb(this->base+4) == 0x14) && (io_inb(this->base+5) == 0xEB) ) ) ) {
+            while( (io_inb( this->control ) & 0x80) > 0 );
+            if( !((io_inb( this->base+4 ) > 0) || (io_inb( this->base+5 ) > 0)) ) {
+                while( (io_inb( this->control ) & 0x09) == 0 );
+                if( (io_inb( this->control ) & 0x01) == 0 ) {
+                    ata_do_pio_sector_transfer( this->channel_no, this->devices[1].ident, false );
+                    this->devices[1].present = true;
+                }
             }
+        } else {
+            this->error_handled = true;
         }
     }
 }
 
 void __ata_channel::enqueue_request( ata_transfer_request* req ) {
     if( req->read ) {
-        this->read_queue->add_end( req );
+        this->read_queue.add_end( req );
     } else {
-        this->write_queue->add_end( req );
+        this->write_queue.add_end( req );
     }
     
     if( this->currently_idle ) {
@@ -167,9 +179,9 @@ void __ata_channel::enqueue_request( ata_transfer_request* req ) {
 void __ata_channel::transfer_cycle() {
     if( ata_controller.ready ) {
         this->current_operation = !this->current_operation;
-        if( (this->current_operation ? this->write_queue : this->read_queue)->count() == 0 ) {
+        if( (this->current_operation ? this->write_queue : this->read_queue).count() == 0 ) {
             this->current_operation = !this->current_operation;
-            if( (this->current_operation ? this->write_queue : this->read_queue)->count() == 0 ) {
+            if( (this->current_operation ? this->write_queue : this->read_queue).count() == 0 ) {
                 this->current_transfer = NULL;
                 this->currently_idle = true;
                 return;
@@ -184,7 +196,7 @@ void __ata_channel::transfer_cycle() {
             }
         }
         
-        this->current_transfer = (this->current_operation ? this->write_queue : this->read_queue)->remove();
+        this->current_transfer = (this->current_operation ? this->write_queue : this->read_queue).remove();
         this->transfer_start( this->current_transfer );
         this->currently_idle = false;
     }
@@ -239,6 +251,7 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
         io_outb( this->base+5, (req->sector_start>>16)& 0xFF );
         // send DMA command
         //kprintf("ata: sending DMA command.\n");
+        this->error_handled = false;
         if( req->dma ) {
             if( req->read ) {
                 kprintf("ata: sending ATA_CMD_READ_DMA_EXT.\n");
@@ -268,6 +281,7 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
         io_outb( this->base+5, (req->sector_start>>16)& 0xFF );
         // send DMA command
         //kprintf("ata: sending DMA command.\n");
+        this->error_handled = false;
         if( req->dma ) {
             if( req->read ) {
                 kprintf("ata: sending ATA_CMD_READ_DMA.\n");
@@ -347,22 +361,28 @@ void ata_error_checker() {
             uint8_t stat_0 = io_inb( ata_channels[0].control );
             uint8_t stat_1 = io_inb( ata_channels[1].control );
             if( ((stat_0 & 0x80) == 0) && ( ((stat_0 & 1) > 0) || ((stat_0 & 0x20) > 0) ) ) {
-                kprintf("ata: Error on channel 0.\n");
-                if( ((stat_0 & 1) > 0) )
-                    ata_print_error( io_inb( ata_channels[0].base+1 ) );
-                else if((stat_0 & 0x20) > 0)
-                    kprintf("ata: Drive fault.\n");
-                
-                last_time = get_sys_time_counter();
+                if( !ata_channels[0].error_handled ) {
+                    kprintf("ata: Error on channel 0.\n");
+                    if( ((stat_0 & 1) > 0) )
+                        ata_print_error( io_inb( ata_channels[0].base+1 ) );
+                    else if((stat_0 & 0x20) > 0)
+                        kprintf("ata: Drive fault.\n");
+                    
+                    last_time = get_sys_time_counter();
+                    ata_channels[0].error_handled = true;
+                }
             }
             if( ((stat_1 & 0x80) == 0) && ( ((stat_1 & 1) > 0) || ((stat_1 & 0x20) > 0) ) ) {
-                kprintf("ata: Error on channel 1.\n");
-                if( ((stat_1 & 1) > 0) )
-                    ata_print_error( io_inb( ata_channels[1].base+1 ) );
-                else if((stat_1 & 0x20) > 0)
-                    kprintf("ata: Drive fault.\n");
-                    
-                last_time = get_sys_time_counter();
+                if( !ata_channels[1].error_handled ) {
+                    kprintf("ata: Error on channel 1.\n");
+                    if( ((stat_1 & 1) > 0) )
+                        ata_print_error( io_inb( ata_channels[1].base+1 ) );
+                    else if((stat_1 & 0x20) > 0)
+                        kprintf("ata: Drive fault.\n");
+                        
+                    last_time = get_sys_time_counter();
+                    ata_channels[1].error_handled = true;
+                }
             }
         }
         process_switch_immediate();
@@ -503,8 +523,6 @@ void __ata_channel::initialize( short base, short control, short bus_master ) {
     this->select( 0x50 );
     io_outb( control, 0 );
     
-    this->read_queue         = new vector<ata_transfer_request*>;
-    this->write_queue        = new vector<ata_transfer_request*>;
     this->bus_master         = bus_master;
     
     // set PRDT addresses
@@ -528,13 +546,19 @@ void __ata_channel::initialize( short base, short control, short bus_master ) {
 }
 
 void __ata_controller::initialize() {
-    this->primary_channel   = this->device->registers[0].raw;
-    this->primary_control   = this->device->registers[1].raw;
-    this->secondary_channel = this->device->registers[2].raw;
-    this->secondary_control = this->device->registers[3].raw;
+    this->primary_channel   = 0x1F0; //this->device->registers[0].raw;
+    this->primary_control   = 0x3F6; //this->device->registers[1].raw;
+    this->secondary_channel = 0x170; //this->device->registers[2].raw;
+    this->secondary_control = 0x376; //this->device->registers[3].raw;
     this->dma_control_base  = this->device->registers[4].raw;
     
-    kprintf("ata: controller BMIDE registers at %s address 0x%x.\n", (this->device->registers[4].io_space ? "IO" : "Memory"), this->device->registers[4].raw);
+    /*
+    kprintf("ata: primary channel at %s address %#x.\n", (this->device->registers[0].io_space ? "IO" : "Memory"), this->device->registers[0].raw );
+    kprintf("ata: primary control at %s address %#x.\n", (this->device->registers[1].io_space ? "IO" : "Memory"), this->device->registers[1].raw );
+    kprintf("ata: secondary channel at %s address %#x.\n", (this->device->registers[2].io_space ? "IO" : "Memory"), this->device->registers[2].raw );
+    kprintf("ata: secondary control at %s address %#x.\n", (this->device->registers[3].io_space ? "IO" : "Memory"), this->device->registers[3].raw );
+    */
+    kprintf("ata: controller BMIDE registers at %s address %#x.\n", (this->device->registers[4].io_space ? "IO" : "Memory"), this->device->registers[4].raw);
     // PCI command register:
     pci_write_config_16( this->device->bus, this->device->device, this->device->func, 0x04, 0x5 ); // Bus Master Enable | I/O Space Enable
     
@@ -564,8 +588,8 @@ void __ata_controller::initialize() {
         }
     }
     
-    uint8_t test_ch0 = io_inb(this->device->registers[0].raw+7);
-    uint8_t test_ch1 = io_inb(this->device->registers[2].raw+7);
+    uint8_t test_ch0 = io_inb(this->primary_channel+7);
+    uint8_t test_ch1 = io_inb(this->secondary_channel+7);
     
     ata_channels[0].channel_no = 0;
     ata_channels[1].channel_no = 1;
@@ -586,7 +610,7 @@ void __ata_controller::initialize() {
     }
     
     if( test_ch0 != 0xFF ) {
-        ata_channels[0].initialize( this->device->registers[0].phys_address, this->device->registers[1].phys_address, this->device->registers[4].phys_address );
+        ata_channels[0].initialize( this->primary_channel, this->primary_control, this->device->registers[4].phys_address );
         ata_channels[0].delayed_starter = new process( (size_t)&irq14_delayed_starter, 0, false, "ata_ch0_delayedstarter", NULL, 0 );
         spawn_process( ata_channels[0].delayed_starter );
         
@@ -598,7 +622,7 @@ void __ata_controller::initialize() {
     }
     
     if( test_ch1 != 0xFF ) {
-        ata_channels[1].initialize( this->device->registers[2].phys_address, this->device->registers[3].phys_address, this->device->registers[4].phys_address+8 );
+        ata_channels[1].initialize( this->secondary_channel, this->secondary_control, this->device->registers[4].phys_address+8 );
         ata_channels[1].delayed_starter = new process( (size_t)&irq15_delayed_starter, 0, false, "ata_ch1_delayedstarter", NULL, 0 );
         spawn_process( ata_channels[1].delayed_starter );
         
@@ -686,6 +710,7 @@ void* ata_do_disk_read( unsigned int channel, bool slave, uint64_t sector_start,
 #define ___ata_register_io_disk(channel_no, device_no) do { \
     if( ata_channels[channel_no].devices[device_no].present ) { \
         ata_io_disk *disk = new ata_io_disk;\
+        disk->channel  = &ata_channels[channel_no];\
         disk->to_slave = (device_no == 1);\
         io_register_disk( disk );\
     } \

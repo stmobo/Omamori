@@ -7,10 +7,34 @@
 #include "core/scheduler.h"
 
 vector<io_disk*> io_disks;
+vector<io_partition*> io_partitions;
 
 void io_register_disk( io_disk *dev ) {
     dev->device_id = (io_disks.count()+1);
     io_disks.add_end( dev );
+    
+    // read partitions:
+    void *buf = kmalloc(512);
+    if( *((uint16_t*)(buf+0x1FE)) == 0xAA55 ) {
+        kprintf("io: found MBR on disk %u\n", dev->device_id);
+        void *table = (buf+0x1BE);
+        for( int i=0;i<4;i++ ) {
+            void *cur_entry = (table+(i*16));
+            if( *((uint8_t*)(cur_entry+4)) != 0 ) {
+                io_partition *part = new io_partition;
+                part->device  = dev->device_id;
+                part->id      = *((uint8_t*)(cur_entry+4));
+                part->start   = *((uint32_t*)(cur_entry+8));
+                part->size    = *((uint32_t*)(cur_entry+12));
+                part->part_id = io_partitions.count()+1;
+                io_partitions.add_end(part);
+                kprintf("io: read partition %u -- start=%u, size=%u, id=%#x\n", part->part_id, part->start, part->size, part->id);
+            }
+        }
+    } else {
+        kprintf("io: found no MBR on disk %u (signature=%#x)\n", dev->device_id, *((uint16_t*)(buf+0x1FE)));
+    }
+    kfree(buf);
 }
 
 io_disk *io_get_disk( unsigned int id ) {

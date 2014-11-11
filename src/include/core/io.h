@@ -38,6 +38,14 @@ struct io_disk {
     virtual unsigned int  get_total_size() =0;
 };
 
+struct io_partition {
+    unsigned int device;
+    unsigned int part_id;
+    uint32_t start;
+    uint32_t size;
+    uint8_t  id;
+};
+
 extern void io_register_disk( io_disk* );
 extern io_disk* io_get_disk( unsigned int );
 extern unsigned int io_get_disk_count();

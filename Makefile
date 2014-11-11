@@ -23,7 +23,7 @@ CORE_SRC	:= $(MAIN_SRC)/core
 DEVICE_SRC	:= $(MAIN_SRC)/device
 FS_SRC 	    := $(MAIN_SRC)/fs
 LIB_SRC 	:= $(MAIN_SRC)/lib
-SRC_DIRS    := $(ACPICA_SRC) $(ARCH_SRC) $(BOOT_SRC) $(CORE_SRC) $(DEVICE_SRC) $(LIB_SRC)
+SRC_DIRS    := $(ACPICA_SRC) $(ARCH_SRC) $(BOOT_SRC) $(CORE_SRC) $(FS_SRC) $(DEVICE_SRC) $(LIB_SRC)
 OBJ_DIRS    := $(subst $(MAIN_SRC),$(MAIN_OBJ),$(SRC_DIRS))
 
 # find all files of a certain type

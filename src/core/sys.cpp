@@ -120,15 +120,16 @@ bool interrupts_enabled() {
  */
  
 // 64-bit combined division / modulo operation
-unsigned long long __udivmoddi4( uint64_t dividend, uint64_t divisor, uint64_t *remainder ) {
+uint64_t __udivmoddi4( uint64_t dividend, uint64_t divisor, uint64_t *remainder ) {
     if( divisor == 0 ) {
-        return 5/(uint32_t)divisor;
+        asm volatile("int $0");
+        return 0;
     }
     
     // push the divisor all the way to the left
     uint64_t bit_to_add = 1;
     uint64_t quotient = 0;
-    while( (divisor&(1<<63)) != 0 ) {
+    while( ((int64_t)divisor) >= 0 ) {
         divisor <<= 1;
         bit_to_add <<= 1;
     }
@@ -147,11 +148,11 @@ unsigned long long __udivmoddi4( uint64_t dividend, uint64_t divisor, uint64_t *
     return quotient;
 } 
 
-unsigned long long __udivdi3( uint64_t dividend, uint64_t divisor ) {
+uint64_t __udivdi3( uint64_t dividend, uint64_t divisor ) {
     return __udivmoddi4( dividend, divisor, NULL );
 }
 
-unsigned long long __umoddi3( uint64_t dividend, uint64_t divisor ) {
+uint64_t __umoddi3( uint64_t dividend, uint64_t divisor ) {
     uint64_t ret = 0;
     __udivmoddi4( dividend, divisor, &ret );
     return ret;

@@ -262,6 +262,24 @@ int get_n_digits( int num, int base ) {
     return i;
 }
 
+signed int atoi( char* num ) {
+    signed int n = 0;
+    int i = 0;
+    int len = strlen(num);
+    bool neg = false;
+    if( num[i] == '-' ) {
+        neg = true;
+        i++;
+    }
+    for(;i<len;i++) {
+        n *= 10;
+        n += digit_to_int( num[i] );
+    }
+    if( neg )
+        n = -n;
+    return n;
+}
+
 char* itoa( signed long long int num, int base, bool add_space, bool add_plus, bool add_prefix ) {
     bool neg = ((num < 0) && (base == 10));
     int len = 0;

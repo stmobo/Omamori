@@ -143,7 +143,7 @@ void io_read_disk( unsigned int disk_no, void* out_buffer, uint64_t start_pos, u
         return; // error message?
     }
     bool manual_read_required = ( (read_amt % device->get_sector_size()) != 0 );
-    uint64_t n_sectors = ( read_amt / device->get_sector_size() ) + ( manual_read_required ? 0 : 1 );
+    uint64_t n_sectors = ( read_amt / device->get_sector_size() ) + ( manual_read_required ? 1 : 0 );
     uint64_t sector_start = ( start_pos / device->get_sector_size() );
     
     transfer_buffer  *tmp_buffer = new transfer_buffer( n_sectors * device->get_sector_size() );
@@ -157,7 +157,7 @@ void io_read_disk( unsigned int disk_no, void* out_buffer, uint64_t start_pos, u
     uint8_t *dst_ptr = (uint8_t*)out_buffer;
     uint8_t *src_ptr = (uint8_t*)(tmp_buffer->buffer_virt);
     for( unsigned int i=0;i<read_amt;i++ ) {
-        dst_ptr[i] = src_ptr[ (read_amt % device->get_sector_size())+i ];
+        dst_ptr[i] = src_ptr[ i ];
     }
     
     delete req;
@@ -171,7 +171,7 @@ void io_write_disk( unsigned int disk_no, void* out_buffer, uint64_t start_pos, 
         return; // error message?
     }
     bool manual_read_required = ( (write_amt % device->get_sector_size()) != 0 );
-    uint64_t n_sectors = ( write_amt / device->get_sector_size() ) + ( manual_read_required ? 0 : 1 );
+    uint64_t n_sectors = ( write_amt / device->get_sector_size() ) + ( manual_read_required ? 1 : 0 );
     uint64_t sector_start = ( start_pos / device->get_sector_size() );
     
     transfer_buffer  *tmp_buffer = new transfer_buffer( n_sectors * device->get_sector_size() );
@@ -184,7 +184,7 @@ void io_write_disk( unsigned int disk_no, void* out_buffer, uint64_t start_pos, 
     }
     
     for( unsigned int i=0;i<write_amt;i++ ) {
-        dst_ptr[ (write_amt % device->get_sector_size())+i ] = src_ptr[i];
+        dst_ptr[ i ] = src_ptr[i];
     }
     
     device->send_request( req );

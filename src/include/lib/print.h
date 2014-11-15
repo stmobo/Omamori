@@ -14,6 +14,7 @@ extern char* append_char(char*, char);
 extern char* concatentate_strings(char*, char*);
 extern void  reverse(char*);
 extern int   get_n_digits(int num, int base=10);
+extern signed int atoi( char* );
 extern char* itoa( signed long long int num, int base=10, bool add_space=false, bool add_plus=false, bool add_prefix=false );
 extern char* dtoa( double num, int precision=6, int base=10, bool add_space=false, bool add_plus=false );
 extern char* dtosn( double num, int precision=18, int base=10, bool add_space=false, bool add_plus=false );

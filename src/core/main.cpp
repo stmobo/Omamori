@@ -75,9 +75,9 @@ void test_process_1() {
                     kprintf("Process %u: Up!\n", process_current->id);
                 } else if( kp->key == KEY_CurDown ) {
                     kprintf("Process %u: Down!\n", process_current->id);
-                } else if( kp->key == KEY_Enter ) {
+                /*} else if( kp->key == KEY_Enter ) {
                     kprintf("Process %u: Forcing ATA cache flush...\n", process_current->id);
-                    ata_do_cache_flush();
+                    ata_do_cache_flush(); */
                 }
             }
         }
@@ -114,12 +114,43 @@ void test_process_1() {
         kprintf("Initializing AHCI.\n");
         ahci_initialize();
         
+        // hacked-together raw disk function:
+        while( true ) {
+            unsigned int len = 0;
+            kprintf("sector_n > ");
+            char* sector_str = ps2_keyboard_readline(&len);
+            if( len > 0 ) {
+                uint32_t sector = atoi( sector_str );
+                void *buf = kmalloc(512);
+                io_read_partition( 1, buf, sector*512, 512 );
+                uint8_t *buf2 = (uint8_t*)buf;
+                for( int i=0;i<512;i+=16 ) {
+                    kprintf("%#02x: ", i);
+                    for( int j=0;j<16;j++ ) {
+                        kprintf("%02x ", buf2[i+j]);
+                    }
+                    kprintf("\n");
+                    set_message_listen_status( "keypress", true );
+                    while(true) {
+                        unique_ptr<ps2_keypress> kp;
+                        kp = ps2_keyboard_get_keystroke();
+                        if( !kp->released ) {
+                            if( kp->key == KEY_Enter ) {
+                                break;
+                            }
+                        }
+                    }
+                }
+                kfree(buf);
+            }
+            kfree(sector_str);
+        }
         // hacked-together ls:
+        /*
         kprintf("Reading partition 1 as FAT32...");
         fat32_fs *fs = new fat32_fs( 1 );
         kprintf("Reading root directory...\n");
         vfs_directory *root = fs->read_directory(0);
-        /*
         for( int i=0;i<root->files.count();i++ ) {
             kprintf("* %u - %s\n", i, root->files[i]->name);
         }

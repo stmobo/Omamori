@@ -7,15 +7,24 @@ struct vfs_attributes {
     uint64_t ctime = 0;
     uint64_t atime = 0;
     uint64_t mtime = 0;
+    char* fstype;
 };
 
-struct vfs_file {
+struct vfs_node {
     char *name;
+    void *fs_info;
     vfs_attributes attr;
-    void *fs_data;
+    vfs_node* parent;
+    
+    vfs_node( vfs_node* p, void* d ) : fs_info(d), parent(p) {}
 };
 
-struct vfs_directory {
-    vector<vfs_file*> files;
-    void *fs_data;
+struct vfs_file : public vfs_node {
+    uint64_t size;
+    using vfs_node::vfs_node;
+};
+
+struct vfs_directory : public vfs_node {
+    vector<vfs_node*> files;
+    using vfs_node::vfs_node;
 };

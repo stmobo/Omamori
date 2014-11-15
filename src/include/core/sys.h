@@ -29,7 +29,8 @@ extern "C" {
     #define get_return_address(var) asm volatile("mov 4(%%ebp), %0" : "=r"(var) : : "memory");
 
     #define system_halt asm volatile("cli\n\t"\
-    "hlt" \
+    "hlt\n\t" \
+    "sti" \
     : : : "memory");
     #define system_wait_for_interrupt() asm volatile("hlt" : : : "memory");
     #define system_disable_interrupts() asm volatile("cli" : : : "memory");

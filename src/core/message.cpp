@@ -175,20 +175,25 @@ message* wait_for_message( char *type ) {
             }
             process_switch_immediate();
         }
-        process_current->state = process_state::runnable;
-        message* ret;
-        process_current->message_queue_lock.lock();
-        //kprintf("wait_for_message: count is now %u.\n", process_current->message_queue->count());
-        sort_message_queue( *process_current->message_queue );
-        for(int i=0;i<process_current->message_queue->count();i++) {
-            //kprintf("[wait-any] process %u received message of type %s\n", process_current->id, process_current->message_queue->get(i)->type);
-            ret = process_current->message_queue->get(i);
-            if( ret != NULL ) {
-                process_current->message_queue->remove(i);
-                break;
+        message* ret = NULL;
+        while( ret == NULL ) {
+            process_current->state = process_state::runnable;
+            process_current->message_queue_lock.lock();
+            //kprintf("wait_for_message: count is now %u.\n", process_current->message_queue->count());
+            sort_message_queue( *process_current->message_queue );
+            for(int i=0;i<process_current->message_queue->count();i++) {
+                //kprintf("[wait-any] process %u received message of type %s\n", process_current->id, process_current->message_queue->get(i)->type);
+                ret = process_current->message_queue->get(i);
+                if( ret != NULL ) {
+                    process_current->message_queue->remove(i);
+                    break;
+                }
             }
+            process_current->message_queue_lock.unlock();
+            
+            process_current->state = process_state::waiting;
+            process_switch_immediate();
         }
-        process_current->message_queue_lock.unlock();
         //kprintf("process %u (%s): Got a message of type %s! (cycled %u times)\n", (unsigned long long int)process_current->id, process_current->name, ret->type, (unsigned long long int)n_times_cycled);
         return ret;
     }

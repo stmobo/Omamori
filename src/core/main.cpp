@@ -114,7 +114,49 @@ void test_process_1() {
         kprintf("Initializing AHCI.\n");
         ahci_initialize();
         
+        // format partition 1 as FAT (using our own code):
+        //fat32_do_format( 1 );
+        
+        const char* test_file_name = "test.txt";
+        
+        fat32_fs f( 1 );
+        
+        vfs_directory *root = f.root_dir_vfs;
+        vfs_file *test_file = NULL;
+        kprintf( "Directory listing:\n" );
+        for( unsigned int i=0;i<root->files.count();i++) {
+            vfs_node *fn = root->files[i];
+            kprintf( "* %u - %s\n", i, fn->name );
+        }
+        
+        for( unsigned int i=0;i<root->files.count();i++) {
+            vfs_node *fn = root->files[i];
+            if( strcmp(fn->name, const_cast<char*>(test_file_name) ) ) {
+                test_file = (vfs_file*)fn;
+                break;
+            }
+        }
+        
+        const char* test_file_str = "hello world!";
+        if( test_file != NULL ) {
+            void *data = kmalloc((test_file->size)+1);
+            char *str_data = (char*)data;
+            f.read_file( test_file, data );
+            kprintf("reading test file: '%s' (should be '%s')\n", str_data, test_file_str);
+        } else {
+            test_file = f.create_file( (unsigned char*)(test_file_name), f.root_dir_vfs );
+            
+            void *data = kmalloc(strlen(const_cast<char*>(test_file_str))+1);
+            char *str_data = (char*)data;
+            memcpy( data, (void*)test_file_str, strlen(const_cast<char*>(test_file_str)) );
+            str_data[strlen(const_cast<char*>(test_file_str))] = '\0';
+            
+            f.write_file( test_file, data, strlen(const_cast<char*>(test_file_str))+1 );
+            kprintf("test file created!\n");
+        }
+        
         // hacked-together raw disk function:
+        /*
         while( true ) {
             unsigned int len = 0;
             kprintf("sector_n > ");
@@ -145,6 +187,7 @@ void test_process_1() {
             }
             kfree(sector_str);
         }
+        */
         // hacked-together ls:
         /*
         kprintf("Reading partition 1 as FAT32...");

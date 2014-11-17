@@ -1222,6 +1222,8 @@ void panic(char *str, ...) {
         kvsnprintf(buf, len+1, str, args2);
         panic_str = buf; // okay, save the formatted string since we now have it.
         
+        logger_flush_buffer();
+        
         terminal_writestring("panic: ");
         terminal_writestring(buf);
         kprintf("Initiating process: %u (\"%s\") / %p -- esp=%#x", process_current->id, process_current->name, process_current, process_current->regs.esp);

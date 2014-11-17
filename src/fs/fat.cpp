@@ -39,19 +39,82 @@ fat32_fs::fat32_fs( unsigned int part_no ) {
     kprintf("fat32: data located at %#p\n", (void*)(this->sector_one));
     
     //while(true) { asm volatile("hlt"); }
+    // read the root directory:
+    
+    uint64_t n_clusters = 0;
+    void *data = this->get_cluster_chain( this->root_cluster, &n_clusters );
+    this->root_dir_fat = new fat_directory( NULL );
+    this->root_dir_vfs = new vfs_directory( NULL, this->root_dir_fat ); // possibly fill the "parent" area with a pointer to the mount point?
+    // we'll do that when the VFS is more fleshed-out
+    
+    this->root_dir_fat->direntry.start_cluster_hi = 0;
+    this->root_dir_fat->direntry.start_cluster_lo = 2;
+    
+    this->root_dir_vfs->attr.fstype = "fat32";
+    this->root_dir_vfs->name = NULL;
+    
+    fat_direntry *cur = (fat_direntry*)data;
+    fat_file *cur_file = new fat_file( NULL );
+    
+    for(int i=0;i<n_clusters;i++) {
+        for(int j=0;j<(this->sectors_per_cluster*16);j++) { // (this->sectors_per_cluster*512) / 32 = (this->sectors_per_cluster*16)
+            // iterate 16 times for each sector in this cluster
+            if( cur->shortname[0] == 0 ) { // no more directory entries
+                kprintf("fat32: end of entry list at entry %u, cluster %u\n", j, i);
+                goto __fat32_read_root_directory_loop_end;
+            }
+            if( cur->shortname[0] != 0xE5 ) {
+                if( cur->attr == 0x0F ) { // long name entry
+                    kprintf("fat32: found long name directory entry (ent num %u)\n", j, i);
+                    fat_longname *ln = new fat_longname;
+                    memcpy( (void*)ln, (void*)cur, sizeof(fat_longname) );
+                    cur_file->name_entries.add_end( ln );
+                } else {
+                    kprintf("fat32: found 8.3 directory entry (ent num %u, cluster %u)\n", j, i);
+                    cur_file->direntry = *cur;
+                    
+                    vfs_node *node;
+                    if( cur->attr & 0x10 ) {
+                        node = new vfs_directory( this->root_dir_vfs, (void*)cur_file );
+                        node->fs_info = kmalloc( sizeof(fat_directory) );
+                        memcpy( node->fs_info, (void*)cur_file, sizeof(fat_directory) );
+                    } else {
+                        node = new vfs_file( this->root_dir_vfs, (void*)cur_file );
+                        node->fs_info = kmalloc( sizeof(fat_file) );
+                        vfs_file *fn = (vfs_file*)node;
+                        fn->size = cur->fsize;
+                        memcpy( node->fs_info, (void*)cur_file, sizeof(fat_file) );
+                    }
+                    node->attr.read_only = ( cur->attr & 1 );
+                    node->attr.hidden    = ( cur->attr & 2 );
+                    node->attr.fstype = "fat32";
+                    node->name = fat32_construct_longname( cur_file->name_entries );
+                    
+                    this->root_dir_vfs->files.add( node );
+                    this->root_dir_fat->files.add(cur_file);
+                    cur_file = new fat_file( (fat_file*)this->root_dir_fat );
+                }
+            }
+            cur++;
+        }
+    }
+    __fat32_read_root_directory_loop_end:
+    delete cur_file;
+    kfree(data);
 }
 
-vfs_directory *fat32_fs::read_directory( vfs_directory *parent, fat_directory *ent, char *name ) {
+vfs_directory *fat32_fs::read_directory( vfs_directory *parent, fat_directory *ent ) {
     uint32_t cluster = ((ent->direntry.start_cluster_hi)<<16) | (ent->direntry.start_cluster_lo);
     
     uint64_t n_clusters = 0;
     void *data = this->get_cluster_chain( cluster, &n_clusters );
     fat_direntry *cur = (fat_direntry*)data;
-    fat_file *cur_file = new fat_file( ((fat_file*)(parent->fs_info)), cur );
+    fat_file *cur_file = new fat_file( ((fat_file*)(parent->fs_info)) );
     vfs_directory *vfs = new vfs_directory( parent, (void*)ent );
     
     vfs->attr.fstype = "fat32";
-    vfs->name = (char*)kmalloc(strlen((char*)name));
+    char* name = fat32_construct_longname( ent->name_entries );
+    vfs->name = (char*)kmalloc(strlen(name));
     for( int i=0; i<strlen((char*)name); i++) {
         vfs->name[i] = name[i];
     }
@@ -76,8 +139,14 @@ vfs_directory *fat32_fs::read_directory( vfs_directory *parent, fat_directory *e
                     vfs_node *node;
                     if( cur->attr & 0x10 ) {
                         node = new vfs_directory( vfs, (void*)cur_file );
+                        node->fs_info = kmalloc( sizeof(fat_directory) );
+                        memcpy( node->fs_info, (void*)cur_file, sizeof(fat_directory) );
                     } else {
                         node = new vfs_file( vfs, (void*)cur_file );
+                        node->fs_info = kmalloc( sizeof(fat_file) );
+                        vfs_file *fn = (vfs_file*)node;
+                        fn->size = cur->fsize;
+                        memcpy( node->fs_info, (void*)cur_file, sizeof(fat_file) );
                     }
                     node->attr.read_only = ( cur->attr & 1 );
                     node->attr.hidden    = ( cur->attr & 2 );
@@ -86,7 +155,7 @@ vfs_directory *fat32_fs::read_directory( vfs_directory *parent, fat_directory *e
                     
                     vfs->files.add( node );
                     ent->files.add(cur_file);
-                    cur_file = new fat_file( ((fat_file*)(parent->fs_info)), cur );
+                    cur_file = new fat_file( ((fat_file*)(parent->fs_info)) );
                 }
             }
             cur++;
@@ -164,6 +233,7 @@ vfs_file* fat32_fs::create_file( unsigned char* name, vfs_directory *parent ) { 
     }
     ret->name[strlen((char*)name)] = '\0';
     ret->attr.fstype = "fat32";
+    ret->size = 0;
     
     return ret;
 }
@@ -273,7 +343,7 @@ void fat32_fs::delete_file( vfs_file *file ) {
 void fat32_fs::read_file( vfs_file *file, void* out ) {
     fat_file *fn = (fat_file*)file->fs_info;
     
-    if( fn->cluster == 0 )
+    if( fn->cluster == 0 ) // does the file exist?
         return;
     
     void *cluster_data = this->get_cluster_chain( fn->cluster, NULL );
@@ -281,7 +351,7 @@ void fat32_fs::read_file( vfs_file *file, void* out ) {
     kfree(cluster_data);
 }
 
-void fat32_fs::write_file( vfs_node *file, void* in, size_t size ) {
+void fat32_fs::write_file( vfs_file *file, void* in, size_t size ) {
     fat_file *fn = (fat_file*)file->fs_info;
     uint32_t cluster = ((fn->direntry.start_cluster_hi)<<16) | (fn->direntry.start_cluster_lo);
     bool update_first_cluster = false;
@@ -517,10 +587,8 @@ vector<uint32_t> *fat32_fs::read_cluster_chain( uint32_t start, uint64_t* n_clus
         kprintf("fat32: current cluster=%u / %#x\n", current, current);
         kprintf("fat32: data at %#p\n", buf);
         
-        /*
         logger_flush_buffer();
         system_halt;
-        */
         
         if( ( (next != 0) && !( (next & 0x0FFFFFFF) >= 0x0FFFFFF8 ) ) && ( (this->n_reserved_sectors + ( (current*4) / 512 )) != (this->n_reserved_sectors + ( (next*4) / 512 )) ) ) { // if this isn't the end of the chain and the next sector to read is different...
             do_read = true;
@@ -898,14 +966,18 @@ void fat32_do_format( unsigned int part_id ) {
     kfree(bpb);
     kfree(fsinfo);
     
-    // mark cluster 2 allocated (set it to EOC for now)
+    // write out first FAT (allocate cluster 2):
+    
+    uint32_t fat_sector = 32 + ( (2*4) / 512 );
+    uint32_t fat_offset = (2*4) % 512;
+    
     void *buf = kmalloc(512);
-    uint8_t* cluster = (uint8_t*)buf;
+    uint8_t* cluster_data = (uint8_t*)buf;
     ptr_int = (uintptr_t)buf;
     
-    io_read_partition( part_id, buf, 32*512, 512 );
-    *((uint32_t*)(cluster+8)) = 0x0FFFFFF8;
-    io_write_partition( part_id, buf, 32*512, 512 );
+    //io_read_partition( this->part_no, buf, fat_sector*512, 512 );
+    *((uint32_t*)(&cluster_data[fat_offset])) = 0x0FFFFFF8;
+    io_write_partition( part_id, buf, fat_sector * 512, 512 );
     
     kfree(buf);
     delete part;

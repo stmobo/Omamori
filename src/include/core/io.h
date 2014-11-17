@@ -6,7 +6,7 @@
 #include "core/scheduler.h"
 
 typedef struct transfer_buffer {
-    void        *buffer_virt;
+    //void        *buffer_virt;
     void        *buffer_phys;
     page_frame  *frames;
     unsigned int n_frames;

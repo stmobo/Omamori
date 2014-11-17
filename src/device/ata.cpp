@@ -267,21 +267,22 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
         io_outb( this->base+5, (req->sector_start>>16)& 0xFF );
         // send DMA command
         //kprintf("ata: sending DMA command.\n");
+        while( ((io_inb( this->control ) & ATA_SR_DRDY) == 0) );
         this->error_handled = false;
         if( req->dma ) {
             if( req->read ) {
-                //kprintf("ata: sending ATA_CMD_READ_DMA_EXT.\n");
+                kprintf("ata: sending ATA_CMD_READ_DMA_EXT.\n");
                 io_outb( this->base+7, ATA_CMD_READ_DMA_EXT );
             } else {
-                //kprintf("ata: sending ATA_CMD_WRITE_DMA_EXT.\n");
+                kprintf("ata: sending ATA_CMD_WRITE_DMA_EXT.\n");
                 io_outb( this->base+7, ATA_CMD_WRITE_DMA_EXT );
             }
         } else {
             if( req->read ) {
-                //kprintf("ata: sending ATA_CMD_READ_PIO_EXT.\n");
+                kprintf("ata: sending ATA_CMD_READ_PIO_EXT.\n");
                 io_outb( this->base+7, ATA_CMD_READ_PIO_EXT );
             } else {
-                //kprintf("ata: sending ATA_CMD_WRITE_PIO_EXT.\n");
+                kprintf("ata: sending ATA_CMD_WRITE_PIO_EXT.\n");
                 io_outb( this->base+7, ATA_CMD_WRITE_PIO_EXT );
             }
         }
@@ -297,21 +298,22 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
         io_outb( this->base+5, (req->sector_start>>16)& 0xFF );
         // send DMA command
         //kprintf("ata: sending DMA command.\n");
+        while( ((io_inb( this->control ) & ATA_SR_DRDY) == 0) ); // wait on drive ready
         this->error_handled = false;
         if( req->dma ) {
             if( req->read ) {
-                //kprintf("ata: sending ATA_CMD_READ_DMA.\n");
+                kprintf("ata: sending ATA_CMD_READ_DMA.\n");
                 io_outb( this->base+7, ATA_CMD_READ_DMA );
             } else {
-                //kprintf("ata: sending ATA_CMD_WRITE_DMA.\n");
+                kprintf("ata: sending ATA_CMD_WRITE_DMA.\n");
                 io_outb( this->base+7, ATA_CMD_WRITE_DMA );
             }
         } else {
             if( req->read ) {
-                //kprintf("ata: sending ATA_CMD_READ_PIO.\n");
+                kprintf("ata: sending ATA_CMD_READ_PIO.\n");
                 io_outb( this->base+7, ATA_CMD_READ_PIO );
             } else {
-                //kprintf("ata: sending ATA_CMD_WRITE_PIO.\n");
+                kprintf("ata: sending ATA_CMD_WRITE_PIO.\n");
                 io_outb( this->base+7, ATA_CMD_WRITE_PIO );
             }
         }
@@ -319,18 +321,32 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
     
     if( !req->dma ) {
         uint16_t* current = (uint16_t*)req->buffer.remap();
+        kprintf("ata: buffer at %#p physical, %#p virtual.\n", req->buffer.buffer_phys, (void*)current);
         for( unsigned int i=0;i<req->n_sectors;i++ ) {
-            while( ((io_inb( this->control ) & 0x80) > 0) || ((io_inb( this->control ) & 0x8) == 0) );
-            for(unsigned int j=0;i<256;i++) {
+            while( ((io_inb( this->control ) & ATA_SR_BSY) > 0) || ((io_inb( this->control ) & ATA_SR_DRQ) == 0) );
+            for(unsigned int j=0;j<256;j++) {
                 if( req->read )
                     *current++ = io_inw( this->base );
                 else
                     io_outw( this->base, *current++ );
             }
-            for(int i=0;i<4;i++) // 400 ns delay
+            for(int k=0;k<4;k++) // 400 ns delay
                 io_inb( this->control );
         }
-        this->cache_flush();
+        if( !req->read ) {
+            if(req->to_slave) {
+                this->select( 0x10 );
+            } else {
+                this->select( 0 );
+            }
+            while( ((io_inb( this->control ) & ATA_SR_BSY) > 0) || ((io_inb( this->control ) & ATA_SR_DRDY) == 0) );
+            if( is_lba48 ) {
+                io_outb( this->base+7, ATA_CMD_CACHE_FLUSH_EXT );
+            } else {
+                io_outb( this->base+7, ATA_CMD_CACHE_FLUSH );
+            }
+            while( ((io_inb( this->control ) & ATA_SR_BSY) > 0) );
+        }
         //kprintf("ata: PIO transfer complete.\n");
         req->status = true;
         message out("transfer_complete", req, sizeof(ata_transfer_request));
@@ -339,6 +355,7 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
         process_add_to_runqueue( req->requesting_process );
         this->delayed_starter->state = process_state::runnable; // indirectly schedule ourselves to run later
         process_add_to_runqueue(this->delayed_starter);
+        
     } else {
         uint8_t current_bmdma_cmd = io_inb( this->bus_master ); // start DMA
         io_outb(this->bus_master, current_bmdma_cmd | 1);
@@ -505,6 +522,7 @@ void __ata_channel::cache_flush() {
     } else {
         io_outb( this->base+7, ATA_CMD_CACHE_FLUSH );
     }
+    this->wait_bsy();
     
     this->select( ATA_SLAVE );
     this->wait_bsy();
@@ -513,6 +531,7 @@ void __ata_channel::cache_flush() {
     } else {
         io_outb( this->base+7, ATA_CMD_CACHE_FLUSH );
     }
+    this->wait_bsy();
 }
 
 void ata_device::initialize() {

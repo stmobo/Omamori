@@ -42,6 +42,7 @@ struct fat_file {
     uint32_t cluster;
     fat_file *parent;
     
+    fat_file( fat_file* p ) : parent(p) {}
     fat_file( fat_file* p, fat_direntry *ent ) : direntry(*ent), parent(p) {}
 };
 
@@ -54,7 +55,6 @@ class fat32_fs {
     private:
     uint8_t sector_one[512];
     
-    public:
     unsigned int part_no;
     //uint16_t bytes_per_sector;  // offset 11
     uint8_t sectors_per_cluster;  // offset 13
@@ -72,6 +72,11 @@ class fat32_fs {
     uint32_t n_data_sectors;
     uint32_t n_clusters;
     
+    fat_directory *root_dir_fat;
+    
+    public:
+    vfs_directory *root_dir_vfs;
+    
     // constructors
     fat32_fs(unsigned int);
     fat32_fs( unsigned int device_no, unsigned int part_no ) : fat32_fs( io_part_ids_to_global(device_no, part_no) ) {};
@@ -81,10 +86,10 @@ class fat32_fs {
     vfs_directory* create_directory( unsigned char*, vfs_directory* );
     void delete_file( vfs_file* );
     void read_file( vfs_file*, void* );
-    void write_file( vfs_node*, void*, size_t);
+    void write_file( vfs_file*, void*, size_t);
     void copy_file( vfs_file*, vfs_directory* );
     void move_file( vfs_file*, vfs_directory* );
-    vfs_directory *read_directory( vfs_directory*, fat_directory*, char* );
+    vfs_directory *read_directory( vfs_directory*, fat_directory* );
     
     // cluster chain manipulation
     vector<uint32_t> *read_cluster_chain( uint32_t start, uint64_t* n_clusters=NULL );

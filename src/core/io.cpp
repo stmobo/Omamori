@@ -114,20 +114,20 @@ transfer_buffer::transfer_buffer( unsigned int n_bytes ) {
     this->n_frames = ( (this->size-(this->size%0x1000)) / 0x1000 )+1;
     
     this->frames = pageframe_allocate( this->n_frames );
-    //this->buffer_virt = (void*)k_vmem_alloc( n_frames );
+    this->buffer_virt = (void*)k_vmem_alloc( n_frames );
     this->buffer_phys = (void*)this->frames[0].address;
-    /*
     for(unsigned int i=0;i<this->n_frames;i++) {
         if( !((i <= 0) || (this->frames[i].address == (this->frames[i-1].address+0x1000))) )
             panic("io: Could not allocate contiguous frames for DMA buffer!\n");
         paging_set_pte( ((size_t)this->buffer_virt)+(i*0x1000), this->frames[i].address,0x81 );
     }
-    */
 }
 
 void *transfer_buffer::remap() {
-    void *buf = (void*)k_vmem_alloc( this->n_frames );
+    void *buf = (void*)k_vmem_alloc( n_frames );
     for(unsigned int i=0;i<this->n_frames;i++) {
+        if( !((i <= 0) || (this->frames[i].address == (this->frames[i-1].address+0x1000))) )
+            panic("io: Could not allocate contiguous frames for DMA buffer!\n");
         paging_set_pte( ((size_t)buf)+(i*0x1000), this->frames[i].address,0x81 );
     }
     return buf;
@@ -155,14 +155,13 @@ void io_read_disk( unsigned int disk_no, void* out_buffer, uint64_t start_pos, u
     req->wait();
     
     uint8_t *dst_ptr = (uint8_t*)out_buffer;
-    uint8_t *src_ptr = (uint8_t*)(tmp_buffer->remap());
+    uint8_t *src_ptr = (uint8_t*)(tmp_buffer->buffer_virt);
     for( unsigned int i=0;i<read_amt;i++ ) {
         dst_ptr[i] = src_ptr[ i ];
     }
     
     delete req;
     delete tmp_buffer;
-    k_vmem_free( (size_t)src_ptr );
 }
 
 void io_write_disk( unsigned int disk_no, void* out_buffer, uint64_t start_pos, uint64_t write_amt ) {
@@ -179,7 +178,7 @@ void io_write_disk( unsigned int disk_no, void* out_buffer, uint64_t start_pos, 
     transfer_request *req        = new transfer_request( tmp_buffer, sector_start, n_sectors, false );
     
     uint8_t *src_ptr = (uint8_t*)out_buffer;
-    uint8_t *dst_ptr = (uint8_t*)(tmp_buffer->remap());
+    uint8_t *dst_ptr = (uint8_t*)(tmp_buffer->buffer_virt);
     for( unsigned int i=0;i<(write_amt % device->get_sector_size());i++ ) {
         dst_ptr[i] = 0;
     }
@@ -193,7 +192,6 @@ void io_write_disk( unsigned int disk_no, void* out_buffer, uint64_t start_pos, 
     req->wait();
     
     delete req;
-    k_vmem_free( (size_t)dst_ptr );
 }
 
 void io_read_partition( unsigned int global_part_id, void *out_buffer, uint64_t start_pos, uint64_t read_amt ) {

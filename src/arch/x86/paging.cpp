@@ -63,9 +63,9 @@ void paging_set_pte(size_t vaddr, size_t paddr, uint16_t flags) {
     if( (pte & 1) > 0 ) {
         // okay, so there's already a mapping present for this page.
         // we need to swap it out, but we don't have a hard disk driver yet.
-        // so right now we just exit noisily.
+        // so right now we just let it be.
         //kprintf("paging: Attempted to map vaddr 0x%x when mapping already present!\n", (unsigned long long int)vaddr);
-        return; 
+        //return; 
     }
     table[table_offset] = paddr | (flags & 0xFFF) | 1;
     invalidate_tlb( vaddr );
@@ -120,7 +120,7 @@ uint32_t paging_get_pte(size_t vaddr) {
     
     uint32_t *table = (uint32_t*)(0xFFC00000+(table_no*0x1000));
     uint32_t pte = table[table_offset];
-    if( (pte & 1) > 0 ) {
+    if( (pte & 1) == 0 ) {
         // no PTE for address
         return 0xFFFFFFFF;
     }

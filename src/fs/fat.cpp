@@ -587,8 +587,10 @@ vector<uint32_t> *fat32_fs::read_cluster_chain( uint32_t start, uint64_t* n_clus
         kprintf("fat32: current cluster=%u / %#x\n", current, current);
         kprintf("fat32: data at %#p\n", buf);
         
+        /*
         logger_flush_buffer();
         system_halt;
+        */
         
         if( ( (next != 0) && !( (next & 0x0FFFFFFF) >= 0x0FFFFFF8 ) ) && ( (this->n_reserved_sectors + ( (current*4) / 512 )) != (this->n_reserved_sectors + ( (next*4) / 512 )) ) ) { // if this isn't the end of the chain and the next sector to read is different...
             do_read = true;

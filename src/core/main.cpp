@@ -138,22 +138,12 @@ void test_process_1() {
         }
         
         const char* test_file_str = "hello world!";
-        if( test_file != NULL ) {
-            void *data = kmalloc((test_file->size)+1);
-            char *str_data = (char*)data;
-            f.read_file( test_file, data );
-            kprintf("reading test file: '%s' (should be '%s')\n", str_data, test_file_str);
-        } else {
-            test_file = f.create_file( (unsigned char*)(test_file_name), f.root_dir_vfs );
-            
-            void *data = kmalloc(strlen(const_cast<char*>(test_file_str))+1);
-            char *str_data = (char*)data;
-            memcpy( data, (void*)test_file_str, strlen(const_cast<char*>(test_file_str)) );
-            str_data[strlen(const_cast<char*>(test_file_str))] = '\0';
-            
-            f.write_file( test_file, data, strlen(const_cast<char*>(test_file_str))+1 );
-            kprintf("test file created!\n");
-        }
+        test_file = f.create_file( (unsigned char*)(test_file_name), f.root_dir_vfs );
+
+        kprintf("test file created!\n");
+        
+        logger_flush_buffer();
+        system_halt;
         
         // hacked-together raw disk function:
         /*

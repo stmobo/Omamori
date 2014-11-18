@@ -13,6 +13,7 @@ typedef struct transfer_buffer {
     size_t       size;
     
     transfer_buffer( unsigned int );
+    ~transfer_buffer() { pageframe_deallocate( this->frames, this->n_frames ); };
     void* remap();
 } transfer_buffer;
 

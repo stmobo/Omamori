@@ -321,7 +321,8 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
     
     if( !req->dma ) {
         uint16_t* current = (uint16_t*)req->buffer.remap();
-        kprintf("ata: buffer at %#p physical, %#p virtual.\n", req->buffer.buffer_phys, (void*)current);
+        //kprintf("ata: buffer at %#p physical, %#p virtual.\n", req->buffer.buffer_phys, (void*)current);
+        //kprintf("ata: PTE for virt address is %#x\n", paging_get_pte((size_t)current));
         for( unsigned int i=0;i<req->n_sectors;i++ ) {
             while( ((io_inb( this->control ) & ATA_SR_BSY) > 0) || ((io_inb( this->control ) & ATA_SR_DRQ) == 0) );
             for(unsigned int j=0;j<256;j++) {
@@ -347,6 +348,7 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
             }
             while( ((io_inb( this->control ) & ATA_SR_BSY) > 0) );
         }
+        flushCache(); // flush the (memory) cache cpu-side as well
         //kprintf("ata: PIO transfer complete.\n");
         req->status = true;
         message out("transfer_complete", req, sizeof(ata_transfer_request));

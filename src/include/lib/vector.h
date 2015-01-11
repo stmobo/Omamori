@@ -102,8 +102,6 @@ void vector<T>::set( unsigned int n, T obj ) {
 
 template <class T>
 T vector<T>::get( unsigned int n ) {
-    if( n >= this->n_allocated_for )
-        return NULL;
     return this->elements[n];
 }
 

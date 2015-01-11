@@ -9,8 +9,9 @@
 #include "device/ps2_keyboard.h"
 #include "device/serial.h"
 #include "device/vga.h"
-#include "fs/fat.h"
 #include "core/vfs.h"
+
+#include "fs/fat/fat_fs.h"
 extern "C" {
     #include "lua.h"
     #include "lualib.h"
@@ -119,9 +120,10 @@ void test_process_1() {
         
         const char* test_file_name = "test.txt";
         
-        fat32_fs f( 1 );
+
+        fat_fs::fat_fs f( 1 );
         
-        vfs_directory *root = f.root_dir_vfs;
+        vfs_directory *root = f.base;
         vfs_file *test_file = NULL;
         kprintf( "Directory listing:\n" );
         for( unsigned int i=0;i<root->files.count();i++) {
@@ -130,21 +132,18 @@ void test_process_1() {
         }
 
         //logger_flush_buffer();
-        //    system_halt;
-
-        for( unsigned int i=0;i<root->files.count();i++) {
-            vfs_node *fn = root->files[i];
-            if( strcmp(fn->name, const_cast<char*>(test_file_name) ) ) {
-                test_file = (vfs_file*)fn;
-                break;
-            }
-        }
+		//system_halt;
         
         const char* test_file_str = "hello world!";
-        test_file = f.create_file( (unsigned char*)(test_file_name), f.root_dir_vfs );
+        test_file = f.create_file( (unsigned char*)(test_file_name), f.base );
 
         kprintf("test file created!\n");
         
+        logger_flush_buffer();
+        system_halt;
+
+        /*
+
         fat32_fs f2(1);
         root = f2.root_dir_vfs;
         kprintf( "Directory listing:\n" );
@@ -155,6 +154,7 @@ void test_process_1() {
         
 		logger_flush_buffer();
 		system_halt;
+		*/
 
         // hacked-together raw disk function:
         /*

@@ -1,5 +1,8 @@
 #pragma once
 #include "includes.h"
+#include "lib/vector.h"
+
+class vfs_fs;
 
 struct vfs_attributes {
     bool read_only;
@@ -11,12 +14,13 @@ struct vfs_attributes {
 };
 
 struct vfs_node {
-    char *name;
+	unsigned char *name;
     void *fs_info;
+    vfs_fs *fs;
     vfs_attributes attr;
     vfs_node* parent;
     
-    vfs_node( vfs_node* p, void* d, char* n ) : name(n), fs_info(d), parent(p) {}
+    vfs_node( vfs_node* p, vfs_fs *f, void* d, unsigned char* n ) : name(n), fs_info(d), fs(f), parent(p) {}
 };
 
 struct vfs_file : public vfs_node {
@@ -27,4 +31,15 @@ struct vfs_file : public vfs_node {
 struct vfs_directory : public vfs_node {
     vector<vfs_node*> files;
     using vfs_node::vfs_node;
+};
+
+class vfs_fs {
+	virtual vfs_file* create_file( unsigned char* name, vfs_directory* parent ) =0;
+	virtual vfs_directory* create_directory( unsigned char* name, vfs_directory* parent ) =0;
+	virtual void delete_file( vfs_file* file ) =0;
+	virtual void read_file( vfs_file* file, void* buffer ) =0;
+	virtual void write_file( vfs_file* file, void* buffer, size_t size)  =0;
+	//virtual void copy_file( vfs_file* file, vfs_directory* destination ) =0;
+	//virtual void move_file( vfs_file* file, vfs_directory* destination ) =0;
+	virtual vfs_directory* read_directory( vfs_directory* parent, vfs_node *child ) =0;
 };

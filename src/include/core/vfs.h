@@ -16,7 +16,7 @@ struct vfs_node {
     vfs_attributes attr;
     vfs_node* parent;
     
-    vfs_node( vfs_node* p, void* d ) : fs_info(d), parent(p) {}
+    vfs_node( vfs_node* p, void* d, char* n ) : name(n), fs_info(d), parent(p) {}
 };
 
 struct vfs_file : public vfs_node {

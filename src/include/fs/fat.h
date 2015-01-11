@@ -38,12 +38,12 @@ struct fat_longname {
 
 struct fat_file {
     vector<fat_longname*> name_entries;
-    fat_direntry direntry;
-    uint32_t cluster;
+    fat_direntry d_entry;
     fat_file *parent;
+    uint32_t cluster;
     
-    fat_file( fat_file* p ) : parent(p) {}
-    fat_file( fat_file* p, fat_direntry *ent ) : direntry(*ent), parent(p) {}
+    fat_file( fat_file* p, uint32_t c ) : parent(p), cluster(c) {};
+    fat_file( fat_file* p, fat_direntry *ent ) : d_entry(*ent), parent(p), cluster(((uint32_t)ent->start_cluster_hi << 16) | ent->start_cluster_lo) {};
 };
 
 struct fat_directory : public fat_file {

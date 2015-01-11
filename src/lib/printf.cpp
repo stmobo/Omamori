@@ -1226,12 +1226,12 @@ void panic(char *str, ...) {
         
         terminal_writestring("panic: ");
         terminal_writestring(buf);
-        kprintf("Initiating process: %u (\"%s\") / %p -- esp=%#x", process_current->id, process_current->name, process_current, process_current->regs.esp);
+        kprintf("Initiating process: %u (\"%s\") / %p -- esp=%#x\n", process_current->id, process_current->name, process_current, process_current->regs.esp);
         
         va_end(args);
         va_end(args2);
-        // (don't) Get a stack trace.
-        //stack_trace_walk(7);
+        // Get a stack trace.
+        stack_trace_walk(50);
     }
     // Now halt.
     while(true) {

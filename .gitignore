@@ -30,3 +30,7 @@ symbols
 acpica-unix-20140424/*
 acpica-unix-20140424.tar.gz
 !lib/i686-elf/lib/*
+/obj/
+/.settings/
+/.cproject
+/.project

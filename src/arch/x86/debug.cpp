@@ -18,22 +18,22 @@ uint32_t *get_caller_ebp(uint32_t *current_ebp) {
     return (uint32_t*)current_ebp[1];
 }
 
-void stack_trace_walk(int max_levels) {
-    uint32_t *ebp = get_current_ebp();
-    int stack_level = 0;
-    kprintf("Retrieving stack trace, current EBP: 0x%x.\n", (uint64_t)ebp);
+void stack_trace_walk(unsigned int max_levels) {
+    uint32_t* ebp = (uint32_t*)(&max_levels) - 2;
+    unsigned int stack_level = 0;
+    kprintf("Retrieving stack trace, current EBP: %#x.\n", ebp);
     while(stack_level <= max_levels) {
         if(ebp == NULL) {
-            kprintf("debug: ebp == NULL, returning.\n");
+            //kprintf("debug: ebp == NULL, returning.\n");
             return;
         }
         uint32_t ret_addr = (uint32_t)ebp[1];
         if(ret_addr == 0) {
-            kprintf("debug: ret_addr == NULL, returning.\n");
+            //kprintf("debug: ret_addr == NULL, returning.\n");
             return;
         }
-        kprintf("Return address of function at stack level %u: 0x%x\n", (uint64_t)stack_level, (uint64_t)ret_addr);
-        ebp = (uint32_t*)(ebp[1]);
+        kprintf("Return address of function at stack level %u: %#x\n", stack_level, ret_addr);
+        ebp = (uint32_t*)(ebp[0]);
         stack_level++;
     }
 }

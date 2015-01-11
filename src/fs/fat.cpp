@@ -43,18 +43,18 @@ fat32_fs::fat32_fs( unsigned int part_no ) {
     
     uint64_t n_clusters = 0;
     void *data = this->get_cluster_chain( this->root_cluster, &n_clusters );
-    this->root_dir_fat = new fat_directory( NULL );
-    this->root_dir_vfs = new vfs_directory( NULL, this->root_dir_fat ); // possibly fill the "parent" area with a pointer to the mount point?
+    this->root_dir_fat = new fat_directory( NULL, this->root_cluster );
+    this->root_dir_vfs = new vfs_directory( NULL, this->root_dir_fat, NULL ); // possibly fill the "parent" area with a pointer to the mount point?
     // we'll do that when the VFS is more fleshed-out
     
-    this->root_dir_fat->direntry.start_cluster_hi = 0;
-    this->root_dir_fat->direntry.start_cluster_lo = 2;
+    this->root_dir_fat->d_entry.start_cluster_hi = 0;
+    this->root_dir_fat->d_entry.start_cluster_lo = 2;
     
     this->root_dir_vfs->attr.fstype = "fat32";
     this->root_dir_vfs->name = NULL;
     
     fat_direntry *cur = (fat_direntry*)data;
-    fat_file *cur_file = new fat_file( NULL );
+    fat_file *cur_file = new fat_file( NULL, cur );
     
     for(int i=0;i<n_clusters;i++) {
         for(int j=0;j<(this->sectors_per_cluster*16);j++) { // (this->sectors_per_cluster*512) / 32 = (this->sectors_per_cluster*16)
@@ -68,18 +68,19 @@ fat32_fs::fat32_fs( unsigned int part_no ) {
                     kprintf("fat32: found long name directory entry (ent num %u)\n", j, i);
                     fat_longname *ln = new fat_longname;
                     memcpy( (void*)ln, (void*)cur, sizeof(fat_longname) );
+                    kprintf("fat32: %.10s %.12s %.4s\n", ln->name_lo, ln->name_med, ln->name_hi);
                     cur_file->name_entries.add_end( ln );
                 } else {
                     kprintf("fat32: found 8.3 directory entry (ent num %u, cluster %u)\n", j, i);
-                    cur_file->direntry = *cur;
+                    cur_file->d_entry = *cur;
                     
                     vfs_node *node;
                     if( cur->attr & 0x10 ) {
-                        node = new vfs_directory( this->root_dir_vfs, (void*)cur_file );
+                        node = new vfs_directory( this->root_dir_vfs, (void*)cur_file, fat32_construct_longname( cur_file->name_entries ) );
                         node->fs_info = kmalloc( sizeof(fat_directory) );
                         memcpy( node->fs_info, (void*)cur_file, sizeof(fat_directory) );
                     } else {
-                        node = new vfs_file( this->root_dir_vfs, (void*)cur_file );
+                        node = new vfs_file( this->root_dir_vfs, (void*)cur_file, fat32_construct_longname( cur_file->name_entries ) );
                         node->fs_info = kmalloc( sizeof(fat_file) );
                         vfs_file *fn = (vfs_file*)node;
                         fn->size = cur->fsize;
@@ -88,11 +89,10 @@ fat32_fs::fat32_fs( unsigned int part_no ) {
                     node->attr.read_only = ( cur->attr & 1 );
                     node->attr.hidden    = ( cur->attr & 2 );
                     node->attr.fstype = "fat32";
-                    node->name = fat32_construct_longname( cur_file->name_entries );
                     
                     this->root_dir_vfs->files.add( node );
                     this->root_dir_fat->files.add(cur_file);
-                    cur_file = new fat_file( (fat_file*)this->root_dir_fat );
+                    cur_file = new fat_file( (fat_file*)this->root_dir_fat, cur );
                 }
             }
             cur++;
@@ -104,13 +104,13 @@ fat32_fs::fat32_fs( unsigned int part_no ) {
 }
 
 vfs_directory *fat32_fs::read_directory( vfs_directory *parent, fat_directory *ent ) {
-    uint32_t cluster = ((ent->direntry.start_cluster_hi)<<16) | (ent->direntry.start_cluster_lo);
+    uint32_t cluster = ((ent->d_entry.start_cluster_hi)<<16) | (ent->d_entry.start_cluster_lo);
     
     uint64_t n_clusters = 0;
     void *data = this->get_cluster_chain( cluster, &n_clusters );
     fat_direntry *cur = (fat_direntry*)data;
-    fat_file *cur_file = new fat_file( ((fat_file*)(parent->fs_info)) );
-    vfs_directory *vfs = new vfs_directory( parent, (void*)ent );
+    fat_file *cur_file = new fat_file( ((fat_file*)(parent->fs_info)), cur );
+    vfs_directory *vfs = new vfs_directory( parent, (void*)ent, fat32_construct_longname( ent->name_entries ) );
     
     vfs->attr.fstype = "fat32";
     char* name = fat32_construct_longname( ent->name_entries );
@@ -131,18 +131,20 @@ vfs_directory *fat32_fs::read_directory( vfs_directory *parent, fat_directory *e
                     kprintf("fat32: found long name directory entry (ent num %u)\n", j, i);
                     fat_longname *ln = new fat_longname;
                     memcpy( (void*)ln, (void*)cur, sizeof(fat_longname) );
+                    kprintf("fat32: %.10s %.12s %.4s\n", ln->name_lo, ln->name_med, ln->name_hi);
                     cur_file->name_entries.add_end( ln );
                 } else {
                     kprintf("fat32: found 8.3 directory entry (ent num %u, cluster %u)\n", j, i);
-                    cur_file->direntry = *cur;
+                    cur_file->d_entry = *cur;
+                    kprintf("fat32: %.8s\n", cur->shortname);
                     
                     vfs_node *node;
                     if( cur->attr & 0x10 ) {
-                        node = new vfs_directory( vfs, (void*)cur_file );
+                        node = new vfs_directory( vfs, (void*)cur_file, fat32_construct_longname( cur_file->name_entries ) );
                         node->fs_info = kmalloc( sizeof(fat_directory) );
                         memcpy( node->fs_info, (void*)cur_file, sizeof(fat_directory) );
                     } else {
-                        node = new vfs_file( vfs, (void*)cur_file );
+                        node = new vfs_file( vfs, (void*)cur_file, fat32_construct_longname( cur_file->name_entries ) );
                         node->fs_info = kmalloc( sizeof(fat_file) );
                         vfs_file *fn = (vfs_file*)node;
                         fn->size = cur->fsize;
@@ -151,11 +153,10 @@ vfs_directory *fat32_fs::read_directory( vfs_directory *parent, fat_directory *e
                     node->attr.read_only = ( cur->attr & 1 );
                     node->attr.hidden    = ( cur->attr & 2 );
                     node->attr.fstype = "fat32";
-                    node->name = fat32_construct_longname( cur_file->name_entries );
                     
                     vfs->files.add( node );
                     ent->files.add(cur_file);
-                    cur_file = new fat_file( ((fat_file*)(parent->fs_info)) );
+                    cur_file = new fat_file( ((fat_file*)(parent->fs_info)), cur );
                 }
             }
             cur++;
@@ -169,10 +170,12 @@ vfs_directory *fat32_fs::read_directory( vfs_directory *parent, fat_directory *e
 
 vfs_file* fat32_fs::create_file( unsigned char* name, vfs_directory *parent ) { // create a zero-length file
     fat_directory *dir = (fat_directory*)(parent->fs_info);
-    uint32_t cluster = ((dir->direntry.start_cluster_hi)<<16) | (dir->direntry.start_cluster_lo);
+    uint32_t cluster = ((dir->d_entry.start_cluster_hi)<<16) | (dir->d_entry.start_cluster_lo);
     
     fat_direntry *ent = new fat_direntry;
     fat_file *info = new fat_file( dir, ent );
+    
+    kprintf("fat32: generating basis-name...\n");
     
     this->fat32_generate_basisname( name, info );
     vector<fat_longname*> *longnames = fat32_split_longname( name, ent->shortname, ent->ext );
@@ -192,38 +195,56 @@ vfs_file* fat32_fs::create_file( unsigned char* name, vfs_directory *parent ) { 
     ent->start_cluster_lo = 0;
     
     if( cluster == 0 ) {
+        kprintf("fat: allocating cluster...\n");
         uint32_t first_cluster = this->allocate_cluster();
-        this->write_fat(first_cluster, 0x0FFFFFF8);
+        kprintf("fat: allocated cluster %u\n", first_cluster);
+        //this->write_fat(first_cluster, 0x0FFFFFF8); // don't need to do this, allocate_cluster() does it for us
         cluster = first_cluster;
         
         fat_directory *pdir = (fat_directory*)dir->parent;
         uint64_t p_n_clusters = 0;
         
+        kprintf("fat: updating parent directory entry...\n");
         void *dir_data = this->get_cluster_chain( pdir->cluster, &p_n_clusters );
-        fat_direntry *cur = this->fat32_find_direntry( dir_data, n_clusters, dir );
+        fat_direntry *cur = this->fat32_find_direntry( dir_data, p_n_clusters, dir );
         cur->fsize = 0;
         cur->start_cluster_hi = (cluster >> 16) & 0xFFFF;
         cur->start_cluster_lo = cluster & 0xFFFF;
+        kprintf("fat: writing out parent directory data...\n");
         this->write_cluster_chain( pdir->cluster, dir_data, p_n_clusters * (this->sectors_per_cluster*16) * 512 );
         kfree( dir_data );
+    } else {
+        kprintf("fat: parent directory at cluster %u\n", cluster);
     }
+    
+    logger_flush_buffer();
+    //system_halt;
     
     // now, find a suitable space in the target directory:
     uint64_t n_clusters = 0;
     void *buf = this->get_cluster_chain( cluster, &n_clusters );
     
-    fat_direntry* cur = this->fat32_find_free_direntry( buf, n_clusters, longnames->count()+1 );
+    kprintf("fat: read in parent directory data (%llu clusters) at %#p.\n", n_clusters, buf);
+
+    //logger_flush_buffer();
+	//	system_halt;
     
+    fat_direntry* cur = this->fat32_find_free_direntry( buf, n_clusters, longnames->count()+1 );
+
+    kprintf("fat: split name into %u long name entries\n", longnames->count());
+    kprintf("fat: found free space at %#p (offset %#tx)\n", (void*)cur, ((ptrdiff_t)cur) - ((ptrdiff_t)buf));
+
     for(int i=0;i<longnames->count();i++) {
         memcpy( (void*)cur, (void*)(longnames->get(i)), sizeof(fat_longname) );
         cur++;
     }
     memcpy( (void*)cur, (void*)ent, sizeof(fat_direntry) );
-    this->write_cluster_chain( cluster, buf, n_clusters * (this->sectors_per_cluster*16) * 512 );
-    
+    kprintf("fat: writing out to cluster %u.\n", cluster);
+    this->write_cluster_chain( cluster, buf, n_clusters * this->sectors_per_cluster * 512 );
+
     kfree(buf);
     
-    vfs_file *ret = new vfs_file( parent, (void*)info );
+    vfs_file *ret = new vfs_file( parent, (void*)info, NULL);
     info->name_entries = *longnames;
     info->cluster = 0;
     
@@ -240,7 +261,7 @@ vfs_file* fat32_fs::create_file( unsigned char* name, vfs_directory *parent ) { 
 
 vfs_directory* fat32_fs::create_directory( unsigned char* name, vfs_directory *parent ) { // create an empty directory
     fat_directory *dir = (fat_directory*)(parent->fs_info);
-    uint32_t cluster = ((dir->direntry.start_cluster_hi)<<16) | (dir->direntry.start_cluster_lo);
+    uint32_t cluster = ((dir->d_entry.start_cluster_hi)<<16) | (dir->d_entry.start_cluster_lo);
     
     fat_direntry *ent = new fat_direntry;
     fat_file *info = new fat_file( dir, ent );
@@ -292,7 +313,7 @@ vfs_directory* fat32_fs::create_directory( unsigned char* name, vfs_directory *p
     
     kfree(buf);
     
-    vfs_directory *ret = new vfs_directory( parent, (void*)info );
+    vfs_directory *ret = new vfs_directory( parent, (void*)info, NULL );
     info->name_entries = *longnames;
     info->cluster = 0;
     
@@ -353,7 +374,7 @@ void fat32_fs::read_file( vfs_file *file, void* out ) {
 
 void fat32_fs::write_file( vfs_file *file, void* in, size_t size ) {
     fat_file *fn = (fat_file*)file->fs_info;
-    uint32_t cluster = ((fn->direntry.start_cluster_hi)<<16) | (fn->direntry.start_cluster_lo);
+    uint32_t cluster = ((fn->d_entry.start_cluster_hi)<<16) | (fn->d_entry.start_cluster_lo);
     bool update_first_cluster = false;
     
     if( cluster == 0 ) {
@@ -395,10 +416,10 @@ void fat32_fs::write_file( vfs_file *file, void* in, size_t size ) {
     kfree(dir_data);
     
     // step 3: modify VFS node
-    fn->direntry.fsize = size;
+    fn->d_entry.fsize = size;
     if( update_first_cluster ) {
-        fn->direntry.start_cluster_hi = (cluster >> 16) & 0xFFFF;
-        fn->direntry.start_cluster_lo = cluster & 0xFFFF;
+        fn->d_entry.start_cluster_hi = (cluster >> 16) & 0xFFFF;
+        fn->d_entry.start_cluster_lo = cluster & 0xFFFF;
         fn->cluster = cluster;
     }
 }
@@ -407,13 +428,13 @@ void fat32_fs::copy_file( vfs_file *file, vfs_directory *dst ) {
     fat_file *fn = (fat_file*)file->fs_info;
     fat_directory *src_dir = (fat_directory*)fn->parent;
     fat_directory *dst_dir = (fat_directory*)dst->fs_info;
-    uint32_t cluster = ((fn->direntry.start_cluster_hi)<<16) | (fn->direntry.start_cluster_lo);
+    uint32_t cluster = ((fn->d_entry.start_cluster_hi)<<16) | (fn->d_entry.start_cluster_lo);
     
     // step 1: copy clusters
     uint32_t dest_cluster = this->allocate_cluster();
     uint64_t n_clusters = 0;
     void *data = this->get_cluster_chain( cluster, &n_clusters );
-    this->write_cluster_chain( dest_cluster, data, fn->direntry.fsize );
+    this->write_cluster_chain( dest_cluster, data, fn->d_entry.fsize );
     kfree(data);
     
     // step 2: copy directory entry
@@ -463,14 +484,14 @@ fat_direntry *fat32_fs::fat32_find_direntry( void *cluster_data, uint64_t n_clus
                 if( cur->shortname[0] != 0xE5 ) {
                     bool matched = true;
                     for(int k=0;k<8;k++ ) {
-                        if( cur->shortname[k] != fn->direntry.shortname[i] ) {
+                        if( cur->shortname[k] != fn->d_entry.shortname[i] ) {
                             matched = false;
                             break;
                         }
                     }
                     if( matched ) {
                         for(int k=0;k<3;k++ ) {
-                            if( cur->ext[k] != fn->direntry.ext[i] ) {
+                            if( cur->ext[k] != fn->d_entry.ext[i] ) {
                                 matched = false;
                                 break;
                             }
@@ -580,7 +601,7 @@ vector<uint32_t> *fat32_fs::read_cluster_chain( uint32_t start, uint64_t* n_clus
         
         uint8_t* cluster = (uint8_t*)buf;
         
-        next = *((uint32_t*)(&cluster[fat_offset])) & 0x0FFFFFFF;
+        next = *((uint32_t*)(cluster+fat_offset)) & 0x0FFFFFFF;
         if( next != 0 ) // if this is actually allocated....
             cluster_list->add_end( current );
         
@@ -662,8 +683,10 @@ unsigned int fat32_fs::allocate_cluster() {
     
     uint32_t last_allocated = *((uint32_t*)(ptr_int+492));
     if( last_allocated != 0xFFFFFFFF ) {
-        current_cluster = last_allocated+1;
-        current_fat_sector += ( (current_cluster*4) / 512 );
+        if( last_allocated < n_clusters ) {
+            current_cluster = last_allocated+1;
+            current_fat_sector = (this->n_reserved_sectors + ( (current_cluster*4) / 512 ));
+        }
     }
     
     memclr(buf, 512);
@@ -694,8 +717,8 @@ unsigned int fat32_fs::allocate_cluster() {
         }
         
         current_cluster++;
-        if( ((current_cluster * 4) % 512) == 0 ) {
-            current_fat_sector++;
+        if( current_fat_sector != (this->n_reserved_sectors + ( (current_cluster*4) / 512 )) ) {
+            current_fat_sector = (this->n_reserved_sectors + ( (current_cluster*4) / 512 ));
             do_read = true;
         }
     } while( current_cluster < this->n_clusters );
@@ -987,10 +1010,10 @@ void fat32_do_format( unsigned int part_id ) {
 
 void fat32_fs::fat32_generate_basisname( unsigned char *name, fat_file *file ) {
     fat_directory *dir = (fat_directory*)file->parent;
-    fat_direntry  *ent = &(file->direntry);
+    fat_direntry  *ent = &(file->d_entry);
     
     uint64_t n_clusters = 0;
-    void* dir_data = this->get_cluster_chain( dir->cluster, &n_clusters );
+    void* dir_data = this->get_cluster_chain( ((dir->d_entry.start_cluster_hi)<<16) | (dir->d_entry.start_cluster_lo), &n_clusters );
     
     int len = strlen((char*)name);
     int last_period_pos = 0;

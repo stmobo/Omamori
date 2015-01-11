@@ -128,7 +128,10 @@ void test_process_1() {
             vfs_node *fn = root->files[i];
             kprintf( "* %u - %s\n", i, fn->name );
         }
-        
+
+        //logger_flush_buffer();
+        //    system_halt;
+
         for( unsigned int i=0;i<root->files.count();i++) {
             vfs_node *fn = root->files[i];
             if( strcmp(fn->name, const_cast<char*>(test_file_name) ) ) {
@@ -142,9 +145,17 @@ void test_process_1() {
 
         kprintf("test file created!\n");
         
-        logger_flush_buffer();
-        system_halt;
+        fat32_fs f2(1);
+        root = f2.root_dir_vfs;
+        kprintf( "Directory listing:\n" );
+		for( unsigned int i=0;i<root->files.count();i++) {
+			vfs_node *fn = root->files[i];
+			kprintf( "* %u - %s\n", i, fn->name );
+		}
         
+		logger_flush_buffer();
+		system_halt;
+
         // hacked-together raw disk function:
         /*
         while( true ) {

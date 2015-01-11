@@ -87,8 +87,10 @@ void vector<T>::reallocate( unsigned int n ) {
 
 template <class T>
 void vector<T>::clear() {
-    if( this->elements )
+    if( this->elements != NULL ) {
         kfree(this->elements);
+        this->elements = NULL;
+    }
     this->n_allocated_for = 0;
     this->n_elements = 0;
 }

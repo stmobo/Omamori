@@ -117,8 +117,11 @@ transfer_buffer::transfer_buffer( unsigned int n_bytes ) {
     this->buffer_virt = (void*)k_vmem_alloc( this->n_frames );
     this->buffer_phys = (void*)this->frames[0].address;
     for(unsigned int i=0;i<this->n_frames;i++) {
-        if( !((i <= 0) || (this->frames[i].address == (this->frames[i-1].address+0x1000))) )
-            panic("io: Could not allocate contiguous frames for DMA buffer! (i=%#x, i-1=%#x)\n", this->frames[i].address, this->frames[i-1].address);
+        if( !((i <= 0) || (this->frames[i].address == (this->frames[i-1].address+0x1000))) ) {
+        	kprintf("(i=%u, [i]=%#x, [i-1]=%#x)\n", i, this->frames[i].address, this->frames[i-1].address);
+        	kprintf("allocated-as: (%u, %u)\n", this->frames[i].id_allocated_as, this->frames[i].order_allocated_as);
+            panic("io: Could not allocate contiguous frames for DMA buffer!\n");
+        }
         paging_set_pte( ((size_t)this->buffer_virt)+(i*0x1000), this->frames[i].address,0x19 );
         //kprintf("transfer_buffer::transfer_buffer: mapping %#x to %#x.\n", ((size_t)this->buffer_virt)+(i*0x1000), this->frames[i].address );
     }
@@ -127,8 +130,13 @@ transfer_buffer::transfer_buffer( unsigned int n_bytes ) {
 void *transfer_buffer::remap() {
     void *buf = (void*)k_vmem_alloc( this->n_frames );
     for(unsigned int i=0;i<this->n_frames;i++) {
-        if( !((i <= 0) || (this->frames[i].address == (this->frames[i-1].address+0x1000))) )
+        /*
+    	if( !((i <= 0) || (this->frames[i].address == (this->frames[i-1].address+0x1000))) ){
+        	kprintf("(i=%u, [i]=%#x, [i-1]=%#x)\n", i, this->frames[i].address, this->frames[i-1].address);
+        	kprintf("allocated-as: (%u, %u)\n", this->frames[i].id_allocated_as, this->frames[i].order_allocated_as);
             panic("io: Could not allocate contiguous frames for DMA buffer!\n");
+        }
+        */
         paging_set_pte( ((size_t)buf)+(i*0x1000), this->frames[i].address,0x19 );
         //kprintf("transfer_buffer::remap: mapping %#x to %#x.\n", ((size_t)buf)+(i*0x1000), this->frames[i].address );
     }

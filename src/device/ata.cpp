@@ -271,18 +271,18 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
         this->error_handled = false;
         if( req->dma ) {
             if( req->read ) {
-                kprintf("ata: sending ATA_CMD_READ_DMA_EXT.\n");
+                //kprintf("ata: sending ATA_CMD_READ_DMA_EXT.\n");
                 io_outb( this->base+7, ATA_CMD_READ_DMA_EXT );
             } else {
-                kprintf("ata: sending ATA_CMD_WRITE_DMA_EXT.\n");
+                //kprintf("ata: sending ATA_CMD_WRITE_DMA_EXT.\n");
                 io_outb( this->base+7, ATA_CMD_WRITE_DMA_EXT );
             }
         } else {
             if( req->read ) {
-                kprintf("ata: sending ATA_CMD_READ_PIO_EXT.\n");
+                //kprintf("ata: sending ATA_CMD_READ_PIO_EXT.\n");
                 io_outb( this->base+7, ATA_CMD_READ_PIO_EXT );
             } else {
-                kprintf("ata: sending ATA_CMD_WRITE_PIO_EXT.\n");
+                //kprintf("ata: sending ATA_CMD_WRITE_PIO_EXT.\n");
                 io_outb( this->base+7, ATA_CMD_WRITE_PIO_EXT );
             }
         }
@@ -291,7 +291,7 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
             this->select( 0xF0 | ( (req->sector_start >> 24) & 0x0F ) );
         else
             this->select( 0xE0 | ( (req->sector_start >> 24) & 0x0F ) );
-        kprintf("ata: sending transfer parameters.\n * n_sectors = %u\n * sector_start(LBA28) = %u\n", req->n_sectors, req->sector_start);
+        //kprintf("ata: sending transfer parameters.\n * n_sectors = %u\n * sector_start(LBA28) = %u\n", req->n_sectors, req->sector_start);
         io_outb( this->base+2, req->n_sectors         & 0xFF );
         io_outb( this->base+3, req->sector_start      & 0xFF );
         io_outb( this->base+4, (req->sector_start>>8) & 0xFF );
@@ -302,18 +302,18 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
         this->error_handled = false;
         if( req->dma ) {
             if( req->read ) {
-                kprintf("ata: sending ATA_CMD_READ_DMA.\n");
+                //kprintf("ata: sending ATA_CMD_READ_DMA.\n");
                 io_outb( this->base+7, ATA_CMD_READ_DMA );
             } else {
-                kprintf("ata: sending ATA_CMD_WRITE_DMA.\n");
+                //kprintf("ata: sending ATA_CMD_WRITE_DMA.\n");
                 io_outb( this->base+7, ATA_CMD_WRITE_DMA );
             }
         } else {
             if( req->read ) {
-                kprintf("ata: sending ATA_CMD_READ_PIO.\n");
+                //kprintf("ata: sending ATA_CMD_READ_PIO.\n");
                 io_outb( this->base+7, ATA_CMD_READ_PIO );
             } else {
-                kprintf("ata: sending ATA_CMD_WRITE_PIO.\n");
+                //kprintf("ata: sending ATA_CMD_WRITE_PIO.\n");
                 io_outb( this->base+7, ATA_CMD_WRITE_PIO );
             }
         }

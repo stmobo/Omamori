@@ -106,7 +106,7 @@ bool fat_fs::fat_fs::update_dir_entry( vfs_directory *dir, unsigned char *shortn
 		}
 
 		for(unsigned int i=0;i<8;i++) {
-			if( parent_dir_data->shortname[i] == shortname[i] ) {
+			if( parent_dir_data->shortname[i] != shortname[i] ) {
 				matched = false;
 				break;
 			}
@@ -129,7 +129,6 @@ bool fat_fs::fat_fs::update_dir_entry( vfs_directory *dir, unsigned char *shortn
 
 vfs_file* fat_fs::fat_fs::create_file( unsigned char* name, vfs_directory* parent ) {
 	fat_directory_entry *new_ent = new fat_directory_entry;
-	vfs_file *ret = new vfs_file( parent, this, &new_ent, name );
 
 	new_ent->attr = 0;
 	new_ent->nt_reserved = 0;
@@ -142,22 +141,26 @@ vfs_file* fat_fs::fat_fs::create_file( unsigned char* name, vfs_directory* paren
 	new_ent->fsize = 0;
 	new_ent->start_cluster_hi = 0;
 	new_ent->start_cluster_lo = 0;
+
+	vfs_file *ret = new vfs_file( parent, this, &new_ent, name );
+
 	unsigned char *tmp = generate_basisname( ret );
 	for(unsigned int i=0; i<8;i++) {
 		new_ent->shortname[i] = tmp[i];
 	}
-
+	kfree(tmp);
 
 	// TODO: write in the extension
 
 	fat_directory_entry *parent_ent = (fat_directory_entry*)parent->fs_info;
 	fat_cluster_chain *parent_chain;
 	if( parent_ent->start_cluster() == 0 ) {
-		uint32_t first_cluster = parent_chain->clusters[0];
+		uint32_t first_cluster = this->allocate_cluster();
+		parent_chain = new fat_cluster_chain(this, first_cluster);
 		parent_ent->start_cluster_hi = (uint16_t)((first_cluster >> 16) & 0xFFFF);
 		parent_ent->start_cluster_lo = (uint16_t)(first_cluster & 0xFFFF);
 
-		//kprintf("fat_fs::create_file(): extending grandparent list\n");
+		kprintf("fat_fs::create_file(): extending grandparent list\n");
 
 		this->update_dir_entry( (vfs_directory*)parent->parent, parent_ent->shortname, parent_ent );
 		/*
@@ -191,6 +194,7 @@ vfs_file* fat_fs::fat_fs::create_file( unsigned char* name, vfs_directory* paren
 		*/
 	} else {
 		parent_chain = new fat_cluster_chain(this, parent_ent->start_cluster());
+		kprintf("fat_fs::create_file(): parent clusters start at %u.\n", parent_ent->start_cluster());
 	}
 
 	fat_directory_entry *parent_data = (fat_directory_entry*)parent_chain->read();
@@ -204,6 +208,8 @@ vfs_file* fat_fs::fat_fs::create_file( unsigned char* name, vfs_directory* paren
 
 	kprintf("fat_fs::create_file(): found end of list at position %u.\n", end_of_list);
 
+	// TODO: Handle extending the directory cluster chain
+
 	vector<fat_longname> *lfns = generate_lfn_entries(name);
 	for(unsigned int i=0; i<lfns->count();i++) {
 		fat_longname lfn = lfns->get(i);
@@ -213,8 +219,8 @@ vfs_file* fat_fs::fat_fs::create_file( unsigned char* name, vfs_directory* paren
 	memcpy((void*)parent_data, (void*)new_ent, sizeof(fat_directory_entry));
 
 	parent_chain->write( parent_data_base, parent_chain->clusters.count()*this->params.sectors_per_cluster*512 );
-	kfree(parent_data_base);
 
+	kfree(parent_data_base);
 	delete parent_chain;
 
 	return ret;
@@ -280,20 +286,37 @@ void fat_fs::fat_fs::delete_file( vfs_file* file ) {
 
 void fat_fs::fat_fs::read_file( vfs_file* file, void* buffer ) {
 	fat_directory_entry *child_entry = (fat_directory_entry*)file->fs_info;
-	fat_cluster_chain child_chain(this, child_entry->start_cluster());
 
-	void *data = child_chain.read();
+	if(child_entry->start_cluster() != 0) {
+		fat_cluster_chain child_chain(this, child_entry->start_cluster());
+		void *data = child_chain.read();
 
-	memcpy(buffer, data, child_entry->fsize);
+		memcpy(buffer, data, child_entry->fsize);
 
-	kfree(data);
+		kfree(data);
+	}
 }
 
 void fat_fs::fat_fs::write_file( vfs_file* file, void* buffer, size_t size ) {
 	fat_directory_entry *child_entry = (fat_directory_entry*)file->fs_info;
-	fat_cluster_chain child_chain(this, child_entry->start_cluster());
+	if(child_entry->start_cluster() != 0) {
+		kprintf("fat: cluster chain for %s starts at cluster %u (%#x)\n", file->name, child_entry->start_cluster(), child_entry->start_cluster());
+		fat_cluster_chain child_chain(this, child_entry->start_cluster());
 
-	child_chain.write(buffer, size);
+		child_chain.write(buffer, size);
+	} else {
+		uint32_t first_cluster = this->allocate_cluster();
+		kprintf("fat: allocated new cluster chain for %s at cluster %u (%#x)\n", file->name, first_cluster, first_cluster);
+		fat_cluster_chain child_chain(this, first_cluster);
+
+		child_entry->start_cluster_hi = (uint16_t)((first_cluster >> 16) & 0xFFFF);
+		child_entry->start_cluster_lo = (uint16_t)(first_cluster & 0xFFFF);
+
+		this->update_dir_entry( (vfs_directory*)file->parent, child_entry->shortname, child_entry );
+
+		child_chain.write(buffer, size);
+	}
+	child_entry->fsize = size;
 }
 
 fat_fs::fat_fs::fat_fs( unsigned int part_no ) {
@@ -401,6 +424,7 @@ fat_fs::fat_fs::fat_fs( unsigned int part_no ) {
 					name[i] = name_buf[i];
 				}
 				name[name_buf.count()] = '\0';
+				name_buf.clear();
 			} else {
 				name = ((fat_directory_entry*)tmp)->shortname;
 			}

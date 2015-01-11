@@ -24,7 +24,7 @@ fat_fs::fat_cluster_chain::fat_cluster_chain( fat_fs *parent, uint32_t start_clu
 	uint32_t fat_sector = this->parent_fs->params.n_reserved_sectors + ( (current*4) / 512 );
 	bool do_read = true;
 
-	kprintf("fat32: reading cluster chain starting from cluster %u.\n", start_cluster);
+	kprintf("fat: reading cluster chain starting from cluster %u.\n", start_cluster);
 
 	void *buf = kmalloc(512);
 	do {
@@ -41,8 +41,8 @@ fat_fs::fat_cluster_chain::fat_cluster_chain( fat_fs *parent, uint32_t start_clu
 		if( next != 0 ) // if this is actually allocated....
 			this->clusters.add_end( current );
 
-		kprintf("fat32: current cluster=%u / %#x\n", current, current);
-		kprintf("fat32: data at %#p\n", buf);
+		kprintf("fat: current cluster=%u / %#x\n", current, current);
+		kprintf("fat: data at %#p\n", buf);
 
 		/*
 		logger_flush_buffer();
@@ -56,14 +56,16 @@ fat_fs::fat_cluster_chain::fat_cluster_chain( fat_fs *parent, uint32_t start_clu
 
 		current = next;
 
-		kprintf("fat32: next cluster=%u / %#x\n", next, next);
+		kprintf("fat: next cluster=%u / %#x\n", next, next);
 	} while( (next != 0) && !( (next & 0x0FFFFFFF) >= 0x0FFFFFF8 ) );
 	kfree(buf);
 }
 
 void fat_fs::fat_cluster_chain::write(void* data, size_t byte_length) {
-	uint64_t n_clusters = this->clusters.count();
+	uint32_t n_clusters = this->clusters.count();
 	uint32_t new_clusters = (byte_length / 512) / this->parent_fs->params.sectors_per_cluster;
+
+	new_clusters += 1;
 
 	if( n_clusters > new_clusters ) { // shrink the file
 		uint32_t diff = n_clusters - new_clusters;
@@ -71,21 +73,23 @@ void fat_fs::fat_cluster_chain::write(void* data, size_t byte_length) {
 	} else if( n_clusters < new_clusters ) { // extend the file
 		uint32_t diff = new_clusters - n_clusters;
 		this->extend( diff );
-	}  // file cluster chain length stays the same
+	}  // else file cluster chain length stays the same
 
 	void* cur = data;
-	for( int i=0;i<(n_clusters-1);i++ ) { // write out individual clusters now
-		this->parent_fs->write_cluster( this->clusters.get(i), data );
-		uintptr_t ptr_int = (uintptr_t)cur;
-		ptr_int += (this->parent_fs->params.sectors_per_cluster * 512);
-		cur = (void*)ptr_int; // cur = cur + sectors_per_cluster * 512
+	if(new_clusters > 1) {
+		for( unsigned int i=0;i<(new_clusters-1);i++ ) { // write out individual clusters now
+			this->parent_fs->write_cluster( this->clusters.get(i), cur );
+			uintptr_t ptr_int = (uintptr_t)cur;
+			ptr_int += (this->parent_fs->params.sectors_per_cluster * 512);
+			cur = (void*)ptr_int; // cur = cur + sectors_per_cluster * 512
+		}
 	}
 
 	void *last_cluster = kmalloc( this->parent_fs->params.sectors_per_cluster * 512 );
 	size_t overflow = byte_length % ( this->parent_fs->params.sectors_per_cluster * 512 );
 	memcpy( last_cluster, cur, overflow );
 
-	this->parent_fs->write_cluster( this->clusters.get(n_clusters-1), data );
+	this->parent_fs->write_cluster( this->clusters.get(new_clusters-1), last_cluster );
 
 	kfree(last_cluster);
 }

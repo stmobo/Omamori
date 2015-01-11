@@ -118,8 +118,8 @@ void test_process_1() {
         // format partition 1 as FAT (using our own code):
         //fat32_do_format( 1 );
         
-        const char* test_file_name = "test.txt";
-        
+        const char* test_file_name = "test2.txt";
+        char *test_file_data = "Hello world! This is a test file!";
 
         fat_fs::fat_fs f( 1 );
         
@@ -129,18 +129,67 @@ void test_process_1() {
         for( unsigned int i=0;i<root->files.count();i++) {
             vfs_node *fn = root->files[i];
             kprintf( "* %u - %s\n", i, fn->name );
+            if( strcmp(const_cast<char*>(test_file_name), (char*)(fn->name), 0) ) {
+            	test_file = new vfs_file(const_cast<vfs_node*>(fn));
+            }
         }
 
-        //logger_flush_buffer();
-		//system_halt;
-        
-        const char* test_file_str = "hello world!";
-        test_file = f.create_file( (unsigned char*)(test_file_name), f.base );
+        f.write_file(test_file, (void*)test_file_data, strlen(test_file_data)+1);
+		kprintf("File written out to %s\n", test_file_name);
 
-        kprintf("test file created!\n");
-        
+        void *readback = kmalloc(strlen(test_file_data)+1);
+		f.read_file(test_file, readback);
+
+		char* readback_data = (char*)readback;
+		kprintf("Readback data: %s (%#p)\n", readback_data, readback);
+		logger_flush_buffer();
+		system_halt;
+
+        /*
         logger_flush_buffer();
-        system_halt;
+		system_halt;
+		*/
+
+        /*
+        f.write_file(test_file, (void*)test_file_data, strlen(test_file_data)+1);
+
+		kprintf("File written out to %s\n", test_file_name);
+		logger_flush_buffer();
+		system_halt;
+		*/
+
+        /*
+        test_file = f.create_file( (unsigned char*)(test_file_name), f.base );
+		kprintf("test file created\n");
+		logger_flush_buffer();
+		system_halt;
+		*/
+
+        /*
+        logger_flush_buffer();
+		system_halt;
+
+        if( test_file == NULL ) {
+        	test_file = f.create_file( (unsigned char*)(test_file_name), f.base );
+        	kprintf("test file created\n");
+        	logger_flush_buffer();
+			system_halt;
+        }
+
+        f.write_file(test_file, (void*)test_file_data, strlen(test_file_data)+1);
+
+        kprintf("File written out to %s\n", test_file_name);
+        logger_flush_buffer();
+		system_halt;
+
+        void *readback = kmalloc(strlen(test_file_data)+1);
+        f.read_file(test_file, readback);
+
+        char* readback_data = (char*)readback;
+        kprintf("Readback data: %s\n", readback_data);
+        logger_flush_buffer();
+		system_halt;
+		*/
 
         /*
 

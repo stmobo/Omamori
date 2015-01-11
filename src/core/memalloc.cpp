@@ -108,6 +108,9 @@ void recursive_mark_allocated(int c1_index, int c2_index, signed int order, bool
 page_frame* pageframe_allocate_specific(int id, int order) {
     page_frame *frames = NULL;
     __frame_allocator_lock.lock();
+    if(order > BUDDY_MAX_ORDER) {
+    	panic("memalloc: invalid buddy size!\n");
+    }
     if( !pageframe_get_block_status(id, order) ) {
         pageframe_set_block_status(id, order, true);
         recursive_mark_allocated((id<<1), (id<<1)+1, order-1, true);
@@ -132,6 +135,12 @@ page_frame* pageframe_allocate_specific(int id, int order) {
             frames[k].id_allocated_as = id;
             frames[k].order_allocated_as = order;
             frames[k].address = pageframe_get_block_addr(j, 0);
+            if( frames[k].address == 0xAD0 ) {
+				kprintf("0-id: %u\n", j);
+				kprintf("alloc-id: %u\n", id);
+				kprintf("alloc-order: %u\n", order);
+            	kprintf("calculated invalid address 0xAD0??");
+            }
             k++;
         }
     }

@@ -25,12 +25,17 @@ struct vfs_node {
 
 struct vfs_file : public vfs_node {
     uint64_t size;
-    using vfs_node::vfs_node;
+    //using vfs_node::vfs_node;
+
+    vfs_file( vfs_node* p, vfs_fs *f, void* d, unsigned char* n ) : vfs_node(p, f, d, n), size(0) {};
+    vfs_file(vfs_node* cp) : vfs_node( cp->parent, cp->fs, cp->fs_info, cp->name ), size(0) {};
 };
 
 struct vfs_directory : public vfs_node {
     vector<vfs_node*> files;
-    using vfs_node::vfs_node;
+
+    vfs_directory( vfs_node* p, vfs_fs *f, void* d, unsigned char* n ) : vfs_node(p, f, d, n) {};
+	vfs_directory(vfs_node* cp) : vfs_node( cp->parent, cp->fs, cp->fs_info, cp->name ) {};
 };
 
 class vfs_fs {

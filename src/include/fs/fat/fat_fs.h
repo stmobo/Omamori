@@ -89,6 +89,8 @@ namespace fat_fs {
 		uint64_t cluster_to_lba(uint32_t);
 
 		bool update_dir_entry( vfs_directory* dir, unsigned char *shortname, fat_directory_entry *rep );
+		fat_directory_entry* read_dir_entry(vfs_directory* dir, unsigned char *shortname);
+		void update_node(vfs_node* node);
 	public:
 		vfs_directory *base;
 

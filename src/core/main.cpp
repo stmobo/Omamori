@@ -134,8 +134,10 @@ void test_process_1() {
             }
         }
 
-        f.write_file(test_file, (void*)test_file_data, strlen(test_file_data)+1);
-		kprintf("File written out to %s\n", test_file_name);
+        //test_file->size = strlen(test_file_data)+1;
+
+        //f.write_file(test_file, (void*)test_file_data, strlen(test_file_data)+1);
+		//kprintf("File written out to %s\n", test_file_name);
 
         void *readback = kmalloc(strlen(test_file_data)+1);
 		f.read_file(test_file, readback);

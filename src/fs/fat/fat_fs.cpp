@@ -54,7 +54,7 @@ vfs_directory* fat_fs::fat_fs::read_directory( vfs_directory* parent, vfs_node *
 			}
 		} else {
 			// parse 8.3 directory entry
-			fat_directory_entry ent = *cur;
+			//fat_directory_entry ent = *cur;
 			// copy to heap
 			void *tmp = kmalloc(sizeof(fat_directory_entry));
 			memcpy(tmp, cur, sizeof(fat_directory_entry));
@@ -71,8 +71,16 @@ vfs_directory* fat_fs::fat_fs::read_directory( vfs_directory* parent, vfs_node *
 				name = ((fat_directory_entry*)tmp)->shortname;
 			}
 
-			vfs_node *file = new vfs_node( out, this, tmp, name );
-			out->files.add_end(file);
+			vfs_node *node;
+			if(cur->attr & FAT_FILE_ATTR_DIRECTORY) {
+				node = new vfs_directory( out, this, tmp, name );
+			} else {
+				vfs_file *f = new vfs_file( this->base, this, tmp, name );
+				f->size = cur->fsize;
+				node = (vfs_node*)f;
+			}
+
+			out->files.add_end(node);
 		}
 
 		cur++;
@@ -82,6 +90,49 @@ vfs_directory* fat_fs::fat_fs::read_directory( vfs_directory* parent, vfs_node *
 	kfree(directory_data);
 
 	return out;
+}
+
+// use to update fs_info in vfs_node
+fat_fs::fat_directory_entry* fat_fs::fat_fs::read_dir_entry( vfs_directory *dir, unsigned char *shortname ) {
+	fat_directory_entry *parent_entry = (fat_directory_entry*)dir->fs_info;
+
+	fat_cluster_chain parent_chain(this, parent_entry->start_cluster());
+	void *parent_data = parent_chain.read();
+	fat_directory_entry *parent_dir_data = (fat_directory_entry*)parent_data;
+	fat_directory_entry *end = (fat_directory_entry*)((uintptr_t)parent_dir_data + (parent_chain.clusters.count()*this->params.sectors_per_cluster*512));
+
+	fat_directory_entry *ret = (fat_directory_entry*)kmalloc(sizeof(fat_directory_entry));
+
+	bool success = false;
+	while( (parent_dir_data < end) && (!success)  ) {
+		bool matched = true;
+		if( parent_dir_data->shortname[0] == 0 ) {
+			return ret;
+		}
+
+		if( parent_dir_data->shortname[0] == 0xE5 ) {
+			continue;
+		}
+
+		for(unsigned int i=0;i<8;i++) {
+			if( parent_dir_data->shortname[i] != shortname[i] ) {
+				matched = false;
+				break;
+			}
+		}
+
+		if(matched) {
+			memcpy( ret, parent_dir_data, sizeof(fat_directory_entry) );
+			success = true;
+			break;
+		}
+
+		parent_dir_data++;
+	}
+
+	kfree(parent_data);
+
+	return ret;
 }
 
 // update one dir entry under <dir> with another
@@ -95,7 +146,7 @@ bool fat_fs::fat_fs::update_dir_entry( vfs_directory *dir, unsigned char *shortn
 	fat_directory_entry *end = (fat_directory_entry*)((uintptr_t)parent_dir_data + (parent_chain.clusters.count()*this->params.sectors_per_cluster*512));
 
 	bool success = false;
-	while( parent_dir_data < end ) {
+	while( (parent_dir_data < end) && (!success) ) {
 		bool matched = true;
 		if( parent_dir_data->shortname[0] == 0 ) {
 			return false;
@@ -125,6 +176,19 @@ bool fat_fs::fat_fs::update_dir_entry( vfs_directory *dir, unsigned char *shortn
 	kfree(parent_data);
 
 	return success;
+}
+
+void fat_fs::fat_fs::update_node(vfs_node* node) {
+	unsigned char shortname[8];
+	fat_directory_entry* old_fsinfo = (fat_directory_entry*)node->fs_info;
+	memcpy( (void*)shortname, (void*)old_fsinfo->shortname, 8 );
+
+	kfree(old_fsinfo);
+	node->fs_info = (void*)read_dir_entry( (vfs_directory*)node->parent, shortname );
+	if(node->type == vfs_node_types::file) {
+		vfs_file* fn = (vfs_file*)node;
+		fn->size = ((fat_directory_entry*)node->fs_info)->fsize;
+	}
 }
 
 vfs_file* fat_fs::fat_fs::create_file( unsigned char* name, vfs_directory* parent ) {
@@ -285,13 +349,16 @@ void fat_fs::fat_fs::delete_file( vfs_file* file ) {
 }
 
 void fat_fs::fat_fs::read_file( vfs_file* file, void* buffer ) {
+	this->update_node(file);
+
 	fat_directory_entry *child_entry = (fat_directory_entry*)file->fs_info;
 
 	if(child_entry->start_cluster() != 0) {
 		fat_cluster_chain child_chain(this, child_entry->start_cluster());
 		void *data = child_chain.read();
 
-		memcpy(buffer, data, child_entry->fsize);
+		kprintf("fat: reading in %u / %u bytes\n", child_entry->fsize, file->size);
+		memcpy(buffer, data, file->size);
 
 		kfree(data);
 	}
@@ -299,6 +366,11 @@ void fat_fs::fat_fs::read_file( vfs_file* file, void* buffer ) {
 
 void fat_fs::fat_fs::write_file( vfs_file* file, void* buffer, size_t size ) {
 	fat_directory_entry *child_entry = (fat_directory_entry*)file->fs_info;
+
+	child_entry->fsize = size;
+	file->size = size;
+	// TODO: update times here too
+
 	if(child_entry->start_cluster() != 0) {
 		kprintf("fat: cluster chain for %s starts at cluster %u (%#x)\n", file->name, child_entry->start_cluster(), child_entry->start_cluster());
 		fat_cluster_chain child_chain(this, child_entry->start_cluster());
@@ -312,11 +384,12 @@ void fat_fs::fat_fs::write_file( vfs_file* file, void* buffer, size_t size ) {
 		child_entry->start_cluster_hi = (uint16_t)((first_cluster >> 16) & 0xFFFF);
 		child_entry->start_cluster_lo = (uint16_t)(first_cluster & 0xFFFF);
 
-		this->update_dir_entry( (vfs_directory*)file->parent, child_entry->shortname, child_entry );
-
 		child_chain.write(buffer, size);
 	}
-	child_entry->fsize = size;
+
+	this->update_dir_entry( (vfs_directory*)file->parent, child_entry->shortname, child_entry );
+
+	this->update_node(file);
 }
 
 fat_fs::fat_fs::fat_fs( unsigned int part_no ) {
@@ -411,7 +484,7 @@ fat_fs::fat_fs::fat_fs( unsigned int part_no ) {
 			}
 		} else {
 			// parse 8.3 directory entry
-			fat_directory_entry ent = *cur;
+			//fat_directory_entry ent = *cur;
 			// copy to heap
 			void *tmp = kmalloc(sizeof(fat_directory_entry));
 			memcpy(tmp, cur, sizeof(fat_directory_entry));
@@ -429,8 +502,16 @@ fat_fs::fat_fs::fat_fs( unsigned int part_no ) {
 				name = ((fat_directory_entry*)tmp)->shortname;
 			}
 
-			vfs_node *file = new vfs_node( this->base, this, tmp, name );
-			this->base->files.add_end(file);
+			vfs_node *node;
+			if(cur->attr & FAT_FILE_ATTR_DIRECTORY) {
+				node = new vfs_directory( this->base, this, tmp, name );
+			} else {
+				vfs_file *f = new vfs_file( this->base, this, tmp, name );
+				f->size = cur->fsize;
+				node = (vfs_node*)f;
+			}
+
+			this->base->files.add_end(node);
 		}
 
 		cur++;

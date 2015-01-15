@@ -18,6 +18,9 @@ static process* dma_chk;
 void ata_error_checker();
 void ata_dma_poller();
 
+uint8_t atapi_pio_read[]  = { 0xA8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+uint8_t atapi_pio_write[] = { 0xAA, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
 // I assume that there's only one ATA controller in a system.
 struct __ata_controller {
     pci_device *device;
@@ -29,6 +32,8 @@ struct __ata_controller {
     unsigned short dma_control_base  = 0;
     
     bool ready = false;
+    bool atapi_data_ready = false;
+    bool atapi_data_wait = false;
     
     void initialize();
 } ata_controller;
@@ -38,6 +43,7 @@ struct ata_device {
     uint64_t n_sectors;
     bool  lba48;
     bool  present;
+    bool  is_atapi;
     char  model[41];
     char  serial[21];
     
@@ -66,7 +72,7 @@ struct __ata_channel {
     bool                  devices_present = false;
     ata_device            devices[2];
     bool                  error_handled = false;
-    
+
     void initialize( short, short, short );
     void do_identify();
     void select( uint8_t );
@@ -75,6 +81,7 @@ struct __ata_channel {
     void wait_bsy();
     void enqueue_request( ata_transfer_request* );
     
+    void atapi_transfer_start( ata_transfer_request* );
     void transfer_start( ata_transfer_request* );
     void transfer_cycle();
     bool transfer_available();
@@ -125,6 +132,7 @@ void __ata_channel::do_identify() {
         // okay, there actually IS something here
         if( !( (io_inb(this->base + 7) & 1) || ( (io_inb(this->base+4) == 0x14) && (io_inb(this->base+5) == 0xEB) ) ) ) { // is this an ATAPI / SATA device?
             // if not, continue..
+        	this->devices[0].is_atapi = false;
             while( (io_inb( this->control ) & 0x80) > 0 ); // wait for BSY to clear
             if( !((io_inb( this->base+4 ) > 0) || (io_inb( this->base+5 ) > 0)) ) { // check for non-spec ATAPI devices
                 while( (io_inb( this->control ) & 0x09) == 0 ); // wait for either DRQ or ERR to set
@@ -134,7 +142,24 @@ void __ata_channel::do_identify() {
                 }
             }
         } else {
-            this->error_handled = true;
+        	this->error_handled = true;
+        	this->devices[0].is_atapi = true;
+            kprintf("Found ATAPI device on master channel.\n");
+
+            io_outb( this->base+2, 0 );
+			io_outb( this->base+3, 0 );
+			io_outb( this->base+4, 0 );
+			io_outb( this->base+5, 0 );
+			io_outb( this->base+7, ATA_CMD_IDENTIFY_PACKET );
+
+			while( (io_inb( this->control ) & 0x80) > 0 ); // wait for BSY to clear
+			if( !((io_inb( this->base+4 ) > 0) || (io_inb( this->base+5 ) > 0)) ) { // check for non-spec ATAPI devices
+				while( (io_inb( this->control ) & 0x09) == 0 ); // wait for either DRQ or ERR to set
+				if( (io_inb( this->control ) & 0x01) == 0 ) { // is ERR clear?
+					ata_do_pio_sector_transfer( this->channel_no, this->devices[0].ident, false ); // read 256 words of PIO data
+					//this->devices[0].present = true;
+				}
+			}
         }
     }
     
@@ -159,7 +184,24 @@ void __ata_channel::do_identify() {
                 }
             }
         } else {
-            this->error_handled = true;
+        	this->error_handled = true;
+        	this->devices[1].is_atapi = true;
+			kprintf("Found ATAPI device on slave channel.\n");
+
+			io_outb( this->base+2, 0 );
+			io_outb( this->base+3, 0 );
+			io_outb( this->base+4, 0 );
+			io_outb( this->base+5, 0 );
+			io_outb( this->base+7, ATA_CMD_IDENTIFY_PACKET );
+
+			while( (io_inb( this->control ) & 0x80) > 0 );
+			if( !((io_inb( this->base+4 ) > 0) || (io_inb( this->base+5 ) > 0)) ) {
+				while( (io_inb( this->control ) & 0x09) == 0 );
+				if( (io_inb( this->control ) & 0x01) == 0 ) {
+					ata_do_pio_sector_transfer( this->channel_no, this->devices[1].ident, false );
+					//this->devices[1].present = true;
+				}
+			}
         }
     }
 }
@@ -218,12 +260,84 @@ bool __ata_channel::transfer_available() {
     return true;
 }
 
+void __ata_channel::atapi_transfer_start( ata_transfer_request *req ) {
+	if(req->to_slave)
+		this->select( (1<<4) );
+	else
+		this->select( 0 );
+
+	// send ATA PACKET
+	io_outb( this->base+1, 0 ); // Features port
+	io_outb( this->base+2, 0 );
+	io_outb( this->base+3, 0 );
+	io_outb( this->base+4, 0 ); // LBA-Mid
+	io_outb( this->base+5, 8 ); // LBA-Hi
+	io_outb( this->base+7, ATA_CMD_PACKET );
+
+	uint8_t cmd[12];
+
+	if(req->read) {
+		cmd[0] = 0xA8;
+	} else {
+		cmd[0] = 0xAA;
+	}
+
+	// 6 - 9 : transfer size
+	// 2 - 5 : transfer start address
+
+	cmd[2] = (req->sector_start >> 24) & 0xFF; // MSB
+	cmd[3] = (req->sector_start >> 16) & 0xFF;
+	cmd[4] = (req->sector_start >> 8) & 0xFF;
+	cmd[5] = req->sector_start & 0xFF; // LSB
+
+	cmd[6] = (req->n_sectors >> 24) & 0xFF;
+	cmd[7] = (req->n_sectors >> 16) & 0xFF;
+	cmd[8] = (req->n_sectors >> 8) & 0xFF;
+	cmd[9] = req->n_sectors & 0xFF;
+
+	ata_controller.atapi_data_wait = true;
+
+	uint8_t *cmd_ptr = cmd;
+
+	while( ((io_inb( this->control ) & ATA_SR_BSY) > 0) || ((io_inb( this->control ) & ATA_SR_DRQ) == 0) );
+	for(unsigned int j=0;j<6;j++) {
+		io_outw( this->base, (uint16_t)*(cmd_ptr++) );
+	}
+
+	for(int k=0;k<4;k++) // 400 ns delay
+		io_inb( this->control );
+
+	while( !ata_controller.atapi_data_ready ) {
+		process_switch_immediate();
+	}
+
+	ata_controller.atapi_data_wait = false;
+	ata_controller.atapi_data_ready = false;
+
+	uint8_t lba_mid = io_inb( this->base+4 );
+	uint8_t lba_hi = io_inb( this->base+5 );
+
+	uint16_t packet_sz = (((uint16_t)lba_hi) << 16) | lba_mid;
+}
+
 void __ata_channel::transfer_start( ata_transfer_request *req ) {
     if(req == NULL) {
         return;
     }
+
+    if( this->devices[ (req->to_slave ? 1 : 0) ].is_atapi ) {
+    	kprintf("ata: attempted unsupported ATAPI transfer to channel %u %s device\n", this->channel_no, (req->to_slave ? "slave" : "master"));
+		req->status = true;
+		message out("transfer_complete", req, sizeof(ata_transfer_request));
+		req->requesting_process->send_message( out );
+		process_add_to_runqueue( req->requesting_process );
+		this->delayed_starter->state = process_state::runnable; // indirectly schedule ourselves to run later
+		process_add_to_runqueue(this->delayed_starter);
+		return;
+    }
+
     bool is_lba48 = false;
-    //kprintf("ata: beginning transfer.\n");
+    kprintf("ata: beginning transfer to channel %u %s device\n", this->channel_no, (req->to_slave ? "slave" : "master"));
     if( req->dma ) {
         this->prdt_virt[0] = ((uint32_t)req->buffer.buffer_phys);
         this->prdt_virt[1] = (1<<31) | ((uint16_t)(req->n_sectors*512));
@@ -267,7 +381,7 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
         io_outb( this->base+5, (req->sector_start>>16)& 0xFF );
         // send DMA command
         //kprintf("ata: sending DMA command.\n");
-        while( ((io_inb( this->control ) & ATA_SR_DRDY) == 0) );
+        while( ((io_inb( this->control ) & ATA_SR_DRDY) == 0) ) asm volatile("pause");
         this->error_handled = false;
         if( req->dma ) {
             if( req->read ) {
@@ -298,7 +412,7 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
         io_outb( this->base+5, (req->sector_start>>16)& 0xFF );
         // send DMA command
         //kprintf("ata: sending DMA command.\n");
-        while( ((io_inb( this->control ) & ATA_SR_DRDY) == 0) ); // wait on drive ready
+        while( ((io_inb( this->control ) & ATA_SR_DRDY) == 0) ) asm volatile("pause"); // wait on drive ready
         this->error_handled = false;
         if( req->dma ) {
             if( req->read ) {
@@ -324,7 +438,7 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
         //kprintf("ata: buffer at %#p physical, %#p virtual.\n", req->buffer.buffer_phys, (void*)current);
         //kprintf("ata: PTE for virt address is %#x\n", paging_get_pte((size_t)current));
         for( unsigned int i=0;i<req->n_sectors;i++ ) {
-            while( ((io_inb( this->control ) & ATA_SR_BSY) > 0) || ((io_inb( this->control ) & ATA_SR_DRQ) == 0) );
+            while( ((io_inb( this->control ) & ATA_SR_BSY) > 0) || ((io_inb( this->control ) & ATA_SR_DRQ) == 0) ) asm volatile("pause");
             for(unsigned int j=0;j<256;j++) {
                 if( req->read )
                     *current++ = io_inw( this->base );
@@ -340,13 +454,13 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
             } else {
                 this->select( 0 );
             }
-            while( ((io_inb( this->control ) & ATA_SR_BSY) > 0) || ((io_inb( this->control ) & ATA_SR_DRDY) == 0) );
+            while( ((io_inb( this->control ) & ATA_SR_BSY) > 0) || ((io_inb( this->control ) & ATA_SR_DRDY) == 0) ) asm volatile("pause");
             if( is_lba48 ) {
                 io_outb( this->base+7, ATA_CMD_CACHE_FLUSH_EXT );
             } else {
                 io_outb( this->base+7, ATA_CMD_CACHE_FLUSH );
             }
-            while( ((io_inb( this->control ) & ATA_SR_BSY) > 0) );
+            while( ((io_inb( this->control ) & ATA_SR_BSY) > 0) ) asm volatile("pause");
         }
         flushCache(); // flush the (memory) cache cpu-side as well
         //kprintf("ata: PIO transfer complete.\n");
@@ -484,7 +598,12 @@ bool dma_irq( unsigned int channel_no ) {
 
 bool irq14_handler() { /* kprintf("IRQ14!\n"); */ return dma_irq(0); }
 bool irq15_handler() { /* kprintf("IRQ15!\n"); */ return dma_irq(1); }
-bool ata_dual_handler() { terminal_writestring("IRQ14!\n"); return ( dma_irq(0) || dma_irq(1) ); }
+bool ata_dual_handler() {
+	terminal_writestring("IRQ14!\n"); return ( dma_irq(0) || dma_irq(1) );
+	if( ata_controller.atapi_data_wait ) {
+		ata_controller.atapi_data_ready = true;
+	}
+}
 
 void __ata_channel::wait_dma() {
     while( io_inb(this->bus_master) & 1 ) { // loop until transfer is marked as complete

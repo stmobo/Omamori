@@ -100,8 +100,8 @@ namespace fat_fs {
 		void delete_file( vfs_file* file );
 		void read_file( vfs_file* file, void* buffer );
 		void write_file( vfs_file* file, void* buffer, size_t size);
-		//void copy_file( vfs_file* file, vfs_directory* destination );
-		//void move_file( vfs_file* file, vfs_directory* destination );
+		void copy_file( vfs_file* file, vfs_directory* destination );
+		void move_file( vfs_file* file, vfs_directory* destination );
 		vfs_directory* read_directory( vfs_directory* parent, vfs_node *child );
 
 		fat_fs( unsigned int part_id );

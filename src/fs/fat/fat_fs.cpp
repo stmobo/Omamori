@@ -287,6 +287,8 @@ vfs_file* fat_fs::fat_fs::create_file( unsigned char* name, vfs_directory* paren
 	kfree(parent_data_base);
 	delete parent_chain;
 
+	parent->files.add_end(ret);
+
 	return ret;
 }
 
@@ -330,6 +332,7 @@ vfs_directory* fat_fs::fat_fs::create_directory( unsigned char* name, vfs_direct
 	*/
 
 	kfree(new_file);
+	parent->files.add_end(new_directory);
 
 	return new_directory;
 }
@@ -390,6 +393,113 @@ void fat_fs::fat_fs::write_file( vfs_file* file, void* buffer, size_t size ) {
 	this->update_dir_entry( (vfs_directory*)file->parent, child_entry->shortname, child_entry );
 
 	this->update_node(file);
+}
+
+void fat_fs::fat_fs::copy_file( vfs_file* file, vfs_directory* destination ) {
+	fat_directory_entry *src_entry = (fat_directory_entry*)file->fs_info;
+	uint32_t dest_start_cluster = 0;
+
+	if( src_entry->start_cluster() != 0 ) {
+		// allocate new cluster chain,
+		// copy cluster data
+
+		uint32_t new_cluster = this->allocate_cluster();
+
+		fat_cluster_chain dest_cluster(this, new_cluster);
+		fat_cluster_chain src_cluster(this, src_entry->start_cluster());
+
+		void *tmp = src_cluster.read();
+		dest_cluster.write(tmp, src_cluster.clusters.count()*this->params.sectors_per_cluster*512);
+		dest_start_cluster = new_cluster;
+	}
+
+	// generate / copy metadata
+	fat_directory_entry *new_ent = new fat_directory_entry;
+
+	*new_ent = *src_entry;
+	new_ent->start_cluster_hi = (dest_start_cluster>>16) & 0xFFFF;
+	new_ent->start_cluster_lo = dest_start_cluster & 0xFFFF;
+
+	unsigned char *name_copy = (unsigned char*)kmalloc(strlen((char*)file->name)+1);
+	strcpy( (char*)name_copy, (char*)file->name, 0 );
+
+	vfs_file *ret = new vfs_file( destination, this, &new_ent, name_copy );
+
+	unsigned char *tmp = generate_basisname( ret );
+	for(unsigned int i=0; i<8;i++) {
+		new_ent->shortname[i] = tmp[i];
+	}
+	kfree(tmp);
+
+	// and now to actually write it out
+	fat_cluster_chain dest_parent_cluster_chain( this, ((fat_directory_entry*)destination->fs_info)->start_cluster() );
+	void *dest_parent_data_base = dest_parent_cluster_chain.read();
+	fat_directory_entry* dest_parent_data = (fat_directory_entry*)dest_parent_data_base;
+
+	vector<fat_longname> *lfns = generate_lfn_entries(name_copy);
+	for(unsigned int i=0; i<lfns->count();i++) {
+		fat_longname lfn = lfns->get(i);
+		memcpy((void*)dest_parent_data, (void*)&lfn, sizeof(fat_longname));
+		dest_parent_data++;
+	}
+
+	memcpy((void*)dest_parent_data, (void*)new_ent, sizeof(fat_directory_entry));
+
+	dest_parent_cluster_chain.write( dest_parent_data_base, dest_parent_cluster_chain.clusters.count()*this->params.sectors_per_cluster*512 );
+
+	kfree(dest_parent_data_base);
+
+	destination->files.add_end(ret);
+}
+
+void fat_fs::fat_fs::move_file( vfs_file* file, vfs_directory* destination ) {
+	fat_directory_entry *src_entry = (fat_directory_entry*)file->fs_info;
+
+	// generate / copy metadata
+	fat_directory_entry *new_ent = new fat_directory_entry;
+
+	*new_ent = *src_entry;
+	src_entry->shortname[0] = 0;
+	src_entry->start_cluster_hi = 0;
+	src_entry->start_cluster_lo = 0;
+
+	// copy this now before we overwrite it
+	unsigned char shortname_copy[8];
+	strcpy( (char*)shortname_copy, (char*)new_ent->shortname, 8 );
+
+	unsigned char *name_copy = (unsigned char*)kmalloc(strlen((char*)file->name)+1);
+	strcpy( (char*)name_copy, (char*)file->name, 0 );
+
+	vfs_file *ret = new vfs_file( destination, this, &new_ent, name_copy );
+
+	unsigned char *tmp = generate_basisname( ret );
+	for(unsigned int i=0; i<8;i++) {
+		new_ent->shortname[i] = tmp[i];
+	}
+	kfree(tmp);
+
+	// and now to actually write it out
+	fat_cluster_chain dest_parent_cluster_chain( this, ((fat_directory_entry*)destination->fs_info)->start_cluster() );
+	void *dest_parent_data_base = dest_parent_cluster_chain.read();
+	fat_directory_entry* dest_parent_data = (fat_directory_entry*)dest_parent_data_base;
+
+	vector<fat_longname> *lfns = generate_lfn_entries(name_copy);
+	for(unsigned int i=0; i<lfns->count();i++) {
+		fat_longname lfn = lfns->get(i);
+		memcpy((void*)dest_parent_data, (void*)&lfn, sizeof(fat_longname));
+		dest_parent_data++;
+	}
+
+	memcpy((void*)dest_parent_data, (void*)new_ent, sizeof(fat_directory_entry));
+
+	dest_parent_cluster_chain.write( dest_parent_data_base, dest_parent_cluster_chain.clusters.count()*this->params.sectors_per_cluster*512 );
+
+	kfree(dest_parent_data_base);
+
+	destination->files.add_end(ret);
+
+	// delete the old direntry
+	this->update_dir_entry( (vfs_directory*)file->parent, shortname_copy, src_entry );
 }
 
 fat_fs::fat_fs::fat_fs( unsigned int part_no ) {

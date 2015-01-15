@@ -221,6 +221,7 @@ unsigned char* fat_fs::generate_basisname( vfs_node* node ) {
 			test_tail[7-i] = num_id_str[strlen(num_id_str)-(i+1)];
 		}
 		test_tail[8] = '\0';
+		kfree(num_id_str);
 
 		vfs_directory *parent = (vfs_directory*)node->parent;
 

@@ -1,0 +1,142 @@
+/*
+ * iso9660.cpp
+ *
+ *  Created on: Jan 12, 2015
+ *      Author: Tatantyler
+ */
+
+#include "fs/iso9660/iso9660.h"
+#include "core/io.h"
+#include "core/vfs.h"
+
+void *iso9660::iso9660_fs::read_sector( uint32_t sector_num ) {
+	void *sec_data = kmalloc(2048); // 1 sector = 2048 bytes / 2 KiB
+
+	io_read_disk( this->device_id, sec_data, sector_num*2048, 2048 );
+
+	return sec_data;
+}
+
+void *iso9660::iso9660_fs::read_direntry( iso9660_directory_entry* entry ) {
+	void *data = kmalloc(entry->extent_size);
+
+	void *sec_data = this->read_sector(entry->extent_address);
+	memcpy(data, sec_data, entry->extent_size);
+
+	kfree(sec_data);
+
+	return data;
+}
+
+void iso9660::iso9660_fs::read_direntry( iso9660_directory_entry* entry, void *buf ) {
+	void *data = kmalloc(entry->extent_size);
+
+	void *sec_data = this->read_sector(entry->extent_address);
+	memcpy(buf, sec_data, entry->extent_size);
+
+	kfree(sec_data);
+}
+
+vfs_directory* iso9660::iso9660_fs::read_directory( vfs_directory* parent, vfs_node *child ) {
+	void *directory_data = this->read_direntry( (iso9660_directory_entry*)child->fs_info );
+	vfs_directory *out = new vfs_directory( parent, this, (void*)child->fs_info, child->name );
+
+	iso9660_directory_entry* cur = (iso9660_directory_entry*)directory_data;
+
+	while(cur->size > 0) {
+		vfs_node *node;
+		void *fs_data = kmalloc(cur->size);
+		memcpy(fs_data, (void*)cur, cur->size);
+
+		unsigned char *name = (unsigned char*)kmalloc(cur->file_ident_length);
+		memcpy((void*)name, (void*)cur->file_identifier(), cur->file_ident_length);
+
+		if(cur->flags & 0x08) {
+			// directory
+			vfs_directory *dir = new vfs_directory( (vfs_node*)out, this, (void*)fs_data, name );
+
+			node = (vfs_node*)dir;
+		} else {
+			// file
+			vfs_file *fn = new vfs_file( (vfs_node*)out, this, (void*)fs_data, name );
+			fn->size = cur->extent_size;
+
+			node = (vfs_node*)fn;
+		}
+		out->files.add_end(node);
+		cur = cur->next_directory();
+	}
+
+	kfree(directory_data);
+	return out;
+}
+
+void iso9660::iso9660_fs::read_file(vfs_file* file, void* buffer) {
+	iso9660_directory_entry* entry = (iso9660_directory_entry*)file->fs_info;
+
+	this->read_direntry(entry, buffer);
+}
+
+iso9660::iso9660_fs::iso9660_fs(unsigned int device_id) {
+	this->device_id = device_id;
+	// look for the primary volume descriptor
+	void *pvd_data = NULL;
+	unsigned int current_vd = 0x10;
+	while(true) {
+		void *vd_data = this->read_sector( current_vd );
+		uint8_t type_code = ((uint8_t*)pvd_data)[0];
+		if(type_code == 1) {
+			pvd_data = vd_data;
+			kprintf("iso9660: found PVD at sector %u\n", current_vd);
+			break;
+		}
+		if(type_code == 0xFF) {
+			// could not find PVD
+			kprintf("iso9660: could not find PVD\n");
+			return;
+		}
+		kfree(vd_data);
+		current_vd++;
+	}
+
+	if(pvd_data == NULL) {
+		kprintf("iso9660: could not find PVD\n");
+		return;
+	}
+
+	iso9660_directory_entry *root_entry = (iso9660_directory_entry*)kmalloc(34);
+
+	unsigned char name[] = { '\\', '\0' };
+	this->base = new vfs_directory( NULL, this, (void*)root_entry, name );
+
+	void *directory_data = this->read_direntry(root_entry);
+	iso9660_directory_entry *cur = (iso9660_directory_entry*)directory_data;
+	while(cur->size > 0) {
+		vfs_node *node;
+		void *fs_data = kmalloc(cur->size);
+		memcpy(fs_data, (void*)cur, cur->size);
+
+		unsigned char *name = (unsigned char*)kmalloc(cur->file_ident_length);
+		memcpy((void*)name, (void*)cur->file_identifier(), cur->file_ident_length);
+
+		kprintf("iso9660: found file / directory: %s\n", name);
+
+		if(cur->flags & 0x08) {
+			// directory
+			vfs_directory *dir = new vfs_directory( (vfs_node*)this->base, this, (void*)fs_data, name );
+
+			node = (vfs_node*)dir;
+		} else {
+			// file
+			vfs_file *fn = new vfs_file( (vfs_node*)this->base, this, (void*)fs_data, name );
+			fn->size = cur->extent_size;
+
+			node = (vfs_node*)fn;
+		}
+		this->base->files.add_end(node);
+		cur = cur->next_directory();
+	}
+
+	kfree(directory_data);
+	kfree(pvd_data);
+}

@@ -67,7 +67,8 @@ void sort_message_queue( vector<message*>& queue ) {
 bool send_message( message msg ) {
     channel* ch = (*message_queues)[const_cast<char*>(msg.type)];
     if( ch == NULL ) {
-        panic("Attempted to send message to invalid channel %s!\n", msg.type);
+        kprintf("Process %u (%s) attempted to send message to invalid channel %s, ignoring...\n", process_current->id, process_current->name, msg.type);
+        return false;
     }
     // check to see if the channel's in unicast mode
     // if so, then also check to see if we're either the listener or the owner
@@ -213,9 +214,10 @@ bool get_message_listen_status( char* event_name ) {
 bool set_message_listen_status( char* event_name, bool status ) {
     channel* ch = (*message_queues)[event_name];
     if( ch == NULL ) {
-        panic("Attempted to listen to invalid channel %s!\n", event_name);
+        kprintf("Process %u (%s) attempted to listen to invalid channel %s, ignoring...\n", process_current->id, process_current->name, event_name);
+        return false;
     }
-    if( (ch->mode == CHANNEL_MODE_UNICAST) && (ch->listeners->length() > 0) )
+    if( (ch->mode == CHANNEL_MODE_UNICAST) && !status && (ch->listeners->length() > 0) )
         return false;
     if( ch->mode == CHANNEL_MODE_INV_MCAST ) // an inverted multicast channel has no listeners except for the owner
         return false;

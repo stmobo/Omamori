@@ -10,8 +10,10 @@
 #include "device/serial.h"
 #include "device/vga.h"
 #include "core/vfs.h"
-
+#include "core/k_worker_thread.h"
 #include "fs/fat/fat_fs.h"
+#include "fs/iso9660/iso9660.h"
+
 extern "C" {
     #include "lua.h"
     #include "lualib.h"
@@ -37,6 +39,11 @@ static int lua_writeout_proxy(lua_State *st) {
     return 1;
 }
 
+unsigned int k_worker_thread_test() {
+	kprintf("k_worker_thread did a thing\n");
+	return 0;
+}
+
 void test_process_1() {   
     kprintf("Initializing serial logging.\n");
     initialize_serial();
@@ -44,6 +51,9 @@ void test_process_1() {
     logger_initialize();
     kprintf("Initialized kernel logger process.\n");
     
+    kprintf("Starting kernel worker thread.\n");
+    k_work::start();
+
     terminal_writestring("Initializing ACPI.\n");
     initialize_acpi();
     
@@ -62,6 +72,14 @@ void test_process_1() {
     kprintf("Initializing ATA storage.\n");
     ata_initialize();
     
+    kprintf("Scheduling work...\n");
+    logger_flush_buffer();\
+    k_work::work* wk = k_work::schedule( &k_worker_thread_test );
+	kprintf("Test work function returned: %u\n", wk->wait());
+
+    logger_flush_buffer();
+	system_halt;
+
     uint32_t child_pid = fork();
     if( child_pid == -1 ) {
         kprintf("Whoops, something went wrong with fork!");
@@ -144,13 +162,17 @@ void test_process_1() {
 
 		char* readback_data = (char*)readback;
 		kprintf("Readback data: %s (%#p)\n", readback_data, readback);
-		logger_flush_buffer();
-		system_halt;
 
-        /*
+		iso9660::iso9660_fs f2(2);
+		root = f.base;
+		kprintf( "Directory listing (ISO 9660):\n" );
+		for( unsigned int i=0;i<root->files.count();i++) {
+			vfs_node *fn = root->files[i];
+			kprintf( "* %u - %s\n", i, fn->name );
+		}
+
         logger_flush_buffer();
 		system_halt;
-		*/
 
         /*
         f.write_file(test_file, (void*)test_file_data, strlen(test_file_data)+1);

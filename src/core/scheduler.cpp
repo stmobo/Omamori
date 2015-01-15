@@ -135,6 +135,14 @@ void process_add_to_runqueue( process* process_to_add ) {
     }
 }
 
+bool is_valid_process( process* proc ) {
+	for(unsigned int i=0;i<system_processes.count();i++) {
+		if( system_processes[i] == proc )
+			return true;
+	}
+	return false;
+}
+
 void process_scheduler() {
     asm volatile("cli" : : : "memory");
     int current_priority = -1;
@@ -275,7 +283,7 @@ process::process( process* forked_process ) {
 // the stack PDE (and the kernel PDE) should start at vaddr 0xFFFFFBFC.
 // the stack page table should start at vaddr 0xFFEFF000.
 // the kernel page table should start at vaddr 0xFFF00000.
-process::process( size_t entry_point, bool is_usermode, int priority, const char* name, void* args, int n_args ) {
+process::process( uint32_t entry_point, bool is_usermode, int priority, const char* name, void* args, int n_args ) {
     if(this->address_space.ready) { // no point in setting anything else if the address space couldn't be allocated
         this->id = allocate_new_pid();
         this->parent = process_current;

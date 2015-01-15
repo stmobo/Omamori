@@ -90,7 +90,7 @@ typedef struct process {
     
     ~process();
     process( process* );
-    process( size_t entry_point, bool is_usermode, int priority, const char* name, void* args, int n_args );
+    process( uint32_t entry_point, bool is_usermode, int priority, const char* name, void* args, int n_args );
     
     int  wait();
     bool send_message( message );
@@ -124,6 +124,7 @@ extern void process_add_to_runqueue( process* );
 extern process* get_process_by_pid( unsigned int );
 extern void spawn_process( process* to_add, bool sched_immediate=true );
 extern uint32_t do_fork();
+extern bool is_valid_process();
 extern "C" {
     extern uint32_t fork();
     extern void process_switch_immediate();

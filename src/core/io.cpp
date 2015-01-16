@@ -122,7 +122,7 @@ transfer_buffer::transfer_buffer( unsigned int n_bytes ) {
         	kprintf("allocated-as: (%u, %u)\n", this->frames[i].id_allocated_as, this->frames[i].order_allocated_as);
             panic("io: Could not allocate contiguous frames for DMA buffer!\n");
         }
-        paging_set_pte( ((size_t)this->buffer_virt)+(i*0x1000), this->frames[i].address,0x19 );
+        paging_set_pte( ((size_t)this->buffer_virt)+(i*0x1000), this->frames[i].address,0x11 );
         //kprintf("transfer_buffer::transfer_buffer: mapping %#x to %#x.\n", ((size_t)this->buffer_virt)+(i*0x1000), this->frames[i].address );
     }
 }
@@ -130,14 +130,12 @@ transfer_buffer::transfer_buffer( unsigned int n_bytes ) {
 void *transfer_buffer::remap() {
     void *buf = (void*)k_vmem_alloc( this->n_frames );
     for(unsigned int i=0;i<this->n_frames;i++) {
-        /*
     	if( !((i <= 0) || (this->frames[i].address == (this->frames[i-1].address+0x1000))) ){
-        	kprintf("(i=%u, [i]=%#x, [i-1]=%#x)\n", i, this->frames[i].address, this->frames[i-1].address);
-        	kprintf("allocated-as: (%u, %u)\n", this->frames[i].id_allocated_as, this->frames[i].order_allocated_as);
-            panic("io: Could not allocate contiguous frames for DMA buffer!\n");
+    		kprintf("io: WARNING: IO Transfer Buffer frames not contiguous!\n");
+        	kprintf("io: (i=%u, [i]=%#x, [i-1]=%#x)\n", i, this->frames[i].address, this->frames[i-1].address);
+        	kprintf("io: allocated-as: (%u, %u)\n", this->frames[i].id_allocated_as, this->frames[i].order_allocated_as);
         }
-        */
-        paging_set_pte( ((size_t)buf)+(i*0x1000), this->frames[i].address,0x19 );
+        paging_set_pte( ((size_t)buf)+(i*0x1000), this->frames[i].address,0x11 );
         //kprintf("transfer_buffer::remap: mapping %#x to %#x.\n", ((size_t)buf)+(i*0x1000), this->frames[i].address );
     }
     return buf;
@@ -208,12 +206,17 @@ void io_write_disk( unsigned int disk_no, void* out_buffer, uint64_t start_pos, 
 
 void io_read_partition( unsigned int global_part_id, void *out_buffer, uint64_t start_pos, uint64_t read_amt ) {
     io_partition *part   = io_get_partition(global_part_id);
-    io_disk      *device = io_get_disk( part->device );
     if( part == NULL ) {
         kprintf("io: attempted read from unknown partition %u (global)\n", global_part_id);
         return;
     }
+    io_disk      *device = io_get_disk( part->device );
     
+    if( device == NULL ) {
+		kprintf("io: attempted read from unknown device %u\n", part->device);
+		return;
+	}
+
     // do some sanity checking
     if( (((part->start*device->get_sector_size())+start_pos) + read_amt) > ((part->start*device->get_sector_size())+part->size) ) {
         kprintf("io: attempted read over partition %u boundary", global_part_id);
@@ -225,12 +228,17 @@ void io_read_partition( unsigned int global_part_id, void *out_buffer, uint64_t 
 
 void io_write_partition( unsigned int global_part_id, void *out_buffer, uint64_t start_pos, uint64_t write_amt ) {
     io_partition *part = io_get_partition(global_part_id);
-    io_disk      *device = io_get_disk( part->device );
     if( part == NULL ) {
         kprintf("io: attempted write to unknown partition %u (global)\n", global_part_id);
         return;
     }
+    io_disk      *device = io_get_disk( part->device );
     
+    if( device == NULL ) {
+		kprintf("io: attempted write to unknown device %u (global)\n", part->device);
+		return;
+	}
+
     // do some sanity checking
     if( (((part->start*device->get_sector_size())+start_pos) + write_amt) > ((part->start*device->get_sector_size())+part->size) ) {
         kprintf("io: attempted write over partition %u boundary", global_part_id);

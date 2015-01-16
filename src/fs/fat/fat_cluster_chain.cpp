@@ -24,7 +24,7 @@ fat_fs::fat_cluster_chain::fat_cluster_chain( fat_fs *parent, uint32_t start_clu
 	uint32_t fat_sector = this->parent_fs->params.n_reserved_sectors + ( (current*4) / 512 );
 	bool do_read = true;
 
-	kprintf("fat: reading cluster chain starting from cluster %u.\n", start_cluster);
+	//kprintf("fat: reading cluster chain starting from cluster %u.\n", start_cluster);
 
 	void *buf = kmalloc(512);
 	do {
@@ -37,12 +37,14 @@ fat_fs::fat_cluster_chain::fat_cluster_chain( fat_fs *parent, uint32_t start_clu
 
 		uint8_t* cluster = (uint8_t*)buf;
 
-		next = *((uint32_t*)(cluster+fat_offset)) & 0x0FFFFFFF;
+		next = *((uint32_t*)(((uint32_t)buf)+fat_offset)) & 0x0FFFFFFF;
 		if( next != 0 ) // if this is actually allocated....
 			this->clusters.add_end( current );
 
-		kprintf("fat: current cluster=%u / %#x\n", current, current);
-		kprintf("fat: data at %#p\n", buf);
+		//kprintf("fat:read_cluster_chain(): fat_offset = %u\n", fat_offset);
+		//kprintf("fat:read_cluster_chain(): current cluster=%u / %#x\n", current, current);
+		//kprintf("fat:read_cluster_chain(): next cluster=%u / %#x\n", next, next);
+		//kprintf("fat:read_cluster_chain(): data at %#p\n", buf);
 
 		/*
 		logger_flush_buffer();
@@ -55,8 +57,6 @@ fat_fs::fat_cluster_chain::fat_cluster_chain( fat_fs *parent, uint32_t start_clu
 		}
 
 		current = next;
-
-		kprintf("fat: next cluster=%u / %#x\n", next, next);
 	} while( (next != 0) && !( (next & 0x0FFFFFFF) >= 0x0FFFFFF8 ) );
 	kfree(buf);
 }
@@ -102,6 +102,7 @@ void* fat_fs::fat_cluster_chain::read() {
 		io_read_partition( this->parent_fs->params.part_no, buf, this->parent_fs->cluster_to_lba( this->clusters.get(i) )*512, this->parent_fs->params.sectors_per_cluster * 512 );
 		out_int += (this->parent_fs->params.sectors_per_cluster * 512);
 		buf = (void*)out_int;
+		//kprintf("fat_fs:cluster_chain:read(): read in data to %#p.\n", buf);
 	}
 	return out;
 }

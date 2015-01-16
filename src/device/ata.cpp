@@ -337,7 +337,7 @@ void __ata_channel::transfer_start( ata_transfer_request *req ) {
     }
 
     bool is_lba48 = false;
-    kprintf("ata: beginning transfer to channel %u %s device\n", this->channel_no, (req->to_slave ? "slave" : "master"));
+    //kprintf("ata: beginning transfer to channel %u %s device\n", this->channel_no, (req->to_slave ? "slave" : "master"));
     if( req->dma ) {
         this->prdt_virt[0] = ((uint32_t)req->buffer.buffer_phys);
         this->prdt_virt[1] = (1<<31) | ((uint16_t)(req->n_sectors*512));

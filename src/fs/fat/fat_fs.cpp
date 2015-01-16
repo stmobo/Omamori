@@ -360,7 +360,18 @@ void fat_fs::fat_fs::read_file( vfs_file* file, void* buffer ) {
 		fat_cluster_chain child_chain(this, child_entry->start_cluster());
 		void *data = child_chain.read();
 
-		kprintf("fat: reading in %u / %u bytes\n", child_entry->fsize, file->size);
+		if( data == NULL ) {
+			kprintf("Could not read in child chain?\n");
+			logger_flush_buffer();
+			system_halt;
+		}
+
+		//kprintf("fat: data at %#p\n", data);
+		//kprintf("fat: reading in %u / %u bytes from %#p to %#p\n", child_entry->fsize, file->size, data, buffer);
+
+		//logger_flush_buffer();
+		//system_halt;
+
 		memcpy(buffer, data, file->size);
 
 		kfree(data);
@@ -388,6 +399,7 @@ void fat_fs::fat_fs::write_file( vfs_file* file, void* buffer, size_t size ) {
 		child_entry->start_cluster_lo = (uint16_t)(first_cluster & 0xFFFF);
 
 		child_chain.write(buffer, size);
+		this->write_fat(first_cluster, 0x0FFFFFF8);
 	}
 
 	this->update_dir_entry( (vfs_directory*)file->parent, child_entry->shortname, child_entry );

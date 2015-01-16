@@ -77,8 +77,8 @@ void test_process_1() {
     k_work::work* wk = k_work::schedule( &k_worker_thread_test );
 	kprintf("Test work function returned: %u\n", wk->wait());
 
-    logger_flush_buffer();
-	system_halt;
+    //logger_flush_buffer();
+	//system_halt;
 
     uint32_t child_pid = fork();
     if( child_pid == -1 ) {
@@ -152,17 +152,24 @@ void test_process_1() {
             }
         }
 
-        //test_file->size = strlen(test_file_data)+1;
+        if(test_file == NULL) {
+        	test_file = f.create_file( (unsigned char*)(test_file_name), f.base );
+			kprintf("test file created\n");
+        	test_file->size = strlen(test_file_data)+1;
 
-        //f.write_file(test_file, (void*)test_file_data, strlen(test_file_data)+1);
-		//kprintf("File written out to %s\n", test_file_name);
+        	f.write_file(test_file, (void*)test_file_data, strlen(test_file_data)+1);
+        	kprintf("File written out to %s\n", test_file_name);
+        } else {
+        	//f.write_file(test_file, (void*)test_file_data, strlen(test_file_data)+1);
+			//kprintf("File written out to %s\n", test_file_name);
 
-        void *readback = kmalloc(strlen(test_file_data)+1);
-		f.read_file(test_file, readback);
+			void *readback = kmalloc(strlen(test_file_data)+1);
+			f.read_file(test_file, readback);
 
-		char* readback_data = (char*)readback;
-		kprintf("Readback data: %s (%#p)\n", readback_data, readback);
-
+			char* readback_data = (char*)readback;
+			kprintf("Readback data: %s (%#p)\n", readback_data, readback);
+        }
+		/*
 		iso9660::iso9660_fs f2(2);
 		root = f.base;
 		kprintf( "Directory listing (ISO 9660):\n" );
@@ -170,6 +177,7 @@ void test_process_1() {
 			vfs_node *fn = root->files[i];
 			kprintf( "* %u - %s\n", i, fn->name );
 		}
+		*/
 
         logger_flush_buffer();
 		system_halt;

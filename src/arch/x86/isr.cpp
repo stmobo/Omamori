@@ -19,8 +19,10 @@ extern void paging_handle_pagefault(char, uint32_t, uint32_t, uint32_t);
 // 0 - Error code (again) (new ESP)
 
 void halt_err(size_t err, size_t eip, size_t cs, char* desc) {
-    kprintf("%s\nerror code=0x%x\nEIP=0x%x\nCS=0x%x", desc, (unsigned long long int)err, (unsigned long long int)eip, (unsigned long long int)cs);
-    while(true) {
+    //panic("Kernel mode trap: %s -- error code=%#x", err, desc);
+	kprintf("%s\nerror code=0x%x\nEIP=0x%x\nCS=0x%x", desc, err, eip, cs);
+	logger_flush_buffer();
+	while(true) {
         asm volatile("cli\n\t"
                      "hlt\n\t" : : : "memory");
     }

@@ -21,10 +21,6 @@ namespace ata {
 		bool  is_atapi;
 		char  model[41];
 		char  serial[21];
-
-		unsigned int base_port;
-		unsigned int control_port;
-		unsigned int channel_number;
 		bool idle;
 
 		ata_channel *channel;
@@ -35,7 +31,7 @@ namespace ata {
 		void do_pio_transfer( ata_transfer_request* req );
 		void do_ata_transfer( ata_transfer_request* req );
 		void do_atapi_transfer( ata_transfer_request* req );
-		ata_device( unsigned int ch_no, bool slave, unsigned int base, unsigned int ctrl ) { this->is_slave = slave; this->base_port = base; this->control_port = ctrl; this->channel_number = ch_no; };
+		ata_device( ata_channel* channel, bool slave );
 	};
 
 };

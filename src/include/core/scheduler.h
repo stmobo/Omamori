@@ -125,6 +125,8 @@ extern process* get_process_by_pid( unsigned int );
 extern void spawn_process( process* to_add, bool sched_immediate=true );
 extern uint32_t do_fork();
 extern bool is_valid_process();
+extern void process_sleep();
+extern void process_wake( process* );
 extern "C" {
     extern uint32_t fork();
     extern void process_switch_immediate();

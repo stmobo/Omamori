@@ -70,8 +70,10 @@ void test_process_1() {
     pci_check_all_buses();
     
     kprintf("Initializing ATA storage.\n");
-    ata_initialize();
+    ata::initialize();
     
+    io_detect_disk( io_get_disk( 1 ) );
+
     kprintf("Scheduling work...\n");
     logger_flush_buffer();\
     k_work::work* wk = k_work::schedule( &k_worker_thread_test );

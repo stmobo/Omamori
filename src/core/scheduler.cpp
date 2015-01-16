@@ -135,6 +135,16 @@ void process_add_to_runqueue( process* process_to_add ) {
     }
 }
 
+void process_sleep() {
+	process_current->state = process_state::waiting;
+	process_switch_immediate();
+}
+
+void process_wake(process* proc) {
+	proc->state = process_state::runnable;
+	process_add_to_runqueue(proc);
+}
+
 bool is_valid_process( process* proc ) {
 	for(unsigned int i=0;i<system_processes.count();i++) {
 		if( system_processes[i] == proc )

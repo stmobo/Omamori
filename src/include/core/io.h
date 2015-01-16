@@ -51,6 +51,7 @@ struct io_partition {
 };
 
 extern void io_register_disk( io_disk* );
+extern void io_detect_disk( io_disk* dev );
 extern io_disk* io_get_disk( unsigned int );
 extern io_partition* io_get_partition( unsigned int );
 extern io_partition* io_get_partition( unsigned int, unsigned int );

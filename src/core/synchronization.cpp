@@ -17,7 +17,7 @@ spinlock::spinlock() {
 // granted, this "spinlock" isn't really a spinlock at all, but this is a single-processor OS (for now), so...
 
 // Lock / Unlock, No interrupt disabling
-void spinlock::lock() {
+void spinlock::lock_no_cli() {
     if(multitasking_enabled) { // No point in locking if we're the only thing running THIS early on
         if( (process_current != NULL) && (this->locker != process_current->id) ) { // don't lock if we've already locked this lock, but be safe about it
             while(!cas(&this->lock_value, SPINLOCK_UNLOCKED_VALUE, SPINLOCK_LOCKED_VALUE)) {
@@ -31,7 +31,7 @@ void spinlock::lock() {
     }
 }
 
-void spinlock::unlock() {
+void spinlock::unlock_no_cli() {
     if(multitasking_enabled) {
         asm volatile("" : : : "memory");
         this->lock_value = SPINLOCK_UNLOCKED_VALUE;
@@ -40,7 +40,7 @@ void spinlock::unlock() {
 }
 
 // Lock / Unlock w/ interrupt disabling
-void spinlock::lock_cli() {
+void spinlock::lock() {
     if( this == NULL ) {
         panic("lock_cli: this==NULL!\n");
     }
@@ -60,7 +60,7 @@ void spinlock::lock_cli() {
     }
 }
 
-void spinlock::unlock_cli() {
+void spinlock::unlock() {
     if(multitasking_enabled) {
         asm volatile("" : : : "memory");
         this->lock_value = SPINLOCK_UNLOCKED_VALUE;
@@ -99,14 +99,14 @@ reentrant_mutex::reentrant_mutex() {
 
 bool reentrant_mutex::trylock() {
     if( multitasking_enabled ) {
-        this->control_lock.lock_cli();
+        this->control_lock.lock();
         if( (this->uid == ~0) || (this->uid == process_current->id) ){
             this->uid = process_current->id;
             this->lock_count++;
-            this->control_lock.unlock_cli();
+            this->control_lock.unlock();
             return true;
         }
-        this->control_lock.unlock_cli();
+        this->control_lock.unlock();
         return false;
     }
     return true;
@@ -125,14 +125,14 @@ void reentrant_mutex::lock() {
                 panic("mutex: lock not initialized?!\n");
             }
             */
-            this->control_lock.lock_cli();
+            this->control_lock.lock();
             if( (this->uid == -1) || (this->uid == process_current->id) ){ // okay, it's not taken yet (or we've already taken it), acquire it
                 this->uid = process_current->id;
             } else {
-                this->control_lock.unlock_cli();
+                this->control_lock.unlock();
                 while( true ) {
                     process_switch_immediate(); // go to sleep
-                    this->control_lock.lock_cli(); // okay, checking again
+                    this->control_lock.lock(); // okay, checking again
                     if( (this->uid == -1) || (this->uid == process_current->id) ) { // is it still locked?
                         this->uid = process_current->id; // okay it is, acquire it
                         break;
@@ -144,14 +144,14 @@ void reentrant_mutex::lock() {
                                 break;
                             }
                         }
-                        this->control_lock.unlock_cli(); // no, it's not, release and go to sleep again
+                        this->control_lock.unlock(); // no, it's not, release and go to sleep again
                     }
                 }
                 // control_lock is LOCKED.
             }
             // this->uid == uid
             this->lock_count++;
-            this->control_lock.unlock_cli();
+            this->control_lock.unlock();
         }
     }
 }
@@ -159,7 +159,7 @@ void reentrant_mutex::lock() {
 void reentrant_mutex::unlock() {
     if( process_current != NULL) {
         if( multitasking_enabled ) {
-            this->control_lock.lock_cli();
+            this->control_lock.lock();
             if(this->uid == process_current->id) {
                 if( this->lock_count == 0 ) {
                     panic("sync: attempted to unlock mutex more times than it was acquired!");
@@ -169,7 +169,7 @@ void reentrant_mutex::unlock() {
                     this->uid = -1;
                 }
             }
-            this->control_lock.unlock_cli();
+            this->control_lock.unlock();
         }
     }
 }
@@ -224,16 +224,16 @@ semaphore::semaphore(uint32_t count, uint32_t max) {
 
 
 bool semaphore::release(uint32_t count) {
-    this->control_lock.lock_cli();
+    this->control_lock.lock();
     
     // make sure we don't attempt to increment the count past what it's supposed to be
     if( (this->max_count == 0) || ((this->count + count) <= this->max_count) ) {
         this->count += count;
-        this->control_lock.unlock_cli();
+        this->control_lock.unlock();
         return true;
     }
     
-    this->control_lock.unlock_cli();
+    this->control_lock.unlock();
     return false;
 }
 
@@ -242,13 +242,13 @@ bool semaphore::try_acquire(uint32_t count) {
         return false;
     }
     if( multitasking_enabled ) {
-        this->control_lock.lock_cli();
+        this->control_lock.lock();
         if( this->count >= count ) {
             this->count -= count;
-            this->control_lock.unlock_cli();
+            this->control_lock.unlock();
             return true;
         }
-        this->control_lock.unlock_cli();
+        this->control_lock.unlock();
         return false;
     }
     return true;
@@ -270,13 +270,13 @@ bool semaphore::acquire(uint32_t count) {
                 panic("semaphore: lock not initialized?!\n");
             }
             */
-            this->control_lock.lock_cli();
+            this->control_lock.lock();
             if( this->count >= count ) {
                 this->count -= count;
-                this->control_lock.unlock_cli();
+                this->control_lock.unlock();
                 break;
             }
-            this->control_lock.unlock_cli();
+            this->control_lock.unlock();
             process_switch_immediate();
         }
     }

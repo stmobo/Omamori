@@ -7,7 +7,7 @@
 
 #pragma once
 #include "includes.h"
-#include "../../../../wip/include/ata/ata_channel.h"
+#include "device/ata/ata_channel.h"
 
 namespace ata {
 

@@ -58,7 +58,7 @@ extern "C" {
         //AcpiFindRootPointer(&Ret);
         // Search the entire lower 4MB of memory.
         // except for the first 4KB.
-        while(true) {
+        while(search_addr < 0x400000) {
             char *data = (char*)search_addr;
             if( data[0] == rdsp_magic[0] ) {
                 bool found = true;

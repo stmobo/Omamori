@@ -19,15 +19,15 @@ void k_worker_thread() {
 	while(true) {
 		while( work_queue.count() > 0 ) {
 			k_work::work *current = work_queue.remove_end();
-			current->return_code = current->func();
+			current->return_code = current->func(current->context_1, current->context_2);
 			current->finished = true;
-			kprintf("Finished kernel deferred work.\n");
+			//kprintf("Finished kernel deferred work.\n");
 
 			if( !current->auto_remove ) {
 				finished_list.add_end(current);
 			}
 
-			kprintf("Sending wakeup call.\n");
+			//kprintf("Sending wakeup call.\n");
 			message wakeup_call( "k_worker_thread_finished", (void*)current, 0 );
 			send_message(wakeup_call);
 		}
@@ -39,19 +39,21 @@ void k_worker_thread() {
 	}
 }
 
-k_work::work::work( unsigned int(*func)(void), bool auto_remove ) {
+k_work::work::work( unsigned int(*func)(void*, unsigned int), void* context_1, unsigned int context_2, bool auto_remove ) {
 	this->spawning_pid = process_current->id;
 	this->work_id = current_work_id++;
 	this->func = func;
 	this->return_code = 0;
 	this->finished = false;
 	this->auto_remove = auto_remove;
+	this->context_1 = context_1;
+	this->context_2 = context_2;
 }
 
 unsigned int k_work::work::wait() {
 	set_message_listen_status( "k_worker_thread_finished", true );
 	while(!this->finished) {
-		kprintf("Waiting on kernel deferred work...\n");
+		//kprintf("Waiting on kernel deferred work...\n");
 		unique_ptr<message> msg = wait_for_message( "k_worker_thread_finished" );
 		if(msg->data == (void*)this) {
 			break;
@@ -76,8 +78,8 @@ unsigned int k_work::work::wait() {
 	return ret;
 }
 
-k_work::work* k_work::schedule( unsigned int(*func)(void), bool auto_remove ) {
-	k_work::work *work = new k_work::work(func, auto_remove);
+k_work::work* k_work::schedule( unsigned int(*func)(void*, unsigned int), void* context_1, unsigned int context_2, bool auto_remove ) {
+	k_work::work *work = new k_work::work(func, context_1, context_2, auto_remove);
 	work_queue.add_end(work);
 
 	message wakeup_call( "k_worker_thread_ready", NULL, 0 );

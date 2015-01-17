@@ -40,5 +40,5 @@ void initialize_acpi() {
         return;
     }
 
-    kprintf("acpi: basic ACPI initialization complete\n");
+    kprintf("acpi: basic ACPI initialization complete\n");;
 }

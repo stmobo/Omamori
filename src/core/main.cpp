@@ -39,9 +39,9 @@ static int lua_writeout_proxy(lua_State *st) {
     return 1;
 }
 
-unsigned int k_worker_thread_test() {
+unsigned int k_worker_thread_test(void* c1, unsigned int c2) {
 	kprintf("k_worker_thread did a thing\n");
-	return 0;
+	return 52;
 }
 
 void test_process_1() {   
@@ -56,7 +56,7 @@ void test_process_1() {
 
     terminal_writestring("Initializing ACPI.\n");
     initialize_acpi();
-    
+
     kprintf("Initializing PS/2 controller.\n");
     ps2_controller_init();
     
@@ -67,8 +67,11 @@ void test_process_1() {
     io_initialize();
     
     kprintf("Initializing PCI.\n");
-    pci_check_all_buses();
+    pci_initialize();
     
+    logger_flush_buffer();
+	system_halt;
+
     kprintf("Initializing ATA storage.\n");
     ata_initialize();
     
@@ -77,8 +80,8 @@ void test_process_1() {
     k_work::work* wk = k_work::schedule( &k_worker_thread_test );
 	kprintf("Test work function returned: %u\n", wk->wait());
 
-    //logger_flush_buffer();
-	//system_halt;
+	logger_flush_buffer();
+	system_halt;
 
     uint32_t child_pid = fork();
     if( child_pid == -1 ) {

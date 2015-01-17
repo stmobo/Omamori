@@ -12,7 +12,9 @@
 namespace k_work {
 	struct work {
 		uint32_t spawning_pid;
-		unsigned int(*func)(void);
+		void* context_1;
+		unsigned int context_2;
+		unsigned int(*func)(void*, unsigned int);
 
 		unsigned int return_code;
 		bool finished;
@@ -21,10 +23,10 @@ namespace k_work {
 		uint64_t work_id;
 
 		unsigned int wait();
-		work( unsigned int(*func)(void), bool auto_remove );
+		work( unsigned int(*func)(void*, unsigned int), void* context_1, unsigned int context_2, bool auto_remove );
 	};
 
-	work* schedule( unsigned int(*func)(void), bool auto_remove=true );
+	work* schedule( unsigned int(*func)(void*, unsigned int), void* context_1 = NULL, unsigned int context_2 = 0, bool auto_remove=true );
 	void reap_orphans();
 	void start();
 };

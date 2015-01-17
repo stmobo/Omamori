@@ -7,6 +7,7 @@
 #include "device/pci.h"
 #include "device/pci_dev_info.h"
 #include "lib/vector.h"
+#include "core/acpi.h"
 
 vector<pci_device*> pci_devices;
 // pages used to allocate MMIO ranges that are less than a page in size
@@ -15,6 +16,79 @@ vector<size_t>      uncached_pages;
 vector<uint32_t>    pci_mmio_unallocated;
 // MMIO ranges are allocated in 128-byte blocks, giving us 32 blocks per page
 // MMIO ranges are never released.
+
+void* pci_irq_routing_table;
+ACPI_PCI_ROUTING_TABLE *irq_routing_table_base;
+
+void pci_load_routing_table() {
+	ACPI_BUFFER buf;
+	buf.Length = ACPI_ALLOCATE_BUFFER;
+
+	ACPI_HANDLE handle;
+
+	ACPI_STATUS stat = AcpiGetHandle(NULL, "\\_SB.PCI0", &handle);
+
+	if(stat != AE_OK) {
+		kprintf("pci: AcpiGetHandle of PCI root bus failed with error code 0x%x: %s\n", stat, const_cast<char*>(AcpiFormatException(stat)));
+		return;
+	}
+
+	stat = AcpiGetIrqRoutingTable( handle, &buf );
+
+	if(stat != AE_OK) {
+		kprintf("pci: AcpiGetIrqRoutingTable failed with error code 0x%x: %s\n", stat, const_cast<char*>(AcpiFormatException(stat)));
+		return;
+	}
+
+	pci_irq_routing_table = buf.Pointer;
+	irq_routing_table_base = (ACPI_PCI_ROUTING_TABLE*)buf.Pointer;
+
+	kprintf("pci: Loaded PCI IRQ routing table.\n");
+
+	ACPI_PCI_ROUTING_TABLE *cur = irq_routing_table_base;
+	unsigned int i = 0;
+	while( cur->Length != 0 && i < 12 ) {
+		if( cur->Address & 0xFFFF == 0xFFFF ) {
+			uint16_t device = (cur->Address >> 16) & 0xFFFF;
+			uint16_t func = (cur->Address & 0xFFFF);
+			kprintf("%u: len %u, pin %u, device %x, function %x, source index %u, source %s\n", i, cur->Length, cur->Pin, device, func, cur->SourceIndex, cur->Source);
+		}
+		cur = (ACPI_PCI_ROUTING_TABLE*)(((uintptr_t)cur)+cur->Length);
+		i++;
+	}
+
+	ACPI_HANDLE lnka, lnkb, lnkc, lnkd;
+
+	stat = AcpiGetHandle(NULL, "\\_SB.LNKA", &lnka);
+	stat = AcpiGetHandle(NULL, "\\_SB.LNKB", &lnkb);
+	stat = AcpiGetHandle(NULL, "\\_SB.LNKC", &lnkc);
+	stat = AcpiGetHandle(NULL, "\\_SB.LNKD", &lnkd);
+
+	if(stat != AE_OK) {
+		kprintf("pci: failed to retrieve a LNKx handle, error %#x: %s\n", stat, const_cast<char*>(AcpiFormatException(stat)));
+		return;
+	}
+
+	unsigned int j = 0;
+	buf.Pointer = NULL;
+	buf.Length = ACPI_ALLOCATE_BUFFER;
+	ACPI_RESOURCE *cur_resource;
+
+	stat = AcpiGetCurrentResources( lnka, &buf );
+	if(stat != AE_OK) {
+		kprintf("pci: failed to retrieve LNKA current resources, error %#x: %s\n", stat, const_cast<char*>(AcpiFormatException(stat)));
+		return;
+	}
+	cur_resource = (ACPI_RESOURCE*)buf.Pointer;
+	while( cur_resource->Length != 0 ) {
+		if( cur_resource->Type == 0x04 ) { // IRQ Format Descriptor
+			ACPI_RESOURCE_IRQ irq = cur_resource->Data.Irq;
+			kprintf("pci: LNKA defines %u interrupt(s), starting with %u\n", irq.InterruptCount, irq.Interrupts[0]);
+			break;
+		}
+		cur_resource = (ACPI_RESOURCE*)(((uintptr_t)cur_resource)+cur_resource->Length);
+	}
+}
 
 static void pci_mmio_range_add_block() {
     page_frame *new_frame = pageframe_allocate(1);
@@ -203,6 +277,11 @@ void pci_check_all_buses() {
             }
         }
     }
+}
+
+void pci_initialize() {
+	pci_check_all_buses();
+	pci_load_routing_table();
 }
 
 void pci_bar::writeb( uint32_t offset, uint8_t data ) {

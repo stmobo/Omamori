@@ -14,10 +14,10 @@ typedef class spinlock {
     spinlock();
     bool get_lock_status();
     uint32_t get_lock_owner();
+    void lock_no_cli();
+    void unlock_no_cli();
     void lock();
     void unlock();
-    void lock_cli();
-    void unlock_cli();
 } spinlock;
 
 typedef class reentrant_mutex {

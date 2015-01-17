@@ -204,7 +204,7 @@ extern "C" {
             return 0;
         //kprintf("acpi_osl: Acquiring spinlock!");
         spinlock *lock = (spinlock*)Handle;
-        lock->lock_cli();
+        lock->lock();
         return 0;
     }
     #define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsAcquireLock
@@ -214,7 +214,7 @@ extern "C" {
             return;
         //kprintf("acpi_osl: Releasing spinlock!");
         spinlock *lock = (spinlock*)Handle;
-        lock->unlock_cli();
+        lock->unlock();
         return;
     }
     #define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsReleaseLock

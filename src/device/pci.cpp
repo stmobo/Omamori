@@ -76,14 +76,14 @@ uint32_t pci_read_config_32(uint8_t bus, uint8_t device, uint8_t func, uint8_t o
 
 uint16_t pci_read_config_16(uint8_t bus, uint8_t device, uint8_t func, uint8_t offset) {
     uint32_t tmp = pci_read_config_32(bus, device, func, offset);
-    tmp &= ( 0xFFFF << ( (offset&3)*8 ) );
+    tmp &= (  ((uint32_t)0xFFFF) << ( (offset&3)*8 ) );
     tmp >>= ( (offset&3)*8 );
     return tmp & 0xFFFF;
 }
 
 uint8_t pci_read_config_8(uint8_t bus, uint8_t device, uint8_t func, uint8_t offset) {
     uint32_t tmp = pci_read_config_32(bus, device, func, offset);
-    tmp &= ( 0xFF << ( (offset&3)*8 ) );
+    tmp &= ( ((uint32_t)0xFF) << ( (offset&3)*8 ) );
     tmp >>= ( (offset&3)*8 );
     return tmp & 0xFF;
 }
@@ -96,7 +96,7 @@ void pci_write_config_32(uint8_t bus, uint8_t device, uint8_t func, uint8_t offs
 
 void pci_write_config_16(uint8_t bus, uint8_t device, uint8_t func, uint8_t offset, uint16_t data) {
     uint32_t tmp = pci_read_config_32(bus, device, func, offset & 0xFC);
-    tmp &= ~( (uint32_t)0xFFFF<<((offset&3)*8) );
+    tmp &= ~( ((uint32_t)0xFFFF)<<((offset&3)*8) );
     //data <<= (offset&3)*8;
     tmp |= (uint32_t)(((uint32_t)data) << ((offset&3)*8));
     return pci_write_config_32(bus, device, func, offset, tmp);
@@ -104,7 +104,7 @@ void pci_write_config_16(uint8_t bus, uint8_t device, uint8_t func, uint8_t offs
 
 void pci_write_config_8(uint8_t bus, uint8_t device, uint8_t func, uint8_t offset, uint8_t data) {
     uint32_t tmp = pci_read_config_32(bus, device, func, offset & 0xFC);
-    tmp &= ~( (uint32_t)0xFF<<((offset&3)*8) );
+    tmp &= ~( ((uint32_t)0xFF)<<((offset&3)*8) );
     //data <<= (offset&3)*8;
     tmp |= (uint32_t)(((uint32_t)data) << ((offset&3)*8));
     return pci_write_config_32(bus, device, func, offset, tmp);

@@ -32,11 +32,12 @@ ata::ata_controller::ata_controller( pci_device *dev ) {
 	pci_write_config_16( this->device->bus, this->device->device, this->device->func, 0x04, 0x5 ); // Bus Master Enable | I/O Space Enable
 
 	// determine IRQs:
-	pci_read_config_8( this->device->bus, this->device->device, this->device->func, 0x3C );
+	uint8_t prior_config = pci_read_config_8( this->device->bus, this->device->device, this->device->func, 0x3C );
+	uint8_t int_pin = pci_read_config_8( this->device->bus, this->device->device, this->device->func, 0x3D );
 	pci_write_config_8( this->device->bus, this->device->device, this->device->func, 0x3C, 0xFE );
 	if( pci_read_config_8( this->device->bus, this->device->device, this->device->func, 0x3C ) == 0xFE ) {
 		// device needs IRQ assignment (we'll just use IRQ14 in this case)
-		kprintf("ata: controller IRQ assignment required\n");
+		kprintf("ata: controller IRQ assignment required (previous assignment was %u, interrupt pin is %u)\n", prior_config, int_pin);
 		irq_add_handler(14, (size_t)(&this->handle_irq));
 		pci_write_config_8( this->device->bus, this->device->device, this->device->func, 0x3C, 14 );
 		if( pci_read_config_8( this->device->bus, this->device->device, this->device->func, 0x3C ) != 14 ) {

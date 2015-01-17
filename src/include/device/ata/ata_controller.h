@@ -29,9 +29,9 @@ namespace ata {
 		ata_channel* channels[2];
 
 		void initialize( pci_device *dev );
-		void handle_irq();
-		void handle_irq14();
-		void handle_irq15();
+		static void handle_irq();
+		static void handle_irq14();
+		static void handle_irq15();
 	};
 
 };

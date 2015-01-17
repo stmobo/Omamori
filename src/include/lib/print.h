@@ -24,6 +24,8 @@ extern int   kvprintf(const char*, va_list);
 extern int   ksnprintf(char*, size_t, const char*, ...);
 extern int   ksprintf(char*, const char*, ...);
 extern int   kprintf(const char*, ...);
+extern int   irqsafe_kvprintf(const char*, va_list);
+extern int   irqsafe_kprintf(const char*, ...);
 extern void  panic(char*, ...);
 
 #define      __kassert_stringifier_2(x) #x

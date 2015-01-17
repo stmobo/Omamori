@@ -180,7 +180,7 @@ void test_process_1() {
 		*/
 
         logger_flush_buffer();
-		system_halt;
+		while(true) { asm volatile("pause"); }
 
         /*
         f.write_file(test_file, (void*)test_file_data, strlen(test_file_data)+1);

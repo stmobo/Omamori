@@ -1163,6 +1163,41 @@ int kprintf(const char *fmt, ...) {
     return ret;
 }
 
+int irqsafe_kvprintf(const char *fmt, va_list args) {
+	va_list args2;
+
+	va_copy(args2, args);
+
+	int n = kvsnprintf(NULL, 0, fmt, args2);
+	char *t = new char[n+1];
+	kvsnprintf(t, n+1, fmt, args);
+	if( logger_process == NULL ) {
+		__logger_do_writeout(t);
+	} else {
+		if( logger_vec_lock.trylock() ) {
+			logger_lines_to_write.add_end(t);
+			logger_vec_lock.unlock();
+			__sync_bool_compare_and_swap( &stat, 0, 1 );
+			logger_process->state = process_state::runnable;
+			process_add_to_runqueue(logger_process);
+			return n;
+		} else {
+			return 0;
+		}
+	}
+}
+
+int irqsafe_kprintf(const char *fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+
+	int ret = irqsafe_kvprintf(fmt, args);
+
+	va_end(args);
+
+	return ret;
+}
+
 void logger_process_func() {
     while(true) {
         if(logger_lines_to_write.count() > 0) {

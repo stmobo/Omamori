@@ -39,4 +39,6 @@ void initialize_acpi() {
         kprintf("acpi: AcpiInitializeObjects failed with error code 0x%x: %s\n", err, const_cast<char*>(AcpiFormatException(err)));
         return;
     }
+
+    kprintf("acpi: basic ACPI initialization complete\n");
 }

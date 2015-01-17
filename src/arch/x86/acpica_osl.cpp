@@ -364,7 +364,7 @@ extern "C" {
     }
     
     ACPI_STATUS AcpiOsRemoveInterruptHandler(UINT32 InterruptNumber, ACPI_OSD_HANDLER Handler) {
-        irq_add_handler(InterruptNumber, (size_t)&__acpi_interrupt);
+        irq_remove_handler(InterruptNumber, (size_t)&__acpi_interrupt);
         return AE_OK;
     }
     
@@ -375,6 +375,8 @@ extern "C" {
      
     process **acpi_threads = NULL;
     int n_acpi_threads = 0;
+
+
     ACPI_THREAD_ID AcpiOsGetThreadId() {
         return process_current->id;
     }
@@ -470,6 +472,7 @@ extern "C" {
                     *Value = *data;
                 }
         }
+        paging_unset_pte(vaddr);
         k_vmem_free( vaddr );
         return AE_OK;
     }
@@ -501,6 +504,7 @@ extern "C" {
                     *data = Value;
                 }
         }
+        paging_unset_pte(vaddr);
         k_vmem_free( vaddr );
         return AE_OK;
     }
@@ -562,44 +566,57 @@ extern "C" {
      */
      
     ACPI_STATUS AcpiOsReadPciConfiguration( ACPI_PCI_ID PciId, UINT32 Register, UINT64 *Value, UINT32 Width) {
-        uint32_t config_space_offset = (0x80000000 | (PciId.Bus<<16) | (PciId.Device<<11) | (PciId.Function<<8)) + (Register << 2);
-        io_outw(PCI_IO_CONFIG_ADDRESS, config_space_offset);
+        //uint32_t config_space_offset = (0x80000000 | (PciId.Bus<<16) | (PciId.Device<<11) | (PciId.Function<<8)) + (Register << 2);
+        //io_outw(PCI_IO_CONFIG_ADDRESS, config_space_offset);
         switch(Width) {
             case 8:
+            	*Value = pci_read_config_8( PciId.Bus, PciId.Device, PciId.Function, Register );
+            	break;
             case 16:
+            	*Value = pci_read_config_16( PciId.Bus, PciId.Device, PciId.Function, Register );
+            	break;
             case 32:
-                    *Value = (uint64_t)(io_ind(PCI_IO_CONFIG_DATA) & ((1<<Width)-1));
+            	*Value = pci_read_config_32( PciId.Bus, PciId.Device, PciId.Function, Register );
+            	break;
+				//*Value = (uint64_t)(io_ind(PCI_IO_CONFIG_DATA) & ((1<<Width)-1));
             case 64:
-                {
+            {
+            	uint32_t lo = pci_read_config_32( PciId.Bus, PciId.Device, PciId.Function, Register );
+            	uint32_t hi = pci_read_config_32( PciId.Bus, PciId.Device, PciId.Function, Register+4 );
+            	*Value = ((uint64_t)hi << 32) | ((uint64_t)lo);
+            	break;
+            }
+            /*
+            	{
                     uint32_t d1 = io_inw(PCI_IO_CONFIG_DATA);
                     config_space_offset += 4;
                     io_outw(PCI_IO_CONFIG_ADDRESS, config_space_offset);
                     uint32_t d2 = io_inw(PCI_IO_CONFIG_DATA);
                     *Value = ( (((uint64_t)d2) << 32) | d1 );
                 }
+                */
         }
         return AE_OK;
     }
     
     ACPI_STATUS AcpiOsWritePciConfiguration( ACPI_PCI_ID PciId, UINT32 Register, UINT64 Value, UINT32 Width) {
-        uint32_t config_space_offset = (0x80000000 | (PciId.Bus<<16) | (PciId.Device<<11) | (PciId.Function<<8)) + (Register << 2);
-        io_outw(PCI_IO_CONFIG_ADDRESS, config_space_offset);
         switch(Width) {
-            case 8:
-                 io_outb(PCI_IO_CONFIG_DATA, (uint8_t)(Value & 0x00000000000000FF));
-            case 16:
-                io_outw(PCI_IO_CONFIG_DATA, (uint16_t)(Value & 0x000000000000FFFF));
-            case 32:
-                io_outd(PCI_IO_CONFIG_DATA, (uint32_t)(Value & 0x00000000FFFFFFFF));
-            case 64:
-                {
-                    // Output first dword
-                    io_outd(PCI_IO_CONFIG_DATA, (uint32_t)(Value & 0x00000000FFFFFFFF));
-                    config_space_offset += 4;
-                    // Output second dword
-                    io_outw(PCI_IO_CONFIG_ADDRESS, config_space_offset);
-                    io_outd(PCI_IO_CONFIG_DATA, (uint32_t)((Value>>32) & 0x00000000FFFFFFFF));
-                }
+        	case 8:
+        		pci_write_config_8( PciId.Bus, PciId.Device, PciId.Function, Register, (Value & 0xFF) );
+				break;
+			case 16:
+				pci_write_config_16( PciId.Bus, PciId.Device, PciId.Function, Register, (Value & 0xFFFF) );
+				break;
+			case 32:
+				pci_write_config_32( PciId.Bus, PciId.Device, PciId.Function, Register, (Value & 0xFFFFFFFF) );
+				break;
+				//*Value = (uint64_t)(io_ind(PCI_IO_CONFIG_DATA) & ((1<<Width)-1));
+			case 64:
+			{
+				pci_write_config_32( PciId.Bus, PciId.Device, PciId.Function, Register, (Value & 0xFFFFFFFF) );
+				pci_write_config_32( PciId.Bus, PciId.Device, PciId.Function, Register+4, ((Value>>32) & 0xFFFFFFFF) );
+				break;
+			}
         }
         return AE_OK;
     }

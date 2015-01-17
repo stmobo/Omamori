@@ -84,25 +84,29 @@ ata::ata_controller::ata_controller( pci_device *dev ) {
 	this->ready = true;
 }
 
-void ata::ata_controller::handle_irq() {
+bool ata::ata_controller::handle_irq() {
+	kprintf("ata: IRQ received.\n");
 	if(controller->channels[0] != NULL) {
 		controller->channels[0]->irq();
 	}
 	if(controller->channels[1] != NULL) {
 		controller->channels[1]->irq();
 	}
+	return true;
 }
 
-void ata::ata_controller::handle_irq14() {
+bool ata::ata_controller::handle_irq14() {
 	if(controller->channels[0] != NULL) {
 		controller->channels[0]->irq();
 	}
+	return true;
 }
 
-void ata::ata_controller::handle_irq15() {
+bool ata::ata_controller::handle_irq15() {
 	if(controller->channels[1] != NULL) {
 		controller->channels[1]->irq();
 	}
+	return true;
 }
 
 void ata::initialize() {

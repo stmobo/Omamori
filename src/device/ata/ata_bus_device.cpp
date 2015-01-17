@@ -92,10 +92,43 @@ ata::ata_device::ata_device( ata_channel* channel, bool slave ) {
 
 	this->serial[20] = 0;
 
-	if( this->lba48 ) {
-		this->n_sectors = ((uint64_t*)this->ident)[25];
+	if(!this->is_atapi) {
+		if( this->lba48 ) {
+			this->n_sectors = ((uint64_t*)this->ident)[25];
+		} else {
+			this->n_sectors = ((uint32_t*)this->ident)[30];
+		}
 	} else {
-		this->n_sectors = ((uint32_t*)this->ident)[30];
+		uint8_t cmd[12] = { 0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+		this->send_atapi_command(cmd);
+
+		uint8_t lba_mid = io_inb( this->channel->base+4 );
+		uint8_t lba_hi = io_inb( this->channel->base+5 );
+
+		uint16_t packet_sz = (((uint16_t)lba_hi) << 8) | lba_mid;
+
+		void* data = kmalloc(12);
+		uint16_t *current = (uint16_t*)data;
+		uint8_t *current_bytes = (uint8_t*)current;
+
+		while( ((io_inb( this->channel->control ) & ATA_SR_BSY) > 0) || ((io_inb( this->channel->control ) & ATA_SR_DRQ) == 0) ) asm volatile("pause");
+		for(unsigned int j=0;j<packet_sz/2;j++) {
+			*current++ = io_inw( this->channel->base );
+		}
+		for(int k=0;k<4;k++) // 400 ns delay
+			io_inb( this->channel->control );
+
+		// wait for another IRQ
+		this->channel->waiting_on_atapi_irq = true;
+		process_sleep();
+
+		uint32_t last_lba = (((uint32_t)current_bytes[0])<<24) | (((uint32_t)current_bytes[1])<<16) | (((uint32_t)current_bytes[2])<<8) | ((uint32_t)current_bytes[3]);
+		uint32_t block_size = (((uint32_t)current_bytes[4])<<24) | (((uint32_t)current_bytes[5])<<16) | (((uint32_t)current_bytes[6])<<8) | ((uint32_t)current_bytes[7]);
+
+		this->n_sectors = last_lba;
+
+		kprintf("ata: ATAPI device has %u sectors with a block size of %u.\n", last_lba, block_size);
 	}
 }
 
@@ -187,11 +220,10 @@ void ata::ata_device::do_ata_transfer( ata_transfer_request* req ) {
 	k_vmem_free( (size_t)current );
 }
 
-void ata::ata_device::do_atapi_transfer( ata_transfer_request* req ) {
-	// only one ATAPI transfer may be in progress per controller
-	this->channel->controller->atapi_transfer_lock.lock();
+void ata::ata_device::send_atapi_command(uint8_t *command_bytes) {
+	uint16_t* cmd = (uint16_t*)command_bytes;
 
-	if(req->to_slave)
+	if(this->is_slave)
 		this->channel->select( (1<<4) );
 	else
 		this->channel->select( 0 );
@@ -203,6 +235,22 @@ void ata::ata_device::do_atapi_transfer( ata_transfer_request* req ) {
 	io_outb( this->channel->base+4, 0 ); // LBA-Mid
 	io_outb( this->channel->base+5, 8 ); // LBA-Hi
 	io_outb( this->channel->base+7, ATA_CMD_PACKET );
+
+	while( ((io_inb( this->channel->control ) & ATA_SR_BSY) > 0) || ((io_inb( this->channel->control ) & ATA_SR_DRQ) == 0) );
+	for(unsigned int j=0;j<6;j++) {
+		io_outw( this->channel->base, (uint16_t)*(cmd++) );
+	}
+
+	for(int k=0;k<4;k++) // 400 ns delay
+		io_inb( this->channel->control );
+
+	this->channel->waiting_on_atapi_irq = true;
+	process_sleep();
+}
+
+void ata::ata_device::do_atapi_transfer( ata_transfer_request* req ) {
+	// only one ATAPI transfer may be in progress per controller
+	this->channel->controller->atapi_transfer_lock.lock();
 
 	uint8_t cmd[12];
 
@@ -225,19 +273,7 @@ void ata::ata_device::do_atapi_transfer( ata_transfer_request* req ) {
 	cmd[8] = (req->n_sectors >> 8) & 0xFF;
 	cmd[9] = req->n_sectors & 0xFF;
 
-	uint8_t *cmd_ptr = cmd;
-
-	while( ((io_inb( this->channel->control ) & ATA_SR_BSY) > 0) || ((io_inb( this->channel->control ) & ATA_SR_DRQ) == 0) );
-	for(unsigned int j=0;j<6;j++) {
-		io_outw( this->channel->base, (uint16_t)*(cmd_ptr++) );
-	}
-
-	for(int k=0;k<4;k++) // 400 ns delay
-		io_inb( this->channel->control );
-
-	// wait for IRQ
-	this->channel->waiting_on_atapi_irq = true;
-	process_sleep(); // this function is only supposed to run under the channel's delayed_starter process.
+	this->send_atapi_command(cmd);
 
 	uint8_t lba_mid = io_inb( this->channel->base+4 );
 	uint8_t lba_hi = io_inb( this->channel->base+5 );

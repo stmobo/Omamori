@@ -113,9 +113,9 @@ namespace ata {
 
 		ata_channel* channels[2];
 
-		static void handle_irq();
-		static void handle_irq14();
-		static void handle_irq15();
+		static bool handle_irq();
+		static bool handle_irq14();
+		static bool handle_irq15();
 		ata_controller( pci_device *dev );
 	};
 
@@ -178,6 +178,7 @@ namespace ata {
 		void do_pio_transfer( ata_transfer_request* req );
 		void do_ata_transfer( ata_transfer_request* req );
 		void do_atapi_transfer( ata_transfer_request* req );
+		void send_atapi_command(uint8_t *command_bytes);
 		ata_device( ata_channel* channel, bool slave );
 	};
 
@@ -187,7 +188,7 @@ namespace ata {
 		ata_device* device;
 
 		void send_request( transfer_request* );
-		unsigned int  get_sector_size() { return 512; };
+		unsigned int  get_sector_size() { if( this->device->is_atapi ) return 2048; return 512; };
 		unsigned int  get_total_size();
 
 		ata_io_disk( ata_channel* ch, ata_device *dev ) { this->channel = ch; this->device = dev; };

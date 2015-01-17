@@ -112,6 +112,7 @@ ata::ata_device::ata_device( ata_channel* channel, bool slave ) {
 		uint16_t *current = (uint16_t*)data;
 		uint8_t *current_bytes = (uint8_t*)current;
 
+		//kprintf("atap(pi): Beginning READ CAPACITY data transfer.\n");
 		while( ((io_inb( this->channel->control ) & ATA_SR_BSY) > 0) || ((io_inb( this->channel->control ) & ATA_SR_DRQ) == 0) ) asm volatile("pause");
 		for(unsigned int j=0;j<packet_sz/2;j++) {
 			*current++ = io_inw( this->channel->base );
@@ -120,8 +121,8 @@ ata::ata_device::ata_device( ata_channel* channel, bool slave ) {
 			io_inb( this->channel->control );
 
 		// wait for another IRQ
-		this->channel->waiting_on_atapi_irq = true;
-		process_sleep();
+		//this->channel->waiting_on_atapi_irq = true;
+		//process_sleep();
 
 		uint32_t last_lba = (((uint32_t)current_bytes[0])<<24) | (((uint32_t)current_bytes[1])<<16) | (((uint32_t)current_bytes[2])<<8) | ((uint32_t)current_bytes[3]);
 		uint32_t block_size = (((uint32_t)current_bytes[4])<<24) | (((uint32_t)current_bytes[5])<<16) | (((uint32_t)current_bytes[6])<<8) | ((uint32_t)current_bytes[7]);
@@ -129,6 +130,8 @@ ata::ata_device::ata_device( ata_channel* channel, bool slave ) {
 		this->n_sectors = last_lba;
 
 		kprintf("ata: ATAPI device has %u sectors with a block size of %u.\n", last_lba, block_size);
+		//logger_flush_buffer();
+		//system_halt;
 	}
 }
 
@@ -228,6 +231,10 @@ void ata::ata_device::send_atapi_command(uint8_t *command_bytes) {
 	else
 		this->channel->select( 0 );
 
+	io_outb( this->channel->control, 0x02 ); // set nIEN
+
+	//kprintf("ata(pi): Sending ATA PACKET command...\n");
+
 	// send ATA PACKET
 	io_outb( this->channel->base+1, 0 ); // Features port
 	io_outb( this->channel->base+2, 0 );
@@ -236,7 +243,11 @@ void ata::ata_device::send_atapi_command(uint8_t *command_bytes) {
 	io_outb( this->channel->base+5, 8 ); // LBA-Hi
 	io_outb( this->channel->base+7, ATA_CMD_PACKET );
 
-	while( ((io_inb( this->channel->control ) & ATA_SR_BSY) > 0) || ((io_inb( this->channel->control ) & ATA_SR_DRQ) == 0) );
+	for(int k=0;k<4;k++) // 400 ns delay
+		io_inb( this->channel->control );
+
+	//kprintf("ata(pi): Waiting on BSY and DRQ...\n");
+	while( ((io_inb( this->channel->control ) & ATA_SR_BSY) > 0) || ((io_inb( this->channel->control ) & ATA_SR_DRQ) == 0) ) asm volatile("pause");
 	for(unsigned int j=0;j<6;j++) {
 		io_outw( this->channel->base, (uint16_t)*(cmd++) );
 	}
@@ -244,8 +255,17 @@ void ata::ata_device::send_atapi_command(uint8_t *command_bytes) {
 	for(int k=0;k<4;k++) // 400 ns delay
 		io_inb( this->channel->control );
 
+	/*
 	this->channel->waiting_on_atapi_irq = true;
 	process_sleep();
+	*/
+
+	io_inb( this->channel->control );
+
+	//kprintf("ata(pi): Command sent, waiting on BSY again...\n");
+	//kprintf("ata(pi): Status looks like: %#x.\n", io_inb( this->channel->base+7 ));
+	while( ((io_inb( this->channel->base+7 ) & ATA_SR_BSY) > 0)) asm volatile("pause");
+	//kprintf("ata(pi): Command transfer complete.\n");
 }
 
 void ata::ata_device::do_atapi_transfer( ata_transfer_request* req ) {
@@ -283,7 +303,7 @@ void ata::ata_device::do_atapi_transfer( ata_transfer_request* req ) {
 	void* data = req->buffer.remap();
 	uint16_t *current = (uint16_t*)data;
 
-	while( ((io_inb( this->channel->control ) & ATA_SR_BSY) > 0) || ((io_inb( this->channel->control ) & ATA_SR_DRQ) == 0) ) asm volatile("pause");
+	//while( ((io_inb( this->channel->control ) & ATA_SR_BSY) > 0) || ((io_inb( this->channel->control ) & ATA_SR_DRQ) == 0) ) asm volatile("pause");
 	for(unsigned int j=0;j<packet_sz/2;j++) {
 		if( req->read )
 			*current++ = io_inw( this->channel->base );
@@ -292,10 +312,6 @@ void ata::ata_device::do_atapi_transfer( ata_transfer_request* req ) {
 	}
 	for(int k=0;k<4;k++) // 400 ns delay
 		io_inb( this->channel->control );
-
-	// wait for another IRQ
-	this->channel->waiting_on_atapi_irq = true;
-	process_sleep();
 
 	this->channel->controller->atapi_transfer_lock.unlock();
 }

@@ -92,7 +92,7 @@ namespace fat_fs {
 		fat_directory_entry* read_dir_entry(vfs_directory* dir, unsigned char *shortname);
 		void update_node(vfs_node* node);
 	public:
-		vfs_directory *base;
+		//vfs_directory *base;
 
 		// VFS interface functions
 		vfs_file* create_file( unsigned char* name, vfs_directory* parent );
@@ -100,8 +100,8 @@ namespace fat_fs {
 		void delete_file( vfs_file* file );
 		void read_file( vfs_file* file, void* buffer );
 		void write_file( vfs_file* file, void* buffer, size_t size);
-		void copy_file( vfs_file* file, vfs_directory* destination );
-		void move_file( vfs_file* file, vfs_directory* destination );
+		vfs_file* copy_file( vfs_file* file, vfs_directory* destination );
+		vfs_file* move_file( vfs_file* file, vfs_directory* destination );
 		vfs_directory* read_directory( vfs_directory* parent, vfs_node *child );
 
 		fat_fs( unsigned int part_id );

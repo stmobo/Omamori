@@ -287,8 +287,6 @@ vfs_file* fat_fs::fat_fs::create_file( unsigned char* name, vfs_directory* paren
 	kfree(parent_data_base);
 	delete parent_chain;
 
-	parent->files.add_end(ret);
-
 	return ret;
 }
 
@@ -332,7 +330,6 @@ vfs_directory* fat_fs::fat_fs::create_directory( unsigned char* name, vfs_direct
 	*/
 
 	kfree(new_file);
-	parent->files.add_end(new_directory);
 
 	return new_directory;
 }
@@ -407,7 +404,7 @@ void fat_fs::fat_fs::write_file( vfs_file* file, void* buffer, size_t size ) {
 	this->update_node(file);
 }
 
-void fat_fs::fat_fs::copy_file( vfs_file* file, vfs_directory* destination ) {
+vfs_file* fat_fs::fat_fs::copy_file( vfs_file* file, vfs_directory* destination ) {
 	fat_directory_entry *src_entry = (fat_directory_entry*)file->fs_info;
 	uint32_t dest_start_cluster = 0;
 
@@ -461,10 +458,10 @@ void fat_fs::fat_fs::copy_file( vfs_file* file, vfs_directory* destination ) {
 
 	kfree(dest_parent_data_base);
 
-	destination->files.add_end(ret);
+	return ret;
 }
 
-void fat_fs::fat_fs::move_file( vfs_file* file, vfs_directory* destination ) {
+vfs_file* fat_fs::fat_fs::move_file( vfs_file* file, vfs_directory* destination ) {
 	fat_directory_entry *src_entry = (fat_directory_entry*)file->fs_info;
 
 	// generate / copy metadata
@@ -508,10 +505,10 @@ void fat_fs::fat_fs::move_file( vfs_file* file, vfs_directory* destination ) {
 
 	kfree(dest_parent_data_base);
 
-	destination->files.add_end(ret);
-
 	// delete the old direntry
 	this->update_dir_entry( (vfs_directory*)file->parent, shortname_copy, src_entry );
+
+	return ret;
 }
 
 fat_fs::fat_fs::fat_fs( unsigned int part_no ) {

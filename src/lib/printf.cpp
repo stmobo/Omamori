@@ -169,6 +169,14 @@ size_t strlen( char* str ) {
     return i;
 }
 
+size_t strlen( unsigned char* str ) {
+    int i = 0;
+    while( (*str++) != '\0' ) {
+        i++;
+    }
+    return i;
+}
+
 char *concatentate_strings(char* str1, char *str2) {
     if( (str1 == NULL) && (str2 == NULL) )
         return NULL;

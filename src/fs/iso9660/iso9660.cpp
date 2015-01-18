@@ -58,11 +58,24 @@ vfs_directory* iso9660::iso9660_fs::read_directory( vfs_directory* parent, vfs_n
 			node = (vfs_node*)dir;
 		} else {
 			// file
-			vfs_file *fn = new vfs_file( (vfs_node*)out, this, (void*)fs_data, name );
+			unsigned int actual_len = 0;
+			for(unsigned int i=0;i<cur->file_ident_length;i++) {
+				if( name[i] == ';' ) {
+					break;
+				}
+				actual_len++;
+			}
+			unsigned char *truncated_name = (unsigned char*)kmalloc(actual_len);
+			for(unsigned int i=0;i<actual_len;i++) {
+				truncated_name[i] = name[i];
+			}
+			kfree(name);
+			vfs_file *fn = new vfs_file( (vfs_node*)out, this, (void*)fs_data, truncated_name );
 			fn->size = cur->extent_size;
 
 			node = (vfs_node*)fn;
 		}
+		node->attr.read_only = true;
 		out->files.add_end(node);
 		cur = cur->next_directory();
 	}
@@ -139,12 +152,14 @@ iso9660::iso9660_fs::iso9660_fs(unsigned int device_id) {
 			for(unsigned int i=0;i<actual_len;i++) {
 				truncated_name[i] = name[i];
 			}
+			kfree(name);
 			vfs_file *fn = new vfs_file( (vfs_node*)this->base, this, (void*)fs_data, truncated_name );
 			fn->size = cur->extent_size;
 
 			node = (vfs_node*)fn;
 			kprintf("iso9660: found file (size %llu): %s\n", fn->size, name);
 		}
+		node->attr.read_only = true;
 		this->base->files.add_end(node);
 		cur = cur->next_directory();
 	}

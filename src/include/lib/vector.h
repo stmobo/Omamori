@@ -29,6 +29,7 @@ class vector {
     
     const vector<T>& operator=( const vector<T>& );
     vector( vector<T>& );
+    vector( vector<T>&& );
     vector();
     vector( unsigned int );
     ~vector();
@@ -43,6 +44,16 @@ vector<T>::vector() {
 
 template <class T>
 vector<T>::vector( vector<T>& original ) {
+    this->elements = (T*)kmalloc(sizeof(T)*original.n_allocated_for);
+    this->n_allocated_for = original.n_allocated_for;
+    this->n_elements = original.n_elements;
+    for( unsigned int i=0;i<original.n_allocated_for;i++ ) {
+        this->elements[i] = original.elements[i];
+    }
+}
+
+template <class T>
+vector<T>::vector( vector<T>&& original ) {
     this->elements = (T*)kmalloc(sizeof(T)*original.n_allocated_for);
     this->n_allocated_for = original.n_allocated_for;
     this->n_elements = original.n_elements;
@@ -149,13 +160,10 @@ T vector<T>::remove_end() {
 
 template <class T>
 T vector<T>::remove( unsigned int n ) {
-    if( this->n_elements > n ) {
-        T elem = this->elements[n];
-        for(unsigned int i=n;i<(this->n_elements-1);i++) {
-            this->elements[i] = this->elements[i+1];
-        }
-        this->n_elements--;
-        return elem;
-    }
-    return NULL;
+	T elem = this->elements[n];
+	for(unsigned int i=n;i<(this->n_elements-1);i++) {
+		this->elements[i] = this->elements[i+1];
+	}
+	this->n_elements--;
+	return elem;
 }

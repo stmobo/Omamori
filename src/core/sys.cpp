@@ -67,6 +67,31 @@ bool strcmp(char* op1, char* op2, size_t len) {
     return true;
 }
 
+void strcpy(unsigned char* dst, unsigned char* src, size_t len) {
+    unsigned int i=0;
+    while(true) {
+        dst[i] = src[i];
+        if( (src[i] == '\0') || ((len != 0) && (len == i) ) ) {
+            break;
+        }
+        i++;
+    }
+}
+
+bool strcmp(unsigned char* op1, unsigned char* op2, size_t len) {
+    unsigned int i=0;
+    while(true) {
+        if( op1[i] != op2[i] ) {
+            return false;
+        }
+        if( (op1[i] == '\0') || (op2[i] == '\0') || ((len != 0) && (len == i) ) ) {
+            break;
+        }
+        i++;
+    }
+    return true;
+}
+
 // memory search
 size_t memsrch(size_t start, size_t end, char *search_item, unsigned int len, size_t search_granularity) {
     for(size_t i=start;i<=end;i+=search_granularity) {

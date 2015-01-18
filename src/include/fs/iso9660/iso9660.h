@@ -63,15 +63,15 @@ namespace iso9660 {
 		void* read_direntry( iso9660_directory_entry* entry );
 		void read_direntry( iso9660_directory_entry* entry, void* buf );
 	public:
-		vfs_directory *base;
+		//vfs_directory *base;
 
 		vfs_file* create_file( unsigned char* name, vfs_directory* parent ) { return NULL; };
 		vfs_directory* create_directory( unsigned char* name, vfs_directory* parent ) { return NULL; };
 		void delete_file( vfs_file* file ) {};
 		void read_file( vfs_file* file, void* buffer );
 		void write_file( vfs_file* file, void* buffer, size_t size) {};
-		void copy_file( vfs_file* file, vfs_directory* destination ) {};
-		void move_file( vfs_file* file, vfs_directory* destination ) {};
+		vfs_file* copy_file( vfs_file* file, vfs_directory* destination ) { return NULL; };
+		vfs_file* move_file( vfs_file* file, vfs_directory* destination ) { return NULL; };
 		vfs_directory* read_directory( vfs_directory* parent, vfs_node *child );
 
 		iso9660_fs( unsigned int device_id );

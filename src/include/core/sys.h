@@ -3,8 +3,11 @@
 #include "core/dynmem.h"
 
 extern size_t strlen(char*);
+extern size_t strlen(unsigned char*);
 extern void strcpy(char*, char*, size_t=0);
+extern void strcpy(unsigned char*, unsigned char*, size_t=0);
 extern bool strcmp(char*, char*, size_t=0);
+extern bool strcmp(unsigned char*, unsigned char*, size_t=0);
 extern int atexit(void(*)(void*), void*);
 extern void memcpy(void*, void*, size_t);
 extern void memset(void*, char, size_t);

@@ -8,9 +8,9 @@
 #pragma once
 #include "includes.h"
 #include "device/pci.h"
-#include "device/ata/ata_channel.h"
 
 namespace ata {
+	struct ata_channel;
 
 	struct ata_controller {
 		pci_device *device;
@@ -28,10 +28,9 @@ namespace ata {
 
 		ata_channel* channels[2];
 
-		void initialize( pci_device *dev );
-		static void handle_irq();
-		static void handle_irq14();
-		static void handle_irq15();
+		ata_controller( pci_device *dev );
+		static bool handle_irq();
+		static bool handle_irq14();
+		static bool handle_irq15();
 	};
-
 };

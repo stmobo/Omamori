@@ -7,7 +7,6 @@
 
 #pragma once
 #include "includes.h"
-#include "device/ata/ata_channel.h"
 
 namespace ata {
 
@@ -16,7 +15,7 @@ namespace ata {
 		bool  is_slave;
 		void* ident;
 
-		uint64_t n_sectors;
+
 		bool  lba48;
 		bool  is_atapi;
 		char  model[41];
@@ -25,12 +24,16 @@ namespace ata {
 
 		ata_channel *channel;
 
+		uint64_t n_sectors;
+		uint32_t sector_size;
+
 		void initialize();
 		void identify();
 		void do_pio_sector_transfer( void *buffer, bool write );
 		void do_pio_transfer( ata_transfer_request* req );
 		void do_ata_transfer( ata_transfer_request* req );
 		void do_atapi_transfer( ata_transfer_request* req );
+		void send_atapi_command( uint8_t *cmd );
 		ata_device( ata_channel* channel, bool slave );
 	};
 

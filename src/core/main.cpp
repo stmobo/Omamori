@@ -171,15 +171,14 @@ void test_process_1() {
 			char* readback_data = (char*)readback;
 			kprintf("Readback data: %s (%#p)\n", readback_data, readback);
         }
-		/*
+
 		iso9660::iso9660_fs f2(2);
-		root = f.base;
+		root = f2.base;
 		kprintf( "Directory listing (ISO 9660):\n" );
 		for( unsigned int i=0;i<root->files.count();i++) {
 			vfs_node *fn = root->files[i];
 			kprintf( "* %u - %s\n", i, fn->name );
 		}
-		*/
 
         logger_flush_buffer();
 		while(true) { asm volatile("pause"); }

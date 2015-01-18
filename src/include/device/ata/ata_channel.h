@@ -8,10 +8,9 @@
 #pragma once
 #include "core/io.h"
 #include "core/scheduler.h"
-#include "device/ata/ata_controller.h"
-#include "device/ata/ata_bus_device.h"
 
 namespace ata {
+	struct ata_device;
 
 	struct ata_transfer_request : public transfer_request {
 		bool to_slave;
@@ -45,7 +44,7 @@ namespace ata {
 		void enqueue_request( ata_transfer_request* );
 		void transfer_cycle();
 		bool transfer_available();
-		void perform_requests();
+		static void perform_requests( ata_channel* ch );
 		void irq();
 
 		ata_channel( ata_controller* controller, unsigned int channel_no, short base, short control );
@@ -56,7 +55,7 @@ namespace ata {
 		ata_device* device;
 
 		void send_request( transfer_request* );
-		unsigned int  get_sector_size() { return 512; };
+		unsigned int  get_sector_size();
 		unsigned int  get_total_size();
 
 		ata_io_disk( ata_channel* ch, ata_device *dev ) { this->channel = ch; this->device = dev; };

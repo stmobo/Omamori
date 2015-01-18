@@ -142,6 +142,5 @@ void ata::ata_io_disk::send_request( transfer_request* req ) {
 	this->channel->enqueue_request(ata_req);
 }
 
-unsigned int ata::ata_io_disk::get_total_size() {
-	return this->device->n_sectors * 512;
-}
+unsigned int ata::ata_io_disk::get_sector_size()  { return this->device->sector_size; };
+unsigned int ata::ata_io_disk::get_total_size()  { return this->device->n_sectors * 512; };

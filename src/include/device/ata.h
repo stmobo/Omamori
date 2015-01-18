@@ -10,6 +10,9 @@
 #include "core/io.h"
 #include "core/scheduler.h"
 #include "device/pci.h"
+#include "device/ata/ata_controller.h"
+#include "device/ata/ata_channel.h"
+#include "device/ata/ata_bus_device.h"
 
 #define ATA_SR_BSY     0x80
 #define ATA_SR_DRDY    0x40
@@ -92,6 +95,12 @@
 
 #define      ATA_BUS_MASTER_START       0x550
 
+namespace ata {
+	void initialize();
+	extern ata_controller* controller;
+}
+
+/*
 namespace ata {
 	struct ata_channel;
 	struct ata_controller;
@@ -197,3 +206,4 @@ namespace ata {
 	void initialize();
 	extern ata_controller* controller;
 };
+*/

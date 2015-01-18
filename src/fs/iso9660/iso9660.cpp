@@ -51,7 +51,7 @@ vfs_directory* iso9660::iso9660_fs::read_directory( vfs_directory* parent, vfs_n
 		unsigned char *name = (unsigned char*)kmalloc(cur->file_ident_length);
 		memcpy((void*)name, (void*)cur->file_identifier(), cur->file_ident_length);
 
-		if(cur->flags & 0x08) {
+		if(cur->flags & 0x02) {
 			// directory
 			vfs_directory *dir = new vfs_directory( (vfs_node*)out, this, (void*)fs_data, name );
 
@@ -84,7 +84,7 @@ iso9660::iso9660_fs::iso9660_fs(unsigned int device_id) {
 	unsigned int current_vd = 0x10;
 	while(true) {
 		void *vd_data = this->read_sector( current_vd );
-		uint8_t type_code = ((uint8_t*)pvd_data)[0];
+		uint8_t type_code = ((uint8_t*)vd_data)[0];
 		if(type_code == 1) {
 			pvd_data = vd_data;
 			kprintf("iso9660: found PVD at sector %u\n", current_vd);
@@ -105,6 +105,7 @@ iso9660::iso9660_fs::iso9660_fs(unsigned int device_id) {
 	}
 
 	iso9660_directory_entry *root_entry = (iso9660_directory_entry*)kmalloc(34);
+	memcpy( (void*)root_entry, (void*)(((uintptr_t)pvd_data)+156), 34 );
 
 	unsigned char name[] = { '\\', '\0' };
 	this->base = new vfs_directory( NULL, this, (void*)root_entry, name );
@@ -119,19 +120,30 @@ iso9660::iso9660_fs::iso9660_fs(unsigned int device_id) {
 		unsigned char *name = (unsigned char*)kmalloc(cur->file_ident_length);
 		memcpy((void*)name, (void*)cur->file_identifier(), cur->file_ident_length);
 
-		kprintf("iso9660: found file / directory: %s\n", name);
-
-		if(cur->flags & 0x08) {
+		if(cur->flags & 0x02) {
 			// directory
 			vfs_directory *dir = new vfs_directory( (vfs_node*)this->base, this, (void*)fs_data, name );
 
 			node = (vfs_node*)dir;
+			kprintf("iso9660: found directory: %s\n", name);
 		} else {
 			// file
-			vfs_file *fn = new vfs_file( (vfs_node*)this->base, this, (void*)fs_data, name );
+			unsigned int actual_len = 0;
+			for(unsigned int i=0;i<cur->file_ident_length;i++) {
+				if( name[i] == ';' ) {
+					break;
+				}
+				actual_len++;
+			}
+			unsigned char *truncated_name = (unsigned char*)kmalloc(actual_len);
+			for(unsigned int i=0;i<actual_len;i++) {
+				truncated_name[i] = name[i];
+			}
+			vfs_file *fn = new vfs_file( (vfs_node*)this->base, this, (void*)fs_data, truncated_name );
 			fn->size = cur->extent_size;
 
 			node = (vfs_node*)fn;
+			kprintf("iso9660: found file (size %llu): %s\n", fn->size, name);
 		}
 		this->base->files.add_end(node);
 		cur = cur->next_directory();

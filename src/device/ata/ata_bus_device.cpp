@@ -98,6 +98,7 @@ ata::ata_device::ata_device( ata_channel* channel, bool slave ) {
 		} else {
 			this->n_sectors = ((uint32_t*)this->ident)[30];
 		}
+		this->sector_size = 512;
 	} else {
 		uint8_t cmd[12] = { 0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
@@ -128,6 +129,7 @@ ata::ata_device::ata_device( ata_channel* channel, bool slave ) {
 		uint32_t block_size = (((uint32_t)current_bytes[4])<<24) | (((uint32_t)current_bytes[5])<<16) | (((uint32_t)current_bytes[6])<<8) | ((uint32_t)current_bytes[7]);
 
 		this->n_sectors = last_lba;
+		this->sector_size = block_size;
 
 		kprintf("ata: ATAPI device has %u sectors with a block size of %u.\n", last_lba, block_size);
 		//logger_flush_buffer();

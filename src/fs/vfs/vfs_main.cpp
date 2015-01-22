@@ -202,7 +202,6 @@ vfs::vfs_status vfs::write_file(unsigned char* path, void* buffer, size_t size) 
 }
 
 vfs::vfs_status vfs::copy_file( unsigned char* to, unsigned char* from ) {
-	vfs_node* to_node;
 	vfs_node* from_node;
 	vfs_status stat;
 
@@ -214,7 +213,15 @@ vfs::vfs_status vfs::copy_file( unsigned char* to, unsigned char* from ) {
 		return vfs_status::incorrect_type;
 	}
 
-	if( (stat = get_file_info( to, &to_node )) != vfs_status::ok ) {
+	vfs_file* src = (vfs_file*)from_node;
+	void* tmp = kmalloc(src->size);
+	from_node->fs->read_file(src, tmp);
+
+	return write_file( to, tmp, src->size );
+
+	/*
+
+	if( (stat = get_path_parent( to, &to_node )) != vfs_status::ok ) {
 		return stat;
 	}
 
@@ -222,12 +229,12 @@ vfs::vfs_status vfs::copy_file( unsigned char* to, unsigned char* from ) {
 		return vfs_status::incorrect_type;
 	}
 
-	/*if( to_node->fs == from_node->fs ) {
+	if( to_node->fs == from_node->fs ) {
 		vfs_file* new_file = to_node->fs->copy_file( (vfs_file*)from_node, (vfs_directory*)to_node );
 		vfs_directory* to_parent = (vfs_directory*)to_node;
 		to_parent->files.add_end((vfs_node*)new_file);
 		return vfs_status::ok;
-	} else*/ {
+	} else {
 		vfs_file* src = (vfs_file*)from_node;
 		void* tmp = kmalloc(src->size);
 		from_node->fs->read_file(src, tmp);
@@ -236,11 +243,13 @@ vfs::vfs_status vfs::copy_file( unsigned char* to, unsigned char* from ) {
 		return write_file( to, tmp, src->size );
 	}
 
+	*/
+
 	return vfs_status::ok;
 }
 
 vfs::vfs_status vfs::move_file( unsigned char* to, unsigned char* from ) {
-	vfs_node* to_node;
+	//vfs_node* to_node;
 	vfs_node* from_node;
 	vfs_status stat;
 
@@ -252,6 +261,17 @@ vfs::vfs_status vfs::move_file( unsigned char* to, unsigned char* from ) {
 		return vfs_status::incorrect_type;
 	}
 
+	vfs_file* src = (vfs_file*)from_node;
+	void* tmp = kmalloc(src->size);
+	from_node->fs->read_file(src, tmp);
+
+	//vfs_directory *dst = (vfs_directory*)to_node;
+	if( (stat = write_file( to, tmp, src->size )) != vfs_status::ok ) {
+		return stat;
+	}
+	return delete_file( from );
+
+	/*
 	if( (stat = get_file_info( to, &to_node )) != vfs_status::ok ) {
 		return stat;
 	}
@@ -259,6 +279,7 @@ vfs::vfs_status vfs::move_file( unsigned char* to, unsigned char* from ) {
 	if( to_node->type != vfs_node_types::directory ) {
 		return vfs_status::incorrect_type;
 	}
+	*/
 
 	/*if( to_node->fs == from_node->fs ) {
 		vfs_file* new_file = to_node->fs->move_file( (vfs_file*)from_node, (vfs_directory*)to_node );
@@ -277,7 +298,9 @@ vfs::vfs_status vfs::move_file( unsigned char* to, unsigned char* from ) {
 		}
 
 		return vfs_status::ok;
-	} else*/ {
+	} else*/
+
+	/*{
 		vfs_file* src = (vfs_file*)from_node;
 		void* tmp = kmalloc(src->size);
 		from_node->fs->read_file(src, tmp);
@@ -290,6 +313,7 @@ vfs::vfs_status vfs::move_file( unsigned char* to, unsigned char* from ) {
 	}
 
 	return vfs_status::ok;
+	*/
 }
 
 vfs::vfs_status vfs::mount( vfs_fs* fs, unsigned char* path ) {

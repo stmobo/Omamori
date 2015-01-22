@@ -50,8 +50,8 @@ public:
 	virtual void delete_file( vfs_file* file ) =0;
 	virtual void read_file( vfs_file* file, void* buffer ) =0;
 	virtual void write_file( vfs_file* file, void* buffer, size_t size)  =0;
-	virtual vfs_file* copy_file( vfs_file* file, vfs_directory* destination ) =0;
-	virtual vfs_file* move_file( vfs_file* file, vfs_directory* destination ) =0;
+	//virtual vfs_file* copy_file( vfs_file* file, vfs_directory* destination ) =0;
+	//virtual vfs_file* move_file( vfs_file* file, vfs_directory* destination ) =0;
 	virtual vfs_directory* read_directory( vfs_directory* parent, vfs_node *child ) =0;
 	virtual void cleanup_node( vfs_node* node ) { kfree( node->fs_info ); };
 

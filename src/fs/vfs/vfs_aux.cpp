@@ -80,7 +80,11 @@ unsigned char* vfs::get_pathstem( unsigned char* path ) {
 		}
 	}
 	if( !found ) {
-		stem_start = strlen(path);
+		//stem_start = strlen(path);
+
+		unsigned char *out = (unsigned char*)kmalloc(1);
+		*out = '\0';
+		return out;
 	}
 
 	unsigned char *out = (unsigned char*)kmalloc(stem_start+1);

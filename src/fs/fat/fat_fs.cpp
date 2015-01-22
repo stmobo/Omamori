@@ -27,6 +27,9 @@ vfs_directory* fat_fs::fat_fs::read_directory( vfs_directory* parent, vfs_node *
 		}
 		if(cur->shortname[0] == 0xE5) {
 			// entry nonexistent, skip
+			cur++;
+			bytes_read += sizeof(fat_directory_entry);
+			name_buf.clear();
 			continue;
 		}
 
@@ -111,6 +114,7 @@ fat_fs::fat_directory_entry* fat_fs::fat_fs::read_dir_entry( vfs_directory *dir,
 		}
 
 		if( parent_dir_data->shortname[0] == 0xE5 ) {
+			parent_dir_data++;
 			continue;
 		}
 
@@ -153,6 +157,7 @@ bool fat_fs::fat_fs::update_dir_entry( vfs_directory *dir, unsigned char *shortn
 		}
 
 		if( parent_dir_data->shortname[0] == 0xE5 ) {
+			parent_dir_data++;
 			continue;
 		}
 
@@ -206,7 +211,7 @@ vfs_file* fat_fs::fat_fs::create_file( unsigned char* name, vfs_directory* paren
 	new_ent->start_cluster_hi = 0;
 	new_ent->start_cluster_lo = 0;
 
-	vfs_file *ret = new vfs_file( parent, this, &new_ent, name );
+	vfs_file *ret = new vfs_file( parent, this, (void*)new_ent, name );
 
 	unsigned char *tmp = generate_basisname( ret );
 	for(unsigned int i=0; i<8;i++) {
@@ -576,6 +581,9 @@ fat_fs::fat_fs::fat_fs( unsigned int part_no ) {
 		}
 		if(cur->shortname[0] == 0xE5) {
 			// entry nonexistent, skip
+			cur++;
+			bytes_read += sizeof(fat_directory_entry);
+			name_buf.clear();
 			continue;
 		}
 

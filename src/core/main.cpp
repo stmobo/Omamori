@@ -87,6 +87,7 @@ void test_process_1() {
         kprintf("Whoops, something went wrong with fork!");
     } else if( child_pid == 0 ) {
         kprintf("Hello from (child) process %u!\n", (unsigned int)process_current->id);
+        /*
         set_message_listen_status( "keypress", true );
         while(true) {
             unique_ptr<ps2_keypress> kp;
@@ -98,10 +99,11 @@ void test_process_1() {
                     kprintf("Process %u: Down!\n", process_current->id);
                 /*} else if( kp->key == KEY_Enter ) {
                     kprintf("Process %u: Forcing ATA cache flush...\n", process_current->id);
-                    ata_do_cache_flush(); */
+                    ata_do_cache_flush(); *//*
                 }
             }
         }
+        */
     } else {
         kprintf("Hello from (parent) process %u!\n", process_current->id);
         kprintf("Starting lua interpretation.\n");
@@ -142,7 +144,166 @@ void test_process_1() {
         char *test_file_data = "Hello world! This is a test file!";
 
         fat_fs::fat_fs f( 1 );
-        
+		iso9660::iso9660_fs f2(2);
+		vfs::vfs_root = f.base;
+
+		vfs::vfs_status fop_stat = vfs::mount(&f2, (unsigned char*)(const_cast<char*>("/cd")));
+		if( fop_stat != vfs::vfs_status::ok ) {
+			kprintf("FS mount failed with error: %s.\n", vfs::status_description(fop_stat));
+		} else {
+			kprintf("FS mount succeeded.\n");
+		}
+
+		while(true) {
+			kprintf(">");
+			logger_flush_buffer();
+
+			unsigned int len;
+			char* line = ps2_keyboard_readline( &len );
+
+			unsigned int cmd_len = 0;
+			unsigned int arg1_start = 0;
+			unsigned int arg1_end = 0;
+			unsigned int arg2_start = 0;
+
+			bool found_cmd = false;
+			bool found_arg1 = false;
+			bool stopped_arg1 = false;
+			bool found_arg2 = false;
+
+			for(unsigned int i=0;i<len;i++) {
+				if(line[i] == ' ') {
+					if( !found_cmd ) {
+						cmd_len = i;
+						found_cmd = true;
+					} else if( found_arg1 && !stopped_arg1 ) {
+						arg1_end = i;
+						stopped_arg1 = true;
+					}
+				} else {
+					if( found_cmd && !found_arg1 ) {
+						arg1_start = i;
+						found_arg1 = true;
+					} else if( found_arg1 && stopped_arg1 ) {
+						arg2_start = i;
+						found_arg2 = true;
+						break;
+					}
+				}
+			}
+
+
+			if( found_cmd ) {
+				char* cmd = NULL;
+				char* arg1 = NULL;
+				char* arg2 = NULL;
+				cmd = (char*)kmalloc( cmd_len+1 );
+
+				for(unsigned int i=0;i<cmd_len;i++) {
+					cmd[i] = line[i];
+				}
+				cmd[cmd_len] = '\0';
+
+				if( found_arg1 ) {
+					if( stopped_arg1 ) {
+						arg1 = (char*)kmalloc( (arg1_end - arg1_start)+1 );
+
+						for(unsigned int i=arg1_start;i<arg1_end;i++) {
+							arg1[ i - arg1_start ] = line[i];
+						}
+						arg1[ arg1_end - arg1_start ] = '\0';
+
+						if( found_arg2 ) {
+							arg2 = (char*)kmalloc( (len - arg2_start)+1 );
+							for(unsigned int i=arg2_start;i<len;i++) {
+								arg2[i-arg2_start] = line[i];
+							}
+							arg2[len-arg2_start] = '\0';
+						}
+					} else {
+						arg1 = (char*)kmalloc( (len - arg1_start)+1 );
+						for(unsigned int i=arg1_start;i<len;i++) {
+							arg1[ i - arg1_start ] = line[i];
+						}
+						arg1[ len - arg1_start ] = '\0';
+					}
+				}
+
+				if( arg1 != NULL ) {
+					if( strcmp( cmd, const_cast<char*>("ls") ) || strcmp( cmd, const_cast<char*>("list") ) ) {
+						vector<vfs_node*> dls;
+						vfs::vfs_status fop_stat = vfs::list_directory( (unsigned char*)arg1, &dls );
+						if( fop_stat != vfs::vfs_status::ok ) {
+							kprintf("FS list failed with error: %s\n", vfs::status_description(fop_stat));
+						} else {
+							kprintf("FS list succeeded.\n");
+						}
+						kprintf( "Directory listing:\n" );
+						for( unsigned int i=0;i<dls.count();i++) {
+							kprintf( "%s\n", dls[i]->name );
+						}
+					} else if( (arg2 != NULL) && strcmp( cmd, const_cast<char*>("write") ) ) {
+						vfs::vfs_status fop_stat = vfs::write_file( (unsigned char*)arg1, (void*)arg2, strlen(arg2)+1);
+						if( fop_stat != vfs::vfs_status::ok ) {
+							kprintf("FS write failed with error: %s\n", vfs::status_description(fop_stat));
+						} else {
+							kprintf("FS write succeeded.\n");
+						}
+					} else if( strcmp( cmd, const_cast<char*>("read") ) ) {
+						vfs_node* node = NULL;
+						vfs::vfs_status fop_stat = vfs::get_file_info( (unsigned char*)arg1, &node );
+						if( fop_stat != vfs::vfs_status::ok ) {
+							kprintf("FS get info failed with error: %s\n", vfs::status_description(fop_stat));
+						} else {
+							kprintf("FS get info succeeded.\n");
+						}
+
+						if( node != NULL ) {
+							if( node->type != vfs_node_types::file ) {
+								kprintf("FS read failed with error: incorrect type\n");
+								continue;
+							}
+						}
+
+						vfs_file* fn = (vfs_file*)node;
+						void* buffer = kmalloc( fn->size );
+
+						fop_stat = vfs::read_file( (unsigned char*)arg1, buffer );
+						if( fop_stat != vfs::vfs_status::ok ) {
+							kprintf("FS read failed with error: %s\n", vfs::status_description(fop_stat));
+						} else {
+							kprintf("FS read succeeded.\n");
+						}
+
+						kprintf("file data: %s\n", (unsigned char*)buffer );
+					} else if( strcmp( cmd, const_cast<char*>("delete") ) || strcmp( cmd, const_cast<char*>("rm") ) ) {
+						vfs::vfs_status fop_stat = vfs::delete_file( (unsigned char*)arg1 );
+						if( fop_stat != vfs::vfs_status::ok ) {
+							kprintf("FS delete failed with error: %s\n", vfs::status_description(fop_stat));
+						} else {
+							kprintf("FS delete succeeded.\n");
+						}
+					} else if( ( arg2 != NULL ) && (strcmp( cmd, const_cast<char*>("copy") ) || strcmp( cmd, const_cast<char*>("cp") ) ) ) {
+						vfs::vfs_status fop_stat = vfs::copy_file( (unsigned char*)arg2, (unsigned char*)arg1 );
+						if( fop_stat != vfs::vfs_status::ok ) {
+							kprintf("FS copy failed with error: %s\n", vfs::status_description(fop_stat));
+						} else {
+							kprintf("FS copy succeeded.\n");
+						}
+					} else if( ( arg2 != NULL ) && (strcmp( cmd, const_cast<char*>("move") ) || strcmp( cmd, const_cast<char*>("mv") ) ) ) {
+						vfs::vfs_status fop_stat = vfs::move_file( (unsigned char*)arg2, (unsigned char*)arg1 );
+						if( fop_stat != vfs::vfs_status::ok ) {
+							kprintf("FS move failed with error: %s\n", vfs::status_description(fop_stat));
+						} else {
+							kprintf("FS move succeeded.\n");
+						}
+					}
+				}
+			}
+		}
+
+		/*
+
         vfs_directory *root = f.base;
         vfs_file *test_file = NULL;
         kprintf( "Directory listing:\n" );
@@ -172,9 +333,7 @@ void test_process_1() {
 			kprintf("Readback data: %s (%#p)\n", readback_data, readback);
         }
 
-        vfs::vfs_root = f.base;
 
-		iso9660::iso9660_fs f2(2);
 		unsigned char f2_mountpoint[] = { '/', 'c', 'd', '\0' };
 		root = f2.base;
 		kprintf( "Directory listing (ISO 9660):\n" );
@@ -218,6 +377,8 @@ void test_process_1() {
 
         logger_flush_buffer();
 		while(true) { asm volatile("pause"); }
+
+		*/
 
         /*
         f.write_file(test_file, (void*)test_file_data, strlen(test_file_data)+1);

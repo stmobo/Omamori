@@ -49,6 +49,7 @@ unsigned int fat_fs::fat_fs::allocate_cluster() {
 
     io_read_partition( this->params.part_no, buf, 512, 512 );
 
+    /*
     uint32_t last_allocated = *((uint32_t*)(ptr_int+492));
     if( last_allocated != 0xFFFFFFFF ) {
         if( last_allocated < this->params.n_clusters ) {
@@ -56,6 +57,7 @@ unsigned int fat_fs::fat_fs::allocate_cluster() {
             current_fat_sector = (this->params.n_reserved_sectors + ( (current_cluster*4) / 512 ));
         }
     }
+    */
 
     memclr(buf, 512);
 
@@ -93,7 +95,9 @@ unsigned int fat_fs::fat_fs::allocate_cluster() {
 
     kfree(buf);
 
-    if( found )
+    if( found ) {
+    	kprintf("fat_allocate: Allocated cluster %#x\n", current_cluster);
         return current_cluster;
+    }
     return 0;
 }

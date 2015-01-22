@@ -38,9 +38,11 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
     }
     
     in_irq_context = true;
+    /*
     if(irq_num != 0) {
     	irqsafe_kprintf("Handling irq: %u.\n", irq_num);
     }
+    */
     if(irq_handlers[irq_num].length() > 0) {
         for( unsigned int i=0;i<irq_handlers[irq_num].length();i++ ) {
             bool(*handler)(void) = (bool(*)())(irq_handlers[irq_num].get(i)); // jump to the stored function pointer...

@@ -185,11 +185,12 @@ char* ps2_keyboard_readline(unsigned int *len) {
             }
         }
     }
-    char *ret = (char*)kmalloc(buffer.length());
+    char *ret = (char*)kmalloc(buffer.length()+1);
     if(ret) {
         for(unsigned int i=0;i<buffer.length();i++) {
             ret[i] = buffer[i];
         }
+        ret[buffer.length()] = '\0';
         *len = buffer.length();
         return ret;
     } else {

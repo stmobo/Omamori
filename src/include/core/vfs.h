@@ -101,6 +101,8 @@ namespace vfs {
 
 	bool file_exists( unsigned char* path );
 
-	extern vector<mount_point> mounted_filesystems;
+	const char* status_description( vfs_status stat );
+
+	extern vector<mount_point*> mounted_filesystems;
 	extern vfs_directory* vfs_root;
 };

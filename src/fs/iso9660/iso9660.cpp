@@ -126,7 +126,7 @@ iso9660::iso9660_fs::iso9660_fs(unsigned int device_id) {
 	void *directory_data = this->read_direntry(root_entry);
 	iso9660_directory_entry *cur = (iso9660_directory_entry*)directory_data;
 	while(cur->size > 0) {
-		vfs_node *node;
+		vfs_node *node = NULL;
 		void *fs_data = kmalloc(cur->size);
 		memcpy(fs_data, (void*)cur, cur->size);
 
@@ -135,32 +135,40 @@ iso9660::iso9660_fs::iso9660_fs(unsigned int device_id) {
 
 		if(cur->flags & 0x02) {
 			// directory
-			vfs_directory *dir = new vfs_directory( (vfs_node*)this->base, this, (void*)fs_data, name );
+			if( strlen(name) > 0 ) {
+				vfs_directory *dir = new vfs_directory( (vfs_node*)this->base, this, (void*)fs_data, name );
 
-			node = (vfs_node*)dir;
-			kprintf("iso9660: found directory: %s\n", name);
+				node = (vfs_node*)dir;
+				kprintf("iso9660: found directory: %s\n", name);
+			}
 		} else {
 			// file
 			unsigned int actual_len = 0;
+			bool found_semicolon = false;
 			for(unsigned int i=0;i<cur->file_ident_length;i++) {
 				if( name[i] == ';' ) {
+					found_semicolon = true;
 					break;
 				}
 				actual_len++;
 			}
-			unsigned char *truncated_name = (unsigned char*)kmalloc(actual_len);
-			for(unsigned int i=0;i<actual_len;i++) {
-				truncated_name[i] = name[i];
+			if( found_semicolon ) {
+				unsigned char *truncated_name = (unsigned char*)kmalloc(actual_len);
+				for(unsigned int i=0;i<actual_len;i++) {
+					truncated_name[i] = name[i];
+				}
+				vfs_file *fn = new vfs_file( (vfs_node*)this->base, this, (void*)fs_data, truncated_name );
+				fn->size = cur->extent_size;
+
+				node = (vfs_node*)fn;
+				kprintf("iso9660: found file (size %llu): %s\n", fn->size, truncated_name);
 			}
 			kfree(name);
-			vfs_file *fn = new vfs_file( (vfs_node*)this->base, this, (void*)fs_data, truncated_name );
-			fn->size = cur->extent_size;
-
-			node = (vfs_node*)fn;
-			kprintf("iso9660: found file (size %llu): %s\n", fn->size, name);
 		}
-		node->attr.read_only = true;
-		this->base->files.add_end(node);
+		if( node != NULL ) {
+			node->attr.read_only = true;
+			this->base->files.add_end(node);
+		}
 		cur = cur->next_directory();
 	}
 

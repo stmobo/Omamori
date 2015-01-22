@@ -255,7 +255,7 @@ bool address_space::map( size_t vaddr, size_t paddr, int flags ) {
             return true;
         }
         if( (process_current != NULL) )
-            kprintf("address_space[%u]::map -- attempted to remap already present page\n", process_current->id);
+            kprintf("address_space[%u]::map -- attempted to remap already present page %u to %u\n", process_current->id, vaddr, paddr);
     } else {
         uint32_t *table = (uint32_t*)pt->map();
         if( table ) {

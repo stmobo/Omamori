@@ -160,10 +160,21 @@ T vector<T>::remove_end() {
 
 template <class T>
 T vector<T>::remove( unsigned int n ) {
+	/*
 	T elem = this->elements[n];
 	for(unsigned int i=n;i<(this->n_elements-1);i++) {
 		this->elements[i] = this->elements[i+1];
 	}
 	this->n_elements--;
 	return elem;
+	*/
+	if( this->n_elements > n ) {
+		T elem = this->elements[n];
+		for(unsigned int i=n;i<(this->n_elements-1);i++) {
+			this->elements[i] = this->elements[i+1];
+		}
+		this->n_elements--;
+		return elem;
+	}
+	return NULL;
 }

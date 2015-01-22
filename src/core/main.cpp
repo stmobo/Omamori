@@ -75,7 +75,7 @@ void test_process_1() {
     io_detect_disk( io_get_disk( 1 ) );
 
     kprintf("Scheduling work...\n");
-    logger_flush_buffer();\
+    logger_flush_buffer();
     k_work::work* wk = k_work::schedule( &k_worker_thread_test );
 	kprintf("Test work function returned: %u\n", wk->wait());
 
@@ -183,7 +183,38 @@ void test_process_1() {
 			kprintf( "* %u - %s\n", i, fn->name );
 		}
 
-		vfs::mount(&f2, f2_mountpoint);
+		vfs::vfs_status fop_stat = vfs::mount(&f2, f2_mountpoint);
+		if( fop_stat != vfs::vfs_status::ok ) {
+			kprintf("FS mount failed with error: %s.\n", vfs::status_description(fop_stat));
+		} else {
+			kprintf("FS mount succeeded.\n");
+		}
+
+		vector<vfs_node*> dls;
+		fop_stat = vfs::list_directory( (unsigned char*)(const_cast<char*>("/")), &dls );
+		if( fop_stat != vfs::vfs_status::ok ) {
+			kprintf("FS list failed with error: %s\n", vfs::status_description(fop_stat));
+		} else {
+			kprintf("FS list succeeded.\n");
+		}
+
+		kprintf( "Directory listing (VFS root):\n" );
+		for( unsigned int i=0;i<dls.count();i++) {
+			kprintf("* %u - %s\n", i, dls[i]->name);
+		}
+
+		dls.clear();
+		fop_stat = vfs::list_directory( (unsigned char*)(const_cast<char*>("/cd")), &dls );
+		if( fop_stat != vfs::vfs_status::ok ) {
+			kprintf("FS list failed with error: %s\n", vfs::status_description(fop_stat));
+		} else {
+			kprintf("FS list succeeded.\n");
+		}
+
+		kprintf( "Directory listing (VFS, /cd):\n" );
+		for( unsigned int i=0;i<dls.count();i++) {
+			kprintf("* %u - %s\n", i, dls[i]->name);
+		}
 
         logger_flush_buffer();
 		while(true) { asm volatile("pause"); }

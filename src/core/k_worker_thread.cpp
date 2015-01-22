@@ -52,12 +52,15 @@ unsigned int k_work::work::wait() {
 	set_message_listen_status( "k_worker_thread_finished", true );
 	while(!this->finished) {
 		kprintf("Waiting on kernel deferred work...\n");
+		logger_flush_buffer();
 		unique_ptr<message> msg = wait_for_message( "k_worker_thread_finished" );
 		if(msg->data == (void*)this) {
 			break;
 		}
 	}
 	set_message_listen_status( "k_worker_thread_finished", false );
+	kprintf("Deferred work complete.\n");
+	logger_flush_buffer();
 
 	if( !this->auto_remove ) {
 		// remove the work object if we haven't already
@@ -68,10 +71,14 @@ unsigned int k_work::work::wait() {
 			}
 		}
 	}
+	kprintf("Removed work object.\n");
+	logger_flush_buffer();
 
 	unsigned int ret = this->return_code;
 
 	delete this;
+	kprintf("Deleted object.\n");
+	logger_flush_buffer();
 
 	return ret;
 }

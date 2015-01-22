@@ -281,7 +281,9 @@ message::message( message& org ) {
     this->type    = org.type;
     this->data_sz = org.data_sz;
     this->uid     = last_message_id++;
-    this->data    = kmalloc(org.data_sz);
+    if( org.data_sz > 0 ) {
+    	this->data    = kmalloc(org.data_sz);
+    }
     if( process_current != NULL )
         this->sender = process_current->id;
     else
@@ -294,7 +296,9 @@ message::message( const char* type, void* data, size_t data_sz ) {
     this->type    = type;
     this->data_sz = data_sz;
     this->uid     = last_message_id++;
-    this->data    = kmalloc(data_sz);
+    if( data_sz > 0 ) {
+    	this->data    = kmalloc(data_sz);
+    }
     if( process_current != NULL )
         this->sender = process_current->id;
     else
@@ -304,7 +308,7 @@ message::message( const char* type, void* data, size_t data_sz ) {
 }
 
 message::~message() {
-    if(this->data != NULL)
+    if( (this->data != NULL) && ( this->data_sz > 0 ) )
         kfree(this->data);
 }
 

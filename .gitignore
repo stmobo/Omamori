@@ -35,3 +35,4 @@ acpica-unix-20140424.tar.gz
 /.cproject
 /.project
 /lib/
+/.autotools

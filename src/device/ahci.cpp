@@ -4,6 +4,7 @@
 #include "arch/x86/sys.h"
 #include "core/paging.h"
 #include "core/scheduler.h"
+#include "core/message.h"
 #include "device/ahci.h"
 #include "device/ata.h"
 #include "device/pci.h"
@@ -242,7 +243,7 @@ volatile static hba_mem *hba;
 #define is_port_active(i) ((hba->pi&(1<<i)) > 0)
 
 void ahci_initialize() {
-    register_channel( "ahci_transfer_complete", CHANNEL_MODE_BROADCAST );
+    register_channel( "ahci_transfer_complete" );
     for(unsigned int i_dont_even=0;i_dont_even<pci_devices.count();i_dont_even++) {
         pci_device *current = pci_devices[i_dont_even];
         if( (current->class_code == 0x01) && (current->subclass_code == 0x06) ) {

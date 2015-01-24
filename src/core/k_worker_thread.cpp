@@ -9,6 +9,7 @@
 #include "core/k_worker_thread.h"
 #include "lib/vector.h"
 #include "lib/refcount.h"
+#include "core/message.h"
 
 uint64_t current_work_id = 0;
 vector<k_work::work*> work_queue;
@@ -16,6 +17,7 @@ vector<k_work::work*> finished_list;
 process *worker_thread;
 
 void k_worker_thread() {
+	channel_receiver ch = listen_to_channel("k_worker_thread_ready");
 	while(true) {
 		while( work_queue.count() > 0 ) {
 			k_work::work *current = work_queue.remove_end();
@@ -28,14 +30,16 @@ void k_worker_thread() {
 			}
 
 			kprintf("Sending wakeup call.\n");
-			message wakeup_call( "k_worker_thread_finished", (void*)current, 0 );
-			send_message(wakeup_call);
+			message wakeup_call( (void*)current, 0 );
+			send_to_channel("k_worker_thread_finished", wakeup_call);
 		}
 		k_work::reap_orphans();
 
-	    set_message_listen_status( "k_worker_thread_ready", true );
-	    unique_ptr<message> msg = wait_for_message( "k_worker_thread_ready" );
-	    set_message_listen_status( "k_worker_thread_ready", false );
+	    ch.wait();
+	    for(unsigned int i=0;i<ch.queue.count();i++) {
+	    	message* m = ch.queue.remove(0);
+	    	delete m;
+	    }
 	}
 }
 
@@ -49,6 +53,7 @@ k_work::work::work( unsigned int(*func)(void), bool auto_remove ) {
 }
 
 unsigned int k_work::work::wait() {
+	/*
 	set_message_listen_status( "k_worker_thread_finished", true );
 	while(!this->finished) {
 		kprintf("Waiting on kernel deferred work...\n");
@@ -59,6 +64,17 @@ unsigned int k_work::work::wait() {
 		}
 	}
 	set_message_listen_status( "k_worker_thread_finished", false );
+	*/
+	channel_receiver ch = listen_to_channel("k_worker_thread_finished");
+	while(true) {
+		ch.wait();
+		for(unsigned int i=0;i<ch.queue.count();i++) {
+			unique_ptr<message> m = ch.queue.remove(0);
+			if( m->data == (void*)this ) {
+				break;
+			}
+		}
+	}
 	kprintf("Deferred work complete.\n");
 	logger_flush_buffer();
 
@@ -87,8 +103,8 @@ k_work::work* k_work::schedule( unsigned int(*func)(void), bool auto_remove ) {
 	k_work::work *work = new k_work::work(func, auto_remove);
 	work_queue.add_end(work);
 
-	message wakeup_call( "k_worker_thread_ready", NULL, 0 );
-	send_message( wakeup_call );
+	message wakeup_call;
+	send_to_channel( "k_worker_thread_ready", wakeup_call );
 
 	return work;
 }
@@ -105,7 +121,7 @@ void k_work::reap_orphans() {
 
 void k_work::start() {
 	worker_thread = new process( (uint32_t)&k_worker_thread, false, 0, "k_worker_thread", NULL, 0 );
-	register_channel( "k_worker_thread_ready", CHANNEL_MODE_INV_MCAST, worker_thread );
-	register_channel( "k_worker_thread_finished", CHANNEL_MODE_MULTICAST, worker_thread );
+	register_channel( "k_worker_thread_ready" );
+	register_channel( "k_worker_thread_finished" );
 	spawn_process(worker_thread);
 }

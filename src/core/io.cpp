@@ -5,6 +5,7 @@
 #include "core/io.h"
 #include "core/paging.h"
 #include "core/scheduler.h"
+#include "core/message.h"
 #include "lib/refcount.h"
 
 vector<io_disk*> io_disks;
@@ -19,15 +20,14 @@ transfer_request::transfer_request( transfer_request& cpy ) : id(cpy.id), buffer
 
 void transfer_request::wait() {
     //kprintf("transfer_request::wait - waiting for message (id=%u)\n", this->id);
-    bool status = get_message_listen_status( "transfer_complete" );
-    set_message_listen_status( "transfer_complete", true );
+    channel_receiver ch = listen_to_channel("transfer_complete");
     while(true) {
-        unique_ptr<message> msg = wait_for_message( "transfer_complete" );
+        ch.wait();
+        message* msg = ch.queue.remove(0);
         transfer_request* req = (transfer_request*)msg->data;
         if(req != NULL) {
             //kprintf("transfer_request::wait - received valid message (id=%u)\n", req->id);
             if(req->id == this->id) {
-                set_message_listen_status( "transfer_complete", status );
                 return;
             } else {
                 //kprintf("transfer_request::wait - ids did not match\n", req->id);
@@ -39,7 +39,7 @@ void transfer_request::wait() {
 }
 
 void io_initialize() {
-    register_channel( "transfer_complete", CHANNEL_MODE_BROADCAST );
+    register_channel( "transfer_complete" );
 }
 
 void io_register_disk( io_disk *dev ) {

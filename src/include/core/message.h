@@ -1,59 +1,58 @@
-// message.h
+/*
+ * message.h
+ *
+ *  Created on: Jan 24, 2015
+ *      Author: Tatantyler
+ */
 
 #pragma once
 #include "includes.h"
-#include "device/pit.h"
-#include "lib/vector.h"
 #include "core/scheduler.h"
+#include "lib/vector.h"
+#include "lib/sync.h"
 
-class process; // see scheduler.h
-extern process* process_current;
+struct message;
 
-struct channel {
-    vector<process*>* listeners;
-    unsigned int     mode;
-    process*         owner;
-    
-    ~channel() { delete this->listeners; }
-    channel( unsigned int mode ) { this->listeners = new vector<process*>; this->owner = process_current; }
-    channel( unsigned int mode, process* owner ) { this->listeners = new vector<process*>; this->owner = owner;}
-};
+typedef struct channel {
+	vector< process_ptr > listeners;
+	vector< message* > message_queue;
+	uint64_t current_uid;
+	mutex    lock;
+
+	channel() : current_uid(0) {};
+	void send( message& msg );
+} channel;
 
 typedef struct message {
-    const char*  type;
-    void*        data;
-    size_t       data_sz;
-    uint64_t     uid;
-    uint32_t     sender;
-    
-    bool operator==( const message& rhs ) { return (this->uid == rhs.uid); };
-    bool operator!=( const message& rhs ) { return (this->uid != rhs.uid); };
-    bool operator>( const message& rhs )  { return (this->uid > rhs.uid); };
-    bool operator<( const message& rhs )  { return (this->uid < rhs.uid); };
-    bool operator<=( const message& rhs )  { return (this->uid <= rhs.uid); };
-    bool operator>=( const message& rhs )  { return (this->uid >= rhs.uid); };
-    
-    ~message();
-    message( message& );
-    message( const char*, void*, size_t );
+	void *data;
+	size_t data_size;
+	process_ptr sender;
+	uint64_t uid;
+	uint32_t n_receivers;
+
+	~message() { if( (this->data != NULL) && (this->data_size > 0) ) { kfree(this->data); } };
+
+	message( message& rhs );
+	message( message* rhs);
+	message();
+	message(void *data, size_t data_sz );
 } message;
 
-// everyone transmits to everyone else
-#define CHANNEL_MODE_BROADCAST      0
-// the owner transmits to everyone else
-#define CHANNEL_MODE_MULTICAST      1
-// everyone else transmits to the owner
-#define CHANNEL_MODE_INV_MCAST      2
-// the owner transmits to one other person
-#define CHANNEL_MODE_UNICAST        3
+typedef class channel_receiver {
+	channel *remote_channel;
+	uint64_t last_seen_uid;
+public:
+	vector< message* > queue;
 
-extern bool set_message_listen_status( char*, bool );
-extern bool get_message_listen_status( char* );
-extern message* wait_for_message( char* type=NULL ); 
-extern message* get_latest_message(); 
-extern bool send_message( message );
-extern void wake_all_in_queue( char* ) ;
-extern void send_all_in_queue( char*, message );
-extern void initialize_ipc();
-extern void register_channel( char*, unsigned int, process* );
-extern void register_channel( char*, unsigned int );
+	channel_receiver& operator=( channel_receiver& rhs );
+
+	void wait();
+	bool update();
+	channel_receiver( channel* remote );
+	channel_receiver( const channel_receiver& copy );
+	~channel_receiver();
+} channel_receiver;
+
+channel_receiver listen_to_channel( char* channel_name );
+void send_to_channel( char* channel_name, message& msg );
+void register_channel( char* channel_name );

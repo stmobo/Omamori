@@ -1,7 +1,6 @@
 #pragma once
 #include "includes.h"
 #include "arch/x86/multitask.h"
-#include "core/message.h"
 #include "device/pit.h"
 #include "lib/vector.h"
 
@@ -79,8 +78,8 @@ typedef struct process {
     process_state                  state;
     uint32_t                       wait_time;
     uint32_t                       return_value;
-    vector< message* >*            message_queue;
-    mutex                          message_queue_lock;
+    //vector< message* >*            message_queue;
+    //mutex                          message_queue_lock;
     uint32_t                       in_syscall = 0;
     uint32_t                       break_val = PROCESS_BREAK_START;
     vector< process* >             children;
@@ -101,7 +100,7 @@ typedef struct process {
     void remove_reference( process_ptr* );
 
     int  wait();
-    bool send_message( message );
+    //bool send_message( message );
 } process;
 
 typedef class process_ptr {
@@ -120,8 +119,8 @@ public:
 	process_ptr& operator=(process*& rhs);
 
 	~process_ptr();
-	process_ptr( process_ptr& );
-	process_ptr( process*& );
+	process_ptr( const process_ptr& );
+	process_ptr( process* );
 	process_ptr() : raw(NULL), invalidated(true) {};
 
 } process_ptr;

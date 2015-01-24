@@ -1,317 +1,207 @@
-// message.cpp - message passing system
+/*
+ * message_mockup.cpp
+ *
+ *  Created on: Jan 23, 2015
+ *      Author: Tatantyler
+ */
 
 #include "includes.h"
+#include "core/message.h"
 #include "lib/hash_table.h"
-#include "lib/vector.h"
-#include "core/scheduler.h"
 
-uint64_t last_message_id = 0;
+hash_table< channel* > channels(0x1000);
 
-hash_table< channel* >* message_queues;
-
-void wake_all_in_queue( char *queue_name ) {
-    channel* ch = (*message_queues)[queue_name];
-    if(ch) {
-        vector<process*>* queue = ch->listeners;
-        for(unsigned int i=0;i<queue->length();i++) {
-            (*queue)[i]->state = process_state::runnable;
-            process_add_to_runqueue( (*queue)[i] );
-        }
-    }
+message::message() {
+	process_ptr p( process_current );
+	this->sender = p;
+	this->uid = 0;
+	this->n_receivers = 0;
+	this->data = NULL;
+	this->data_size = 0;
 }
 
-void send_all_in_queue( char *queue_name, message msg ) {
-    channel* ch = (*message_queues)[queue_name];
-    if(ch) {
-        vector<process*>* queue = ch->listeners;
-        for(unsigned int i=0;i<queue->length();i++) {
-            (*queue)[i]->send_message( msg );
-        }
-    }
+message::message( void* data, size_t data_sz ) {
+	process_ptr p( process_current );
+	this->sender = p;
+	this->uid = 0;
+	this->n_receivers = 0;
+	this->data = data;
+	this->data_size = data_sz;
 }
 
-void sort_message_queue_internal( vector<message*>& queue, unsigned int l_index, unsigned int r_index ) {
-    if( l_index >= r_index )
-        return;
-    if( (r_index - l_index) > 1 ) {
-        unsigned int middle = (l_index+r_index)/2;
-        //kprintf("message_queue_sort: l_index = %u / ", l_index);
-        //kprintf("middle = %u / ", middle);
-        //kprintf("r_index = %u\n", r_index);
-        uint64_t pivot = ((queue[l_index]->uid)+(queue[middle]->uid)+(queue[r_index]->uid))/3;
-        //uint64_t pivot = ((queue[l_index]->uid)+(queue[r_index]->uid))/2;
-        message *tmp = NULL;
-        unsigned int store_index = l_index;
-        for( unsigned int i=l_index;i<r_index;i++ ) {
-            if( queue[i]->uid <= pivot ) {
-                tmp = queue[i];
-                queue.set(i, queue[store_index]);
-                queue.set(store_index, tmp);
-                store_index++;
-            }
-        }
-        tmp = queue[store_index];
-        queue.set(store_index, queue[r_index-1]);
-        queue.set(r_index-1, tmp);
-        if( store_index > 0 )
-            sort_message_queue_internal( queue, l_index, store_index-1 );
-        return sort_message_queue_internal( queue, store_index+1, r_index );
-    }
+message::message( message& rhs ) {
+	this->n_receivers = rhs.n_receivers;
+	this->uid = rhs.uid;
+
+	this->sender = rhs.sender;
+
+	if( (rhs.data != NULL) && (rhs.data_size > 0) ) {
+		this->data = kmalloc(rhs.data_size);
+		this->data_size = rhs.data_size;
+		memcpy( this->data, rhs.data, rhs.data_size );
+	}
 }
 
-void sort_message_queue( vector<message*>& queue ) {
-    if( queue.count() > 0 )
-        return sort_message_queue_internal( queue, 0, queue.count()-1 );
+message::message( message* rhs ) {
+	this->n_receivers = rhs->n_receivers;
+	this->uid = rhs->uid;
+
+	this->sender = rhs->sender;
+
+	if( (rhs->data != NULL) && (rhs->data_size > 0) ) {
+		this->data = kmalloc(rhs->data_size);
+		this->data_size = rhs->data_size;
+		memcpy( this->data, rhs->data, rhs->data_size );
+	}
 }
 
-bool send_message( message msg ) {
-    channel* ch = (*message_queues)[const_cast<char*>(msg.type)];
-    if( ch == NULL ) {
-        kprintf("Process %u (%s) attempted to send message to invalid channel %s, ignoring...\n", process_current->id, process_current->name, msg.type);
-        return false;
-    }
-    // check to see if the channel's in unicast mode
-    // if so, then also check to see if we're either the listener or the owner
-    if( (ch->mode == CHANNEL_MODE_UNICAST) && ((ch->owner == NULL) || ((*ch->listeners)[0] == NULL) || !(((*ch->listeners)[0]->id == process_current->id) || (ch->owner->id == process_current->id))) )
-        return false;
-    if( (ch->mode == CHANNEL_MODE_MULTICAST) && ((ch->owner == NULL) || (ch->owner->id != process_current->id)) )
-        return false;
-    if(ch) {
-        vector<process*>* queue = ch->listeners;
-        int processes_recv = 0;
-        //kprintf("send_message: queue->length() = %u.\n", (unsigned long long int)queue->length());
-        for(unsigned int i=0;i<queue->count();i++) {
-            process *current = queue->get(i);
-            if( (current != NULL) && (current->id != process_current->id) ) {
-                if( current->send_message( msg ) ) {
-                    current->state = process_state::runnable;
-                    process_add_to_runqueue( current );
-                    processes_recv++;
-                }
-            }
-        }
-        if( (ch->owner != NULL) && (ch->owner->id != process_current->id) ) {
-            if( ch->owner->send_message( msg ) ) {
-                ch->owner->state = process_state::runnable;
-                process_add_to_runqueue( ch->owner );
-                processes_recv++;
-            }
-        }
-        if(processes_recv > 0)
-            return true;
-    }
-    return false;
+channel_receiver::channel_receiver( channel* remote ) {
+	this->remote_channel = remote;
+	if( remote == NULL )
+		return;
+
+	this->remote_channel->lock.lock();
+
+	if( this->remote_channel->message_queue.count() > 0 ) {
+		this->last_seen_uid = this->remote_channel->message_queue[0]->uid;
+	}
+	this->last_seen_uid = 0;
+
+	bool already_there = false;
+	for(unsigned int i=0;i<this->remote_channel->listeners.count();i++) {
+		if( this->remote_channel->listeners[i].raw_ptr() == process_current ) {
+			already_there = true;
+			break;
+		}
+	}
+	if( !already_there ) {
+		process_ptr p(process_current);
+		this->remote_channel->listeners.add_end( p );
+	}
+
+	this->remote_channel->lock.unlock();
 }
 
-// yes, you have to delete the returned pointer.
-message* get_latest_message() {
-    process_current->message_queue_lock.lock();
-    sort_message_queue( *process_current->message_queue );
-    message* ret = process_current->message_queue->remove();
-    process_current->message_queue_lock.unlock();
-    return ret;
+channel_receiver::channel_receiver( const channel_receiver& copy ) {
+	this->remote_channel = copy.remote_channel;
+	this->last_seen_uid = copy.last_seen_uid;
+	this->queue = copy.queue;
 }
 
-bool process::send_message( message msg ) {
-    if( this->state != process_state::dead ) {
-        message* copy = new message( msg );
-        if(copy != NULL) {
-            this->message_queue->add_end(copy);
-            return true;
-        } else {
-            delete copy;
-            return false;
-        }
-    }
-    return false;
+channel_receiver& channel_receiver::operator=( channel_receiver& rhs ) {
+	this->remote_channel = rhs.remote_channel;
+	this->last_seen_uid = rhs.last_seen_uid;
+	this->queue = rhs.queue;
+
+	return *this;
 }
 
-message* wait_for_message( char *type ) {
-    //kprintf("process %u (%s): Waiting for message!\n", (unsigned long long int)process_current->id, process_current->name);
-    if( type != NULL )
-        process_current->message_waiting_on = type; // juuuust in case we get preempted inbetween these two steps
-    if( type != NULL ) {
-        process_current->message_queue_lock.lock();
-            
-        sort_message_queue( *process_current->message_queue );
-        for(int i=0;i<process_current->message_queue->count();i++) {
-            //kprintf("[precheck] process %u received message of type %s\n", process_current->id, process_current->message_queue->get(i)->type);
-            if( strcmp( const_cast<char*>(process_current->message_queue->get(i)->type), type, 0 ) ) {
-                message *ret = process_current->message_queue->remove(i);
-                process_current->message_waiting_on = NULL;
-                process_current->message_queue_lock.unlock();
-                return ret;
-            }
-        }
-        
-        process_current->message_queue_lock.unlock();
-        process_current->state = process_state::waiting;
-        
-        //kprintf("[wait] process %u waiting for message of type %s\n", process_current->id, type);
-        while(true) {
-            process_switch_immediate();
-            process_current->state = process_state::runnable;
-            
-            process_current->message_queue_lock.lock();
-            
-            sort_message_queue( *process_current->message_queue );
-            for(int i=0;i<process_current->message_queue->count();i++) {
-                //kprintf("[wait] process %u received message of type %s\n", process_current->id, process_current->message_queue->get(i)->type);
-                if( strcmp( const_cast<char*>(process_current->message_queue->get(i)->type), type, 0 ) ) {
-                    message *ret = process_current->message_queue->remove(i);
-                    process_current->message_waiting_on = NULL;
-                    process_current->message_queue_lock.unlock();
-                    return ret;
-                }
-            }
-            
-            process_current->message_queue_lock.unlock();
-        }
-    } else {
-        process_current->state = process_state::waiting;
-        while( true ) {
-            if( process_current->message_queue->length() > 0 ) {
-                //kprintf("wait_for_message: length is now %u.\n", (unsigned long long int)process_current->message_queue.length());
-                break;
-            }
-            process_switch_immediate();
-        }
-        message* ret = NULL;
-        while( ret == NULL ) {
-            process_current->state = process_state::runnable;
-            process_current->message_queue_lock.lock();
-            //kprintf("wait_for_message: count is now %u.\n", process_current->message_queue->count());
-            sort_message_queue( *process_current->message_queue );
-            for(int i=0;i<process_current->message_queue->count();i++) {
-                //kprintf("[wait-any] process %u received message of type %s\n", process_current->id, process_current->message_queue->get(i)->type);
-                ret = process_current->message_queue->get(i);
-                if( ret != NULL ) {
-                    process_current->message_queue->remove(i);
-                    break;
-                }
-            }
-            process_current->message_queue_lock.unlock();
-            
-            process_current->state = process_state::waiting;
-            process_switch_immediate();
-        }
-        //kprintf("process %u (%s): Got a message of type %s! (cycled %u times)\n", (unsigned long long int)process_current->id, process_current->name, ret->type, (unsigned long long int)n_times_cycled);
-        return ret;
-    }
+channel_receiver::~channel_receiver() {
+	this->remote_channel->lock.lock();
+
+	for(unsigned int i=0;i<this->remote_channel->listeners.count();i++) {
+		if( this->remote_channel->listeners[i].raw_ptr() == process_current ) {
+			this->remote_channel->listeners.remove(i);
+			break;
+		}
+	}
+
+	this->remote_channel->lock.unlock();
 }
 
-bool get_message_listen_status( char* event_name ) {
-    channel* ch = (*message_queues)[event_name];
-    vector<process*>* queue = ch->listeners;
-    for(unsigned int i=0;i<queue->length();i++) {
-        if( queue->get(i)->id == process_current->id ) {
-            return true;
-        }
-    }
-    return false;
+bool channel_receiver::update() {
+	this->remote_channel->lock.lock();
+
+	if( this->remote_channel->message_queue.count() > 0 ) {
+		if( this->remote_channel->message_queue[0]->uid > this->last_seen_uid ) {
+			unsigned int first_new = 0;
+			for(unsigned int i=1;i<this->remote_channel->message_queue.count();i++) {
+				if( this->remote_channel->message_queue[i]->uid <= this->last_seen_uid ) {
+					first_new = i-1;
+					break;
+				}
+			}
+
+			this->last_seen_uid = this->remote_channel->message_queue[0]->uid;
+			vector< unsigned int > to_delete;
+
+			for(unsigned int i=0;i<=first_new;i++) {
+				message *msg = new message( this->remote_channel->message_queue[i] );
+				this->remote_channel->message_queue[i]->n_receivers--;
+				if( this->remote_channel->message_queue[i]->n_receivers == 0 ) {
+					to_delete.add_end(i);
+				}
+				this->queue.add_end(msg);
+			}
+
+			unsigned int offset = 0;
+			for(unsigned int i=0;i<to_delete.count();i++) {
+				message *msg = this->remote_channel->message_queue.remove(to_delete[i-offset]);
+				delete msg;
+				offset++;
+			}
+
+			this->remote_channel->lock.unlock();
+			return true;
+		}
+	}
+
+	this->remote_channel->lock.unlock();
+	return false;
 }
 
-bool set_message_listen_status( char* event_name, bool status ) {
-    channel* ch = (*message_queues)[event_name];
-    if( ch == NULL ) {
-        kprintf("Process %u (%s) attempted to listen to invalid channel %s, ignoring...\n", process_current->id, process_current->name, event_name);
-        return false;
-    }
-    if( (ch->mode == CHANNEL_MODE_UNICAST) && !status && (ch->listeners->length() > 0) )
-        return false;
-    if( ch->mode == CHANNEL_MODE_INV_MCAST ) // an inverted multicast channel has no listeners except for the owner
-        return false;
-    if(ch) {
-        vector<process*>* queue = ch->listeners;
-        if(status) {
-            for(unsigned int i=0;i<queue->length();i++) {
-                process *current = queue->get(i);
-                if( current != NULL ) {
-                    if( current->id == process_current->id ) {
-                        return true;
-                    }
-                }
-            }
-            //kprintf("message: adding process %u to queue.\n", (unsigned long long int)process_current->id);
-            queue->add_end( process_current );
-        } else {
-            for(unsigned int i=0;i<queue->length();i++) {
-                process *current = queue->get(i);
-                if( current != NULL ) {
-                    if( current->id == process_current->id ) {
-                        queue->remove(i);
-                    }
-                }
-            }
-        }
-        return true;
-    }
-    return false;
+void channel_receiver::wait() {
+	while(true) {
+		if( this->update() ) {
+			break;
+		}
+		if( this->queue.count() > 0 ) {
+			break;
+		}
+		process_sleep();
+	}
 }
 
-void unregister_channel( char* message_type ) {
-    if( message_queues->get(message_type) != NULL ) {
-        channel *chan = message_queues->get(message_type);
-        if( chan->owner == process_current ) {
-            delete chan;
-            message_queues->set( message_type, NULL );
-        }
-    }
+void channel::send( message& msg ) {
+	this->lock.lock();
+
+	msg.uid = this->current_uid++;
+	msg.n_receivers = this->listeners.count();
+
+	message *m = new message(msg);
+
+	this->message_queue.add( m );
+
+	for(unsigned int i=0;i<this->listeners.count();i++) {
+		process_wake(this->listeners[i]);
+	}
+
+	this->lock.unlock();
 }
 
-void register_channel( char* message_type, unsigned int mode, process* owner ) {
-    channel* new_queue = new channel( mode, owner );
-    if( message_queues->get(message_type) != NULL )
-        return;
-    if( !new_queue->listeners )
-        panic("messaging: could not allocate space for new message recipient list!");
-    message_queues->set( message_type, new_queue );
+channel_receiver listen_to_channel( char* channel_name ) {
+	channel* ch = channels[ channel_name ];
+
+	if(ch == NULL) {
+		kprintf("messaging: Process %u attempted to listen to a nonexistent channel %s.\n", process_current->id, channel_name);
+	}
+
+	channel_receiver recv(ch);
+	return recv;
 }
 
-void register_channel( char* message_type, unsigned int mode ) {
-    channel* new_queue = new channel( mode );
-    if( message_queues->get(message_type) != NULL )
-        return;
-    if( !new_queue->listeners )
-        panic("messaging: could not allocate space for new message recipient list!");
-    message_queues->set( message_type, new_queue );
+void send_to_channel( char* channel_name, message& msg ) {
+	channel* ch = channels[ channel_name ];
+
+	if(ch == NULL) {
+		kprintf("messaging: Process %u attempted to send to a nonexistent channel %s.\n", process_current->id, channel_name);
+		return;
+	}
+
+	ch->send( msg );
 }
 
-message::message( message& org ) {
-    this->type    = org.type;
-    this->data_sz = org.data_sz;
-    this->uid     = last_message_id++;
-    if( org.data_sz > 0 ) {
-    	this->data    = kmalloc(org.data_sz);
-    }
-    if( process_current != NULL )
-        this->sender = process_current->id;
-    else
-        this->sender = 0;
-    if( (this->data != NULL) && (this->data_sz > 0) )
-        memcpy( this->data, org.data, org.data_sz );
-}
-
-message::message( const char* type, void* data, size_t data_sz ) {
-    this->type    = type;
-    this->data_sz = data_sz;
-    this->uid     = last_message_id++;
-    if( data_sz > 0 ) {
-    	this->data    = kmalloc(data_sz);
-    }
-    if( process_current != NULL )
-        this->sender = process_current->id;
-    else
-        this->sender = 0;
-    if( (this->data != NULL) && (this->data_sz > 0) )
-        memcpy( this->data, data, data_sz );
-}
-
-message::~message() {
-    if( (this->data != NULL) && ( this->data_sz > 0 ) )
-        kfree(this->data);
-}
-
-void initialize_ipc() {
-    message_queues = new hash_table< channel* >(0x1000);
+void register_channel( char* channel_name ) {
+	channel *ch = new channel;
+	channels.set(channel_name, ch);
 }

@@ -45,7 +45,7 @@ process_ptr::~process_ptr() {
 	this->raw = NULL;
 }
 
-process_ptr::process_ptr( process*& rhs ) {
+process_ptr::process_ptr( process* rhs ) {
 	this->raw = NULL;
 	this->invalidated = true;
 	if( rhs != NULL ) {
@@ -55,7 +55,7 @@ process_ptr::process_ptr( process*& rhs ) {
 	}
 }
 
-process_ptr::process_ptr( process_ptr& rhs ) {
+process_ptr::process_ptr( const process_ptr& rhs ) {
 	this->raw = NULL;
 	this->invalidated = true;
 	if( rhs.raw != NULL ) {

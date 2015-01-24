@@ -5,11 +5,11 @@
 #include "arch/x86/irq.h"
 #include "arch/x86/pic.h"
 #include "core/scheduler.h"
-#include "core/message.h"
 #include "device/vga.h"
 #include "device/pit.h"
 #include "device/ps2_controller.h"
 #include "lib/sync.h"
+#include "../../wip/include/message.h"
 
 bool port1_status = false;
 bool port2_status = false;

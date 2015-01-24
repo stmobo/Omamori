@@ -8,6 +8,7 @@
 #include "includes.h"
 #include "arch/x86/sys.h"
 #include "device/ata.h"
+#include "core/message.h"
 
 void ata::ata_channel::select( uint8_t select_val ) {
 	if( this->selected_drive != select_val ) {
@@ -59,9 +60,8 @@ void ata::ata_channel::transfer_cycle() {
         }
 
         this->current_transfer->status = true;
-		message out("transfer_complete", this->current_transfer, sizeof(ata_transfer_request));
-		this->current_transfer->requesting_process->send_message( out );
-		process_add_to_runqueue( this->current_transfer->requesting_process );
+		message out(this->current_transfer, sizeof(ata_transfer_request));
+		send_to_channel("transfer_complete", out);
 		this->current_transfer = NULL;
 
 		//this>delayed_starter->state = process_state::runnable; // indirectly schedule ourselves to run later

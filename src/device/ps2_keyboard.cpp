@@ -3,6 +3,7 @@
 #include "arch/x86/irq.h"
 #include "arch/x86/pic.h"
 #include "core/scheduler.h"
+#include "core/message.h"
 #include "device/ps2_controller.h"
 #include "device/ps2_keyboard.h"
 #include "device/vga.h"
@@ -114,18 +115,15 @@ ps2_keypress* convert_scancode(bool f0, bool e0, unsigned char code_end) {
 
 ps2_keypress* ps2_keyboard_get_keystroke() { // blocks for a keystroke
     ps2_keypress* data;
-    set_message_listen_status( "keypress", true );
-    while(true) {
-        message* msg = wait_for_message();
-        if( strcmp(const_cast<char*>(msg->type), const_cast<char*>("keypress")) ) {
-            data = (ps2_keypress*)(msg->data);
-            msg->data = NULL;
-            delete msg;
-            return data;
-        }
-        delete msg;
-    }
-    
+    channel_receiver ch = listen_to_channel("keypress");
+
+    ch.wait();
+
+	unique_ptr<message> msg = ch.queue.remove(0);
+	data = (ps2_keypress*)(msg->data);
+	msg->data = NULL;
+
+	return data;
 }
 
 void ps2_keyboard_input_process() {
@@ -140,8 +138,8 @@ void ps2_keyboard_input_process() {
             f0 = true;
         } else {
             ps2_keypress* key = convert_scancode(f0, e0, data);
-            message msg( "keypress", key, sizeof(ps2_keypress) );
-            send_message( msg );
+            message msg( key, sizeof(ps2_keypress) );
+            send_to_channel( "keypress", msg );
             e0 = false;
             f0 = false;
         }
@@ -164,7 +162,7 @@ void ps2_keyboard_initialize() {
     //}
     keyboard_input_process = new process( (size_t)&ps2_keyboard_input_process, false, 0, "ps2kb_in" ,NULL, 0 );
     spawn_process( keyboard_input_process, true );
-    register_channel( "keypress", CHANNEL_MODE_MULTICAST, keyboard_input_process );
+    register_channel( "keypress" );
 }
 
 char* ps2_keyboard_readline(unsigned int *len) {

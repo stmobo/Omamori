@@ -39,6 +39,9 @@ message::message( message& rhs ) {
 		this->data = kmalloc(rhs.data_size);
 		this->data_size = rhs.data_size;
 		memcpy( this->data, rhs.data, rhs.data_size );
+	} else {
+		this->data = rhs.data;
+		this->data_size = rhs.data_size;
 	}
 }
 
@@ -52,6 +55,9 @@ message::message( message* rhs ) {
 		this->data = kmalloc(rhs->data_size);
 		this->data_size = rhs->data_size;
 		memcpy( this->data, rhs->data, rhs->data_size );
+	} else {
+		this->data = rhs->data;
+		this->data_size = rhs->data_size;
 	}
 }
 
@@ -62,10 +68,7 @@ channel_receiver::channel_receiver( channel* remote ) {
 
 	this->remote_channel->lock.lock();
 
-	if( this->remote_channel->message_queue.count() > 0 ) {
-		this->last_seen_uid = this->remote_channel->message_queue[0]->uid;
-	}
-	this->last_seen_uid = 0;
+	this->last_seen_uid = remote->current_uid;
 
 	bool already_there = false;
 	for(unsigned int i=0;i<this->remote_channel->listeners.count();i++) {
@@ -113,7 +116,7 @@ bool channel_receiver::update() {
 	this->remote_channel->lock.lock();
 
 	if( this->remote_channel->message_queue.count() > 0 ) {
-		if( this->remote_channel->message_queue[0]->uid > this->last_seen_uid ) {
+		if( this->remote_channel->message_queue[0]->uid >= this->last_seen_uid ) {
 			unsigned int first_new = 0;
 			for(unsigned int i=1;i<this->remote_channel->message_queue.count();i++) {
 				if( this->remote_channel->message_queue[i]->uid <= this->last_seen_uid ) {
@@ -153,16 +156,23 @@ bool channel_receiver::update() {
 void channel_receiver::wait() {
 	while(true) {
 		if( this->update() ) {
+			//kprintf("messaging: update got something\n");
 			break;
 		}
 		if( this->queue.count() > 0 ) {
+			//kprintf("messaging: there's still something left\n");
 			break;
 		}
+		//kprintf("messaging: nothing here, going to sleep now\n");
 		process_sleep();
 	}
 }
 
 void channel::send( message& msg ) {
+	if( this->listeners.count() == 0 ) {
+		return;
+	}
+
 	this->lock.lock();
 
 	msg.uid = this->current_uid++;

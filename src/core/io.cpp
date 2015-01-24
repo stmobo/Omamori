@@ -12,25 +12,30 @@ vector<io_disk*> io_disks;
 vector<io_partition*> io_partitions;
 static uint64_t __io_current_id = 0;
 
-transfer_request::transfer_request( transfer_buffer buf, uint64_t secst, size_t nsec, bool rd ) : id(__io_current_id++), buffer(buf), sector_start(secst), n_sectors(nsec), read(rd), requesting_process(process_current) {};
+transfer_request::transfer_request( transfer_buffer buf, uint64_t secst, size_t nsec, bool rd ) : id(__io_current_id++), buffer(buf), sector_start(secst), n_sectors(nsec), read(rd), requesting_process(process_current) {
+	this->ch = new channel_receiver( listen_to_channel("transfer_complete") );
+};
 
-transfer_request::transfer_request( transfer_buffer *buf, uint64_t secst, size_t nsec, bool rd ) : transfer_request(*buf, secst, nsec, rd) {};
+transfer_request::transfer_request( transfer_buffer *buf, uint64_t secst, size_t nsec, bool rd ) : transfer_request(*buf, secst, nsec, rd) {
+	this->ch = new channel_receiver( listen_to_channel("transfer_complete") );
+};
 
-transfer_request::transfer_request( transfer_request& cpy ) : id(cpy.id), buffer(cpy.buffer), sector_start(cpy.sector_start), n_sectors(cpy.n_sectors), read(cpy.read), requesting_process(cpy.requesting_process) {};
+transfer_request::transfer_request( transfer_request& cpy ) : id(cpy.id), buffer(cpy.buffer), sector_start(cpy.sector_start), n_sectors(cpy.n_sectors), read(cpy.read), requesting_process(cpy.requesting_process) {
+	this->ch = new channel_receiver( listen_to_channel("transfer_complete") );
+};
 
 void transfer_request::wait() {
-    //kprintf("transfer_request::wait - waiting for message (id=%u)\n", this->id);
-    channel_receiver ch = listen_to_channel("transfer_complete");
+    //kprintf("transfer_request::wait - waiting for message (id=%llu)\n", this->id);
     while(true) {
-        ch.wait();
-        message* msg = ch.queue.remove(0);
+        this->ch->wait();
+        message* msg = this->ch->queue.remove(0);
         transfer_request* req = (transfer_request*)msg->data;
         if(req != NULL) {
-            //kprintf("transfer_request::wait - received valid message (id=%u)\n", req->id);
+            //kprintf("transfer_request::wait - received valid message (id=%llu)\n", req->id);
             if(req->id == this->id) {
                 return;
             } else {
-                //kprintf("transfer_request::wait - ids did not match\n", req->id);
+                //kprintf("transfer_request::wait - ids did not match\n");
             }
         } else {
             //kprintf("transfer_request::wait - received invalid message\n");

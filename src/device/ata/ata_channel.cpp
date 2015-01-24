@@ -60,6 +60,7 @@ void ata::ata_channel::transfer_cycle() {
         }
 
         this->current_transfer->status = true;
+        //kprintf("ata_channel: transfer complete (id=%llu)\n", this->current_transfer->id);
 		message out(this->current_transfer, sizeof(ata_transfer_request));
 		send_to_channel("transfer_complete", out);
 		this->current_transfer = NULL;

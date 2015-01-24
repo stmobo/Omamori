@@ -4,6 +4,7 @@
 #include "includes.h"
 #include "core/paging.h"
 #include "core/scheduler.h"
+#include "core/message.h"
 
 typedef struct transfer_buffer {
     void        *buffer_virt;
@@ -26,10 +27,12 @@ typedef struct transfer_request {
     bool            status = false;
     bool            read;
     process*        requesting_process;
+    channel_receiver* ch;
     
     transfer_request( transfer_buffer, uint64_t, size_t, bool );
     transfer_request( transfer_buffer*, uint64_t, size_t, bool );
     transfer_request( transfer_request& );
+    ~transfer_request() { delete this->ch; };
     void wait();
 } transfer_request;
 

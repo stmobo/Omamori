@@ -50,6 +50,7 @@ k_work::work::work( unsigned int(*func)(void), bool auto_remove ) {
 	this->return_code = 0;
 	this->finished = false;
 	this->auto_remove = auto_remove;
+	this->ch = new channel_receiver( listen_to_channel("k_worker_thread_finished") );
 }
 
 unsigned int k_work::work::wait() {
@@ -65,14 +66,13 @@ unsigned int k_work::work::wait() {
 	}
 	set_message_listen_status( "k_worker_thread_finished", false );
 	*/
-	channel_receiver ch = listen_to_channel("k_worker_thread_finished");
 	while(true) {
-		ch.wait();
-		for(unsigned int i=0;i<ch.queue.count();i++) {
-			unique_ptr<message> m = ch.queue.remove(0);
-			if( m->data == (void*)this ) {
-				break;
-			}
+		this->ch->wait();
+		unique_ptr<message> m = this->ch->queue.remove(0);
+		kprintf("Got work complete message, checking..\n");
+		work* work_ptr = (work*)m->data;
+		if( work_ptr->work_id == this->work_id ) {
+			break;
 		}
 	}
 	kprintf("Deferred work complete.\n");

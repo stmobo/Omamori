@@ -22,6 +22,8 @@ extern "C" {
     extern void __process_execution_complete(void);
 }
 
+struct process_ptr;
+
 enum struct process_state {
     runnable,
     waiting,
@@ -85,6 +87,9 @@ typedef struct process {
     process_times                  times;
     char*                          message_waiting_on;
     
+    mutex						   process_reference_lock;
+    vector< process_ptr* >		   process_reflist;
+
     bool operator==( const process& rhs ) { return (rhs.id == this->id); };
     bool operator!=( const process& rhs ) { return (rhs.id != this->id); };
     
@@ -92,24 +97,34 @@ typedef struct process {
     process( process* );
     process( uint32_t entry_point, bool is_usermode, int priority, const char* name, void* args, int n_args );
     
+    void add_reference( process_ptr* );
+    void remove_reference( process_ptr* );
+
     int  wait();
     bool send_message( message );
 } process;
 
-// simple FIFO process queue
-typedef class process_queue {
-    process **queue = NULL;
-    int length;
-    int count;
-    
-    public:
-    void add( process* );
-    process* remove();
-    process* remove( int );
-    process* operator[](int);
-    int get_count() { return this->count; };
-    process_queue();
-} process_queue;
+typedef class process_ptr {
+	process* raw;
+	bool invalidated;
+
+public:
+	void invalidate() { this->invalidated = true; };
+	bool valid() { return ( !this->invalidated && (this->raw != NULL) ); };
+	process* raw_ptr() { return this->raw; };
+
+	operator process*() { return this->raw; };
+	process& operator*() { return *this->raw; };
+	process* operator->() { return this->raw; };
+	process_ptr& operator=(process_ptr& rhs);
+	process_ptr& operator=(process*& rhs);
+
+	~process_ptr();
+	process_ptr( process_ptr& );
+	process_ptr( process*& );
+	process_ptr() : raw(NULL), invalidated(true) {};
+
+} process_ptr;
 
 extern process *process_current;
 extern vector<process*> system_processes;

@@ -28,6 +28,14 @@ int process::wait() {
 
 process::~process() {
     if( this->id != 0 ) {
+    	this->process_reference_lock.lock(); // keep people from getting references to us
+
+    	this->state = process_state::dead;
+
+    	for( unsigned int i=0;i<this->process_reflist.count();i++ ) {
+    		this->process_reflist[i]->invalidate();
+    	}
+
         for( unsigned int i=0;i<system_processes.count();i++ ) {
             if( (system_processes[i] != NULL) && (system_processes[i]->id == this->id) ) {
                 system_processes.set( i, NULL );
@@ -40,12 +48,12 @@ process::~process() {
                 break;
             }
         }
-        for( int i=0;i<run_queues[this->priority].count();i++ ) {
+        for( unsigned int i=0;i<run_queues[this->priority].count();i++ ) {
             if( run_queues[this->priority][i]->id == this->id ) {
                 run_queues[this->priority].remove(i);
             }
         }
-        this->state = process_state::dead;
+
         if( process_current->id == this->id ) {
             this->user_regs.eip = (uint32_t)&__process_execution_complete;
             this->regs.eip = (uint32_t)&__process_execution_complete; // just in case we happen to come back

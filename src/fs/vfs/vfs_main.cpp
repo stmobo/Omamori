@@ -24,10 +24,12 @@ vfs_directory::~vfs_directory() {
 vfs::vfs_status vfs::get_file_info( unsigned char* path, vfs_node** out ) {
 	vector<unsigned char*> path_components = vfs::split_path(path);
 
+	/*
 	kprintf("vfs_get_file_info: Searching %u levels.\n", path_components.count());
 	for(unsigned int i=0;i<path_components.count();i++) {
 		kprintf("vfs_get_file_info: Searching at level %u: %s\n", i, path_components[i]);
 	}
+	*/
 
 	if( ((strlen(path) == 1) && (( path[0] == '/' ) || ( path[0] == '\\' ))) || (strlen(path) == 0) || (path == NULL) ) {
 		if( out != NULL ) {
@@ -40,7 +42,7 @@ vfs::vfs_status vfs::get_file_info( unsigned char* path, vfs_node** out ) {
 	for(unsigned int i=1;i<path_components.count();i++) {
 		bool found = false;
 		for(unsigned int j=0;j<cur->files.count();j++) {
-			kprintf("vfs_get_file_info: j=%u / %u\n", j, cur->files.count());
+			//kprintf("vfs_get_file_info: j=%u / %u\n", j, cur->files.count());
 			vfs_node* cur_node = cur->files[j];
 			if( strcmp(cur_node->name, path_components[i-1]) && (cur_node->type == vfs_node_types::directory) ) {
 				cur = (vfs_directory*)cur_node;
@@ -52,7 +54,7 @@ vfs::vfs_status vfs::get_file_info( unsigned char* path, vfs_node** out ) {
 			if( out != NULL ) {
 				*out = NULL;
 			}
-			kprintf("vfs_get_file_info: did not find file %s: could not find directory component\n", path);
+			//kprintf("vfs_get_file_info: did not find file %s: could not find directory component\n", path);
 			return vfs_status::not_found;
 		}
 	}
@@ -63,7 +65,7 @@ vfs::vfs_status vfs::get_file_info( unsigned char* path, vfs_node** out ) {
 			if( out != NULL ) {
 				*out = cur_node;
 			}
-			kprintf("vfs_get_file_info: found file %s\n", path);
+			//kprintf("vfs_get_file_info: found file %s\n", path);
 			return vfs_status::ok;
 		}
 	}
@@ -71,7 +73,7 @@ vfs::vfs_status vfs::get_file_info( unsigned char* path, vfs_node** out ) {
 	if( out != NULL ) {
 		*out = NULL;
 	}
-	kprintf("vfs_get_file_info: did not find file %s: no matching file in stem\n", path);
+	//kprintf("vfs_get_file_info: did not find file %s: no matching file in stem\n", path);
 	return vfs_status::not_found;
 }
 

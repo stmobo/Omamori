@@ -12,23 +12,38 @@ vector<io_disk*> io_disks;
 vector<io_partition*> io_partitions;
 static uint64_t __io_current_id = 0;
 
-transfer_request::transfer_request( transfer_buffer buf, uint64_t secst, size_t nsec, bool rd ) : id(__io_current_id++), buffer(buf), sector_start(secst), n_sectors(nsec), read(rd), requesting_process(process_current) {
+transfer_request::transfer_request( transfer_buffer& buf, uint64_t secst, size_t nsec, bool rd ) : buffer(buf) {
+	this->id = __io_current_id++;
+	this->sector_start = secst;
+	this->n_sectors = nsec;
+	this->read = rd;
+	this->requesting_process = process_current;
 	this->ch = new channel_receiver( listen_to_channel("transfer_complete") );
 };
 
-transfer_request::transfer_request( transfer_buffer *buf, uint64_t secst, size_t nsec, bool rd ) : transfer_request(*buf, secst, nsec, rd) {
+transfer_request::transfer_request( transfer_buffer *buf, uint64_t secst, size_t nsec, bool rd ) : buffer(*buf) {
+	this->id = __io_current_id++;
+	this->sector_start = secst;
+	this->n_sectors = nsec;
+	this->read = rd;
+	this->requesting_process = process_current;
 	this->ch = new channel_receiver( listen_to_channel("transfer_complete") );
 };
 
-transfer_request::transfer_request( transfer_request& cpy ) : id(cpy.id), buffer(cpy.buffer), sector_start(cpy.sector_start), n_sectors(cpy.n_sectors), read(cpy.read), requesting_process(cpy.requesting_process) {
-	this->ch = new channel_receiver( listen_to_channel("transfer_complete") );
+transfer_request::transfer_request( transfer_request& cpy ) : buffer(cpy.buffer) {
+	this->id = cpy.id;
+	this->sector_start = cpy.sector_start;
+	this->n_sectors = cpy.n_sectors;
+	this->read = cpy.read;
+	this->requesting_process = cpy.requesting_process;
+	this->ch = cpy.ch;
 };
 
 void transfer_request::wait() {
     //kprintf("transfer_request::wait - waiting for message (id=%llu)\n", this->id);
     while(true) {
         this->ch->wait();
-        message* msg = this->ch->queue.remove(0);
+        unique_ptr<message> msg = this->ch->queue.remove(0);
         transfer_request* req = (transfer_request*)msg->data;
         if(req != NULL) {
             //kprintf("transfer_request::wait - received valid message (id=%llu)\n", req->id);
@@ -226,7 +241,7 @@ void io_read_partition( unsigned int global_part_id, void *out_buffer, uint64_t 
 
     // do some sanity checking
     if( (((part->start*device->get_sector_size())+start_pos) + read_amt) > ((part->start*device->get_sector_size())+part->size) ) {
-        kprintf("io: attempted read over partition %u boundary", global_part_id);
+        kprintf("io: attempted read over partition %u boundary\n", global_part_id);
         return;
     }
     
@@ -248,7 +263,7 @@ void io_write_partition( unsigned int global_part_id, void *out_buffer, uint64_t
 
     // do some sanity checking
     if( (((part->start*device->get_sector_size())+start_pos) + write_amt) > ((part->start*device->get_sector_size())+part->size) ) {
-        kprintf("io: attempted write over partition %u boundary", global_part_id);
+        kprintf("io: attempted write over partition %u boundary\n", global_part_id);
         return;
     }
     

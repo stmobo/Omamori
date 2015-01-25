@@ -192,7 +192,7 @@ void ata::ata_device::do_ata_transfer( ata_transfer_request* req ) {
 		}
 	}
 
-	uint16_t* current = (uint16_t*)req->buffer.remap();
+	uint16_t* current = (uint16_t*)req->buffer.buffer_virt;
 	//kprintf("ata: buffer at %#p physical, %#p virtual.\n", req->buffer.buffer_phys, (void*)current);
 	//kprintf("ata: PTE for virt address is %#x\n", paging_get_pte((size_t)current));
 	for( unsigned int i=0;i<req->n_sectors;i++ ) {
@@ -302,7 +302,7 @@ void ata::ata_device::do_atapi_transfer( ata_transfer_request* req ) {
 
 	uint16_t packet_sz = (((uint16_t)lba_hi) << 8) | lba_mid;
 
-	void* data = req->buffer.remap();
+	void* data = req->buffer.buffer_virt;
 	uint16_t *current = (uint16_t*)data;
 
 	//while( ((io_inb( this->channel->control ) & ATA_SR_BSY) > 0) || ((io_inb( this->channel->control ) & ATA_SR_DRQ) == 0) ) asm volatile("pause");

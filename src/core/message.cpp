@@ -109,6 +109,10 @@ channel_receiver::~channel_receiver() {
 		}
 	}
 
+	for(unsigned int i=0;i<this->queue.count();i++) {
+		delete this->queue[i];
+	}
+
 	this->remote_channel->lock.unlock();
 }
 

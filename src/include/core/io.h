@@ -13,6 +13,7 @@ typedef struct transfer_buffer {
     unsigned int n_frames;
     size_t       size;
     
+    transfer_buffer( const transfer_buffer& rhs ) : buffer_virt(rhs.buffer_virt), buffer_phys(rhs.buffer_phys), frames(rhs.frames), n_frames(rhs.n_frames), size(rhs.size) {};
     transfer_buffer( unsigned int );
     ~transfer_buffer() { pageframe_deallocate( this->frames, this->n_frames ); };
     void* remap();
@@ -29,7 +30,7 @@ typedef struct transfer_request {
     process*        requesting_process;
     channel_receiver* ch;
     
-    transfer_request( transfer_buffer, uint64_t, size_t, bool );
+    transfer_request( transfer_buffer&, uint64_t, size_t, bool );
     transfer_request( transfer_buffer*, uint64_t, size_t, bool );
     transfer_request( transfer_request& );
     ~transfer_request() { delete this->ch; };

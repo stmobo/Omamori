@@ -10,6 +10,7 @@
 #include "core/scheduler.h"
 #include "lib/vector.h"
 #include "lib/sync.h"
+#include <stdarg.h>
 
 struct message;
 
@@ -56,3 +57,4 @@ public:
 channel_receiver listen_to_channel( char* channel_name );
 void send_to_channel( char* channel_name, message& msg );
 void register_channel( char* channel_name );
+unsigned int wait_multiple( unsigned int n_receivers, channel_receiver* recv_1, ... );

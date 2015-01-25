@@ -219,3 +219,34 @@ void register_channel( char* channel_name ) {
 	channel *ch = new channel;
 	channels.set(channel_name, ch);
 }
+
+unsigned int wait_multiple( unsigned int n_receivers, channel_receiver* recv_1, ... ) {
+	vector< channel_receiver* > recv_list;
+	va_list args;
+	va_start(args, recv_1);
+
+	recv_list.add_end(recv_1);
+
+	for(unsigned int i=1;i<n_receivers;i++) {
+		channel_receiver* t = va_arg(args, channel_receiver*);
+		recv_list.add_end(t);
+	}
+
+	while(true) {
+		for(unsigned int i=0;i<n_receivers;i++) {
+			if( recv_list[i]->update() ) {
+				va_end(args);
+				return i;
+			}
+
+			if( recv_list[i]->queue.count() > 0 ) {
+				va_end(args);
+				return i;
+			}
+		}
+
+		process_sleep();
+	}
+
+	return 0;
+}

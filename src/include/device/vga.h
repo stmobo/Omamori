@@ -24,7 +24,7 @@ enum vga_color
 	COLOR_LIGHT_CYAN = 11,
 	COLOR_LIGHT_RED = 12,
 	COLOR_LIGHT_MAGENTA = 13,
-	COLOR_LIGHT_BROWN = 14,
+	COLOR_YELLOW = 14,
 	COLOR_WHITE = 15,
 };
 
@@ -37,3 +37,5 @@ extern void terminal_putchar(char);
 extern void terminal_writestring(char*);
 extern void terminal_writestring(char*, size_t);
 extern void terminal_backspace();
+extern void terminal_clear();
+extern void terminal_clearline();

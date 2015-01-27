@@ -48,6 +48,29 @@ void terminal_setcolor(char color)
 	terminal_color = color;
 }
 
+void terminal_clear() {
+	__vga_write_lock.lock();
+	for ( size_t y = 0; y < VGA_HEIGHT; y++ )
+	{
+		for ( size_t x = 0; x < VGA_WIDTH; x++ )
+		{
+			const size_t index = y * VGA_WIDTH + x;
+			terminal_buffer[index] = make_vgaentry(' ', terminal_color);
+		}
+	}
+	__vga_write_lock.unlock();
+}
+
+void terminal_clearline() {
+	__vga_write_lock.lock();
+	for ( size_t x = 0; x < VGA_WIDTH; x++ )
+	{
+		const size_t index = terminal_row * VGA_WIDTH + x;
+		terminal_buffer[index] = make_vgaentry(' ', terminal_color);
+	}
+	__vga_write_lock.unlock();
+}
+
 // terminal_scroll - scroll the console
 // Positive values scroll down (adding new lines to the bottom); negative values do the inverse.
 void terminal_scroll(int num_rows)

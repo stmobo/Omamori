@@ -60,6 +60,7 @@ all: omamori.iso
 
 omamori.iso: omamori.elf
 		@cp omamori.elf $(ISO_DIR)/boot/omamori.elf
+		@cp omamori_embedded_debug.elf $(ISO_DIR)/omamori_embedded_debug.elf
 		@grub-mkrescue -o omamori.iso $(ISO_DIR) > /dev/null 2>&1
 		
 omamori.elf: omamori_embedded_debug.elf

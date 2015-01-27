@@ -66,6 +66,9 @@ process_ptr::process_ptr( const process_ptr& rhs ) {
 }
 
 process_ptr& process_ptr::operator=( process*& rhs ) {
+	if( this->valid() ) {
+		this->raw->remove_reference(this);
+	}
 	this->raw = NULL;
 	this->invalidated = true;
 	if( rhs != NULL ) {

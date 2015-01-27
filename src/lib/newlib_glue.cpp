@@ -5,8 +5,29 @@
 #include "core/scheduler.h"
 #include "device/ps2_keyboard.h"
 #include "device/vga.h"
+#include "core/vfs.h"
 #undef errno
 extern int errno;
+
+struct file_descriptor {
+	vfs_node* node;
+	unsigned char* name;
+	process_ptr process;
+};
+
+int vfs_err_to_errno( vfs::vfs_status st ) {
+	switch(st) {
+	case vfs::vfs_status::already_exists:
+		return EEXIST;
+	case vfs::vfs_status::incorrect_type:
+		return EINVAL;
+	case vfs::vfs_status::not_found:
+		return ENOENT;
+	default:
+	case vfs::vfs_status::unknown_error:
+		return EIO;
+	}
+}
 
 extern "C" {
     char *__env[1] = { 0 };
@@ -17,11 +38,44 @@ extern "C" {
         process_switch_immediate();
     }
 
+    vector<file_descriptor*> open_files(2);
+
     int open(const char *name, int flags, int mode){
-        return -1;
+    	vfs_node* node = NULL;
+        vfs::vfs_status fop_stat = vfs::get_file_info( (unsigned char*)const_cast<char*>(name), &node );
+
+        if( fop_stat == vfs::vfs_status::ok ) {
+        	file_descriptor *file = new file_descriptor;
+        	file->node = node;
+        	file->process = process_current;
+        	file->name = (unsigned char*)kmalloc(strlen(name)+1);
+        	for(unsigned int i=0;i<strlen(name);i++) {
+        		file->name[i] = name[i];
+        	}
+        	file->name[strlen(name)] = '\0';
+
+        	open_files.add_end(file);
+
+        	return open_files.count()-1;
+        } else {
+        	errno = vfs_err_to_errno(fop_stat);
+			return -1;
+        }
     }
     
     int close(int file) {
+        if( open_files[file] != NULL ) {
+        	file_descriptor *f = open_files[file];
+
+        	if( process_current != f->process.raw ) {
+        		errno = EACCES;
+        		return -1;
+        	}
+
+        	open_files.remove(file);
+        	return 0;
+        }
+        errno = EBADF;
         return -1;
     }
 
@@ -49,7 +103,9 @@ extern "C" {
     }
 
     int isatty(int file) {
-        return 1;
+        if( (file == 0) || (file == 1) ) {
+        	return 1;
+        }
     }
 
     int kill(int pid, int sig){
@@ -93,8 +149,36 @@ extern "C" {
                 }
             }
             return n_read;
+        } else if( file != 1 ) {
+        	if( open_files[file] != NULL ) {
+        		if( open_files[file]->node->type == vfs_node_types::directory ) {
+        			errno = EISDIR;
+        			return -1;
+        		}
+
+        		vfs_file* f = (vfs_file*)open_files[file]->node;
+        		void* buf = kmalloc( f->size );
+
+        		vfs::vfs_status fop_stat = vfs::read_file( open_files[file]->name, buf );
+        		if( fop_stat != vfs::vfs_status::ok ) {
+        			errno = vfs_err_to_errno(fop_stat);
+        			return -1;
+        		}
+
+        		if( f->size > len ) {
+        			memcpy( (void*)ptr, buf, len );
+        			return len;
+        		} else {
+        			memcpy( (void*)ptr, buf, f->size );
+        			return f->size;
+        		}
+        	} else {
+        		errno = EBADF;
+        		return -1;
+        	}
         }
-        return 0;
+        errno = EBADF;
+        return -1;
     }
 
     caddr_t sbrk(int increase) {
@@ -144,7 +228,20 @@ extern "C" {
         } else if( file == 2 ) {
             terminal_writestring( "err: " );
             terminal_writestring( ptr, len );
-        }        
+        } else {
+        	if( open_files[file]->node->type == vfs_node_types::directory ) {
+				errno = EISDIR;
+				return -1;
+			}
+
+			vfs::vfs_status fop_stat = vfs::write_file( open_files[file]->name, (void*)ptr, len );
+			if( fop_stat == vfs::vfs_status::ok ) {
+				return len;
+			} else {
+				errno = vfs_err_to_errno(fop_stat);
+				return -1;
+			}
+        }
         return len;
     }
     

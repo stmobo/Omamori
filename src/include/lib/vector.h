@@ -18,14 +18,14 @@ class vector {
     
     // array access-style functions
     void set( unsigned int, T );
-    T get( unsigned int );
-    T operator[](unsigned int);
+    T& get( unsigned int );
+    T& operator[](unsigned int);
     
     // FILO / FIFO -style functions
-    void add( T );
-    void add_end( T );
-    T remove_end(); // removes from end   (FILO)
-    T remove(unsigned int n=0);     // removes from start (FIFO)
+    void add( T& );
+    void add_end( T& );
+    T& remove_end(); // removes from end   (FILO)
+    T& remove(unsigned int n=0);     // removes from start (FIFO)
     
     const vector<T>& operator=( const vector<T>& );
     vector( vector<T>& );
@@ -114,17 +114,17 @@ void vector<T>::set( unsigned int n, T obj ) {
 }
 
 template <class T>
-T vector<T>::get( unsigned int n ) {
+T& vector<T>::get( unsigned int n ) {
     return this->elements[n];
 }
 
 template <class T>
-T vector<T>::operator[](unsigned int n) {
+T& vector<T>::operator[](unsigned int n) {
     return (T)this->get(n);
 }
 
 template <class T>
-void vector<T>::add( T obj ) {
+void vector<T>::add( T& obj ) {
     this->n_elements++;
     if( this->elements == NULL ) {
         this->reallocate( this->n_elements );
@@ -138,7 +138,7 @@ void vector<T>::add( T obj ) {
 }
 
 template <class T>
-void vector<T>::add_end( T obj ) {
+void vector<T>::add_end( T& obj ) {
     this->n_elements++;
     if( this->elements == NULL ) {
         this->reallocate( this->n_elements );
@@ -149,7 +149,7 @@ void vector<T>::add_end( T obj ) {
 }
 
 template <class T>
-T vector<T>::remove_end() {
+T& vector<T>::remove_end() {
     if( this->n_elements > 0 ) {
         T head = this->elements[this->n_elements-1];
         this->n_elements--;
@@ -159,7 +159,7 @@ T vector<T>::remove_end() {
 }
 
 template <class T>
-T vector<T>::remove( unsigned int n ) {
+T& vector<T>::remove( unsigned int n ) {
 	/*
 	T elem = this->elements[n];
 	for(unsigned int i=n;i<(this->n_elements-1);i++) {

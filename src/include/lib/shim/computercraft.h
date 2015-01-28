@@ -5,11 +5,13 @@
  *      Author: Tatantyler
  */
 
-#ifndef SRC_INCLUDE_LIB_SHIM_COMPUTERCRAFT_H_
-#define SRC_INCLUDE_LIB_SHIM_COMPUTERCRAFT_H_
+#pragma once
+#include "includes.h"
+#include "core/vfs.h"
+#include "device/vga.h"
 
-
-
-
-
-#endif /* SRC_INCLUDE_LIB_SHIM_COMPUTERCRAFT_H_ */
+extern "C" {
+    #include "lua.h"
+    #include "lualib.h"
+    #include "lauxlib.h"
+}

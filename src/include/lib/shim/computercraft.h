@@ -15,3 +15,8 @@ extern "C" {
     #include "lualib.h"
     #include "lauxlib.h"
 }
+
+namespace computercraft {
+	void luaopen_cc_term( lua_State* L );
+	void luaopen_cc_fs( lua_State* L );
+}

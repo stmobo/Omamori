@@ -1,4 +1,5 @@
 #include "includes.h"
+#include <cpuid.h>
 
 inline void io_outb(short port, char data) {
     asm volatile("out %0, %1\n\t" : : "a"(data), "d"(port) );
@@ -43,19 +44,30 @@ inline uint64_t rdtsc() {
     return tsc;
 }
 
-inline void cpuid(uint32_t func_code, uint32_t *eax_ret, uint32_t *ebx_ret, uint32_t *ecx_ret, uint32_t *edx_ret) {
-    asm volatile("cpuid"
-                 : "=a"(*eax_ret), "=b"(*ebx_ret), "=c"(*ecx_ret), "=d"(*edx_ret)
-                 : "a"(func_code));
-}
-
-inline void vendorid(uint32_t ret[3]) {
-    asm volatile("mov $0, %%eax\n\t"
-                 "cpuid\n\t"
-                 : "=b"(ret[0]), "=d"(ret[1]), "=c"(ret[2])
-                 : : "%eax");
-}
-
 inline void flushCache() {
     asm volatile("wbinvd" : : : "memory");
+}
+
+inline bool cpu_has_msr() {
+	unsigned int a,b,c,d;
+	if( __get_cpuid( 1, &a, &b, &c, &d ) ) {
+		return ( d & (1<<5) );
+	}
+	return false;
+}
+
+inline uint64_t read_msr( uint32_t msr_no ) {
+	uint32_t a = 0; // low 32
+	uint32_t d = 0; // hi 32
+	asm volatile( "rdmsr" : "=a"(a), "=d"(d) : "c"(msr_no) );
+	uint64_t tmp = d;
+	tmp <<= 32;
+	tmp |= a;
+	return tmp;
+}
+
+inline void write_msr( uint32_t msr_no, uint64_t value ) {
+	uint32_t d = ((value >> 32)& 0xFFFFFFFF);
+	uint32_t a = (value & 0xFFFFFFFF);
+	asm volatile( "wrmsr" : : "a"(a), "c"(msr_no), "d"(d) );
 }

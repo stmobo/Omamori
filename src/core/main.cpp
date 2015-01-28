@@ -1,5 +1,6 @@
 #include "includes.h"
 #include "arch/x86/multitask.h"
+#include "arch/x86/apic.h"
 #include "core/acpi.h"
 #include "core/scheduler.h"
 #include "device/ahci.h"
@@ -137,6 +138,11 @@ void test_process_1() {
         kprintf("Initializing AHCI.\n");
         ahci_initialize();
         
+        kprintf("Initializing LAPIC.\n");
+        lapic_detect();
+        //logger_flush_buffer();
+        //system_halt;
+
         // format partition 1 as FAT (using our own code):
         //fat32_do_format( 1 );
         

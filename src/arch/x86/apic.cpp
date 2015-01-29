@@ -45,12 +45,12 @@ uintptr_t lapic_getbase() {
 	//return ( lapic_msr >> 12 ) & 0xFFFFFFFF;
 }
 
-inline uint32_t lapic_read_register( uint32_t addr ) {
+uint32_t lapic_read_register( uint32_t addr ) {
 	uint32_t *lapic_mem = (uint32_t*)(lapic_vaddr+addr);
 	return *lapic_mem;
 }
 
-inline void lapic_write_register( uint32_t addr, uint32_t val ) {
+void lapic_write_register( uint32_t addr, uint32_t val ) {
 	uint32_t *lapic_mem = (uint32_t*)(lapic_vaddr+addr);
 	*lapic_mem = val;
 }

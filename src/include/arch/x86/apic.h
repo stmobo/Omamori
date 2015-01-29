@@ -7,6 +7,7 @@
 
 #pragma once
 #include "includes.h"
+#include "lib/vector.h"
 
 enum ioapic_delivery_mode {
 	fixed = 0,
@@ -62,5 +63,5 @@ void lapic_eoi();
 void apic_set_gsi_vector( unsigned int gsi, ioapic_redir_entry ent );
 ioapic_redir_entry apic_get_gsi_vector( unsigned int gsi );
 
-inline uint32_t lapic_read_register( uint32_t addr );
-inline void lapic_write_register( uint32_t addr, uint32_t val );
+uint32_t lapic_read_register( uint32_t addr );
+void lapic_write_register( uint32_t addr, uint32_t val );

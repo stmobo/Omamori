@@ -2,6 +2,7 @@
 
 #include "includes.h"
 #include "core/sys.h"
+#include "arch/x86/apic.h"
 #include "arch/x86/pic.h"
 #include "arch/x86/irq.h"
 #include "lib/vector.h"
@@ -67,13 +68,15 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
     
     in_irq_context = true;
     if(irq_num != 0) {
-    	//irqsafe_kprintf("Handling irq: %u.\n", irq_num);
-    	//logger_flush_buffer();
+    	irqsafe_kprintf("Handling irq: %u.\n", irq_num);
+    	logger_flush_buffer();
+    	/*
     	char* n = itoa( irq_num );
     	terminal_writestring( "Handling irq: " );
     	terminal_writestring( n );
     	terminal_writestring( "\n" );
     	kfree(n);
+    	*/
     }
 	if(irq_handlers[irq_num].length() > 0) {
 		for( unsigned int i=0;i<irq_handlers[irq_num].length();i++ ) {
@@ -88,7 +91,7 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
 		}
 	}
 
-	irq_end_interrupt();
+	irq_end_interrupt( irq_num );
 
     if( irq_num == 7 ) {
         in_irq7 = false;
@@ -180,7 +183,7 @@ void set_all_irq_status(bool status) {
 	}
 }
 
-void irq_end_interrupt() {
+void irq_end_interrupt( unsigned int irq_num ) {
 	if( apics_initialized ) {
 		lapic_eoi();
 	} else if( pic_8259_initialized ) {

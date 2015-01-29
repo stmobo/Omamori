@@ -41,12 +41,27 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
     	return;
     }
     if( irq_num == 16 ) {
-    	uint16_t isr = pic_get_isr();
-    	for(unsigned int i=0;i<16;i++) {
-    		if( isr & (1<<i) ) {
-    			irq_num = i;
-    			break;
+    	if( apics_initialized ) {
+    		for(unsigned int i=0;i<8;i++) {
+    			uint32_t isr = lapic_read_register( 0x100 + (0x10*i) );
+    			if( isr != 0 ) {
+    				for(unsigned int j=0;j<32;j++) {
+    					if( (isr & (1<<j)) > 0 ) {
+    						irq_num = (i*32)+j;
+    						break;
+    					}
+    				}
+    				break;
+    			}
     		}
+    	} else if( pic_8259_initialized ) {
+			uint16_t isr = pic_get_isr();
+			for(unsigned int i=0;i<16;i++) {
+				if( isr & (1<<i) ) {
+					irq_num = i;
+					break;
+				}
+			}
     	}
     }
     
@@ -72,7 +87,9 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
 			}
 		}
 	}
-    pic_end_interrupt(irq_num);
+
+	irq_end_interrupt();
+
     if( irq_num == 7 ) {
         in_irq7 = false;
     }
@@ -119,24 +136,54 @@ void block_for_irq(int irq) {
 }
 
 void irq_set_mask(unsigned char irq, bool set) {
-    uint16_t mask = pic_get_mask();
-    if( set ) {
-        mask |= (1<<irq);
-    } else {
-        mask &= ~(1<<irq);
-    }
-    pic_set_mask(mask);
+	if( apics_initialized ) {
+		ioapic_redir_entry ent = apic_get_gsi_vector( irq );
+		ent.masked = set;
+		apic_set_gsi_vector( irq, ent );
+	} else if( pic_8259_initialized ) {
+		uint16_t mask = pic_get_mask();
+		if( set ) {
+			mask |= (1<<irq);
+		} else {
+			mask &= ~(1<<irq);
+		}
+		pic_set_mask(mask);
+	}
 }
 
 bool irq_get_mask(unsigned char irq) {
-    uint16_t mask = pic_get_mask();
-    return ((mask & (1<<irq)) > 0);
+	if( apics_initialized ) {
+		ioapic_redir_entry ent = apic_get_gsi_vector( irq );
+		return ent.masked;
+	} else if( pic_8259_initialized ) {
+		uint16_t mask = pic_get_mask();
+		return ((mask & (1<<irq)) > 0);
+	}
+	return false;
 }
 
 void set_all_irq_status(bool status) {
-    if(status) {
-        pic_set_mask(0xFFFF);
-    } else {
-        pic_set_mask(0);
-    }
+	if( apics_initialized ) {
+			for(unsigned int i=0;i<io_apics.count();i++) {
+				io_apic *apic = io_apics[i];
+				for(unsigned int j=0;j<apic->max_redir_entry;j++) {
+					apic->entries[j].masked = status;
+				}
+				apic->update_redir_entries();
+			}
+	} else if( pic_8259_initialized ) {
+		if(status) {
+			pic_set_mask(0xFFFF);
+		} else {
+			pic_set_mask(0);
+		}
+	}
+}
+
+void irq_end_interrupt() {
+	if( apics_initialized ) {
+		lapic_eoi();
+	} else if( pic_8259_initialized ) {
+		pic_end_interrupt(irq_num);
+	}
 }

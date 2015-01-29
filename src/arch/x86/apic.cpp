@@ -15,30 +15,7 @@
 
 uint64_t lapic_base;
 uintptr_t lapic_vaddr;
-bool lapic_initialized;
-
-typedef struct io_apic {
-	uint32_t int_base;
-	uint8_t ioapic_id;
-	uint8_t max_redir_entry;
-	uintptr_t paddr;
-	uintptr_t vaddr;
-
-	ioapic_redir_entry *entries;
-
-	void set_redir_entry( ioapic_redir_entry* ent, unsigned int index );
-	void update_redir_entries();
-	void initialize();
-	uint32_t read_register( uint32_t index );
-	void write_register( uint32_t index, uint32_t value );
-} io_apic;
-
-typedef struct local_apic {
-	uint8_t processor_id;
-	uint8_t lapic_id;
-	unsigned int nmi_pin;
-	bool nmi_polarity;
-} local_apic;
+bool apics_initialized;
 
 vector< io_apic* > io_apics;
 vector< local_apic* > local_apics;
@@ -138,7 +115,6 @@ void lapic_initialize() {
 
 	lapic_write_register( 0xF0, 0x1FF );
 
-	lapic_initialized = true;
 	kprintf("apic: Initialized version %#x LAPIC with ID = %#x and NMI pin %u (%s).\n", lapic_version, lapic_id, nmi_pin, (nmi_polarity == 3) ? "active low" : "active high");
 }
 
@@ -334,6 +310,8 @@ void initialize_apics() {
 
 			isa_apic->update_redir_entries();
 		}
+
+		apics_initialized = true;
 	}
 }
 
@@ -345,4 +323,15 @@ void apic_set_gsi_vector( unsigned int gsi, ioapic_redir_entry ent ) {
 			return;
 		}
 	}
+}
+
+ioapic_redir_entry apic_get_gsi_vector( unsigned int gsi ) {
+	for(unsigned int i=0;i<io_apics.count();i++) {
+		if( (io_apics[i]->int_base <= gsi) && ( (io_apics[i]->int_base + io_apics[i]->max_redir_entry) >= gsi ) ) {
+			return io_apics[i]->entries[gsi - io_apics[i]->int_base];
+		}
+	}
+
+	ioapic_redir_entry emp;
+	return emp;
 }

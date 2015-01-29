@@ -23,6 +23,14 @@ typedef struct io_apic {
 	uint8_t max_redir_entry;
 	uintptr_t paddr;
 	uintptr_t vaddr;
+
+	ioapic_redir_entry *entries;
+
+	void set_redir_entry( ioapic_redir_entry* ent, unsigned int index );
+	void update_redir_entries();
+	void initialize();
+	uint32_t read_register( uint32_t index );
+	void write_register( uint32_t index, uint32_t value );
 } io_apic;
 
 typedef struct local_apic {
@@ -71,12 +79,6 @@ inline void lapic_write_register( uint32_t addr, uint32_t val ) {
 }
 
 void lapic_initialize() {
-	if( pic_8259_initialized ) {
-		// disable the 8259
-		pic_set_mask(0xFFFF);
-		pic_8259_initialized = false;
-	}
-
 	// force interrupts to APIC (IMCR)
 	io_outb( 0x22, 0x70 );
 	io_outb( 0x23, 1 );
@@ -140,6 +142,10 @@ void lapic_initialize() {
 	kprintf("apic: Initialized version %#x LAPIC with ID = %#x and NMI pin %u (%s).\n", lapic_version, lapic_id, nmi_pin, (nmi_polarity == 3) ? "active low" : "active high");
 }
 
+void lapic_eoi() {
+	lapic_write_register( 0xB0, 1 );
+}
+
 void enumerate_apics() {
 	char table_sig[4] = { 'A', 'P', 'I', 'C' };
 	ACPI_TABLE_HEADER *madt_base;
@@ -192,7 +198,7 @@ void enumerate_apics() {
 			o->paddr = *(uint32_t*)(((uintptr_t)madt_entries)+4);
 			o->int_base = *(uint32_t*)(((uintptr_t)madt_entries)+8);
 			io_apics.add_end(o);
-			kprintf("Found IOAPIC entry for IOAPIC ID %#x.\n", o->ioapic_id);
+			kprintf("Found IOAPIC entry for IOAPIC ID %#x (GSI base = %u).\n", o->ioapic_id, o->int_base);
 			break;
 		}
 		case 4: // NMI Pin entry
@@ -214,40 +220,129 @@ void enumerate_apics() {
 	}
 }
 
-inline uint32_t read_ioapic_register( uintptr_t base, uint32_t offset ) {
-	*(uint32_t*)(base) = offset;
-	return *(uint32_t*)(base+0x10);
+uint32_t io_apic::read_register( uint32_t index ) {
+	*(uint32_t*)(this->vaddr) = index;
+	return *(uint32_t*)(this->vaddr+0x10);
 }
 
-inline void write_ioapic_register( uintptr_t base, uint32_t offset, uint32_t val ) {
-	*(uint32_t*)(base) = offset;
-	*(uint32_t*)(base+0x10) = val;
+void io_apic::write_register( uint32_t index, uint32_t value ) {
+	*(uint32_t*)(this->vaddr) = index;
+	*(uint32_t*)(this->vaddr+0x10) = value;
 }
 
-void ioapic_initialize( io_apic* apic ) {
-	apic->vaddr = k_vmem_alloc(1);
-	paging_set_pte( apic->vaddr, apic->paddr, (1<<6) );
+void io_apic::set_redir_entry( ioapic_redir_entry *ent, unsigned int index ) {
+	if( this->max_redir_entry > index ) {
+		uint32_t reg1 = ent->vector;
+		reg1 |= ( ent->delivery_mode << 8 );
+		reg1 |= ( ( ent->logical_destination ? 1 : 0 ) << 11 );
+		reg1 |= ( ( ent->active_low ? 1 : 0 ) << 13 );
+		reg1 |= ( ( ent->remote_irr ? 1 : 0 ) << 14 );
+		reg1 |= ( ( ent->level_triggered ? 1 : 0 ) << 15 );
+		reg1 |= ( ( ent->masked ? 1 : 0 ) << 16 );
+		this->write_register( 0x10+(index*2), reg1 );
+		this->write_register( 0x11+(index*2), (ent->destination << 24) );
+	}
+}
 
-	uint32_t io_apic_ver = read_ioapic_register( apic->vaddr, 1 );
+void io_apic::update_redir_entries() {
+	for(unsigned int i=0;i<this->max_redir_entry;i++) {
+		this->set_redir_entry( this->entries+i, i );
+	}
+}
 
-	apic->max_redir_entry = (io_apic_ver >> 16) & 0xFF;
+void io_apic::initialize() {
+	this->vaddr = k_vmem_alloc(1);
+	paging_set_pte( this->vaddr, this->paddr, (1<<6) );
 
-	for(unsigned int i=0;i<apic->max_redir_entry;i++) {
-		write_ioapic_register( apic->vaddr, 0x10+(i*2), 0xFE ); // Vector 0xFE, fixed mode, physical destination, hi-edge trigger, dest. LAPIC 1
-		write_ioapic_register( apic->vaddr, 0x11+(i*2), (local_apics[0]->lapic_id << 24) );
+	uint32_t io_apic_ver = this->read_register( 1 );
+
+	this->max_redir_entry = (io_apic_ver >> 16) & 0xFF;
+	this->entries = new ioapic_redir_entry[this->max_redir_entry];
+
+	for(unsigned int i=0;i<this->max_redir_entry;i++) {
+		this->entries[i].vector = 0xFE;
+		this->entries[i].destination = local_apics[0]->lapic_id;
 	}
 
-	kprintf("apic: Initialized IOAPIC with ID %#x at p%#x / v%#x and %u interrupts from %u.\n", apic->ioapic_id, apic->paddr, apic->vaddr, apic->max_redir_entry+1, apic->int_base);
+	this->update_redir_entries();
+
+	kprintf("apic: Initialized IOAPIC with ID %#x at p%#x / v%#x and %u interrupts from %u.\n", this->ioapic_id, this->paddr, this->vaddr, this->max_redir_entry+1, this->int_base);
 }
 
 void initialize_apics() {
 	if( lapic_detect() ) {
+		if( pic_8259_initialized ) {
+			// disable the 8259
+			pic_set_mask(0xFFFF);
+			pic_8259_initialized = false;
+		}
+
 		enumerate_apics();
 
 		for(unsigned int i=0;i<io_apics.count();i++) {
-			ioapic_initialize( io_apics[i] );
+			io_apics[i]->initialize();
 		}
 
 		lapic_initialize();
+
+		// now identity-map the original 8259 interrupts
+		// first, find the IO APIC handing interrupts from base 0.
+		io_apic* isa_apic = NULL;
+		for(unsigned int i=0;i<io_apics.count();i++) {
+			if( io_apics[i]->int_base == 0 ) {
+				isa_apic = io_apics[i];
+				break;
+			}
+		}
+
+		if( isa_apic != NULL ) {
+			if( isa_apic->max_redir_entry >= 16 ) {
+				for(unsigned int i=0;i<16;i++) {
+					isa_apic->entries[i].vector = 32+i;
+					isa_apic->entries[i].level_triggered = false;
+					isa_apic->entries[i].active_low = false;
+					isa_apic->entries[i].destination = local_apics[0]->lapic_id;
+				}
+			}
+
+
+			// now handle MADT Interrupt Source Overrides
+			char table_sig[4] = { 'A', 'P', 'I', 'C' };
+			ACPI_TABLE_HEADER *madt_base;
+			ACPI_STATUS stat = AcpiGetTable( table_sig, 1, &madt_base );
+			if( stat != AE_OK ) {
+				kprintf("apic: failed to retrieve MADT, error code 0x%x: %s\n", stat, const_cast<char*>(AcpiFormatException(stat)));
+				return;
+			} else {
+				kprintf("Scanning MADT for Interrupt Source Overrides\n");
+			}
+
+			uint8_t *madt_entries = (uint8_t*)(((uintptr_t)madt_base)+44);
+			while( ((uintptr_t)madt_entries) < (((uintptr_t)madt_base)+(madt_base->Length)) ) {
+				uint8_t len = madt_entries[1];
+				uint8_t type = madt_entries[0];
+
+				if( type == 2 ) {
+					uint32_t redirect_from = *(uint32_t*)( ((uintptr_t)madt_entries)+4 );
+					uint8_t redirect_to = madt_entries[3];
+					isa_apic->entries[redirect_from].vector = 32+redirect_to;
+					kprintf("apic: IOAPIC ISA interrupt %u redirected to IRQ%u.\n", redirect_from, redirect_to);
+				}
+
+				madt_entries = (uint8_t*)( ((uintptr_t)madt_entries)+len );
+			}
+
+			isa_apic->update_redir_entries();
+		}
+	}
+}
+
+void apic_set_gsi_vector( unsigned int gsi, ioapic_redir_entry ent ) {
+	for(unsigned int i=0;i<io_apics.count();i++) {
+		if( (io_apics[i]->int_base <= gsi) && ( (io_apics[i]->int_base + io_apics[i]->max_redir_entry) >= gsi ) ) {
+			io_apics[i]->entries[gsi - io_apics[i]->int_base] = ent;
+			io_apics[i]->update_redir_entries();
+			return;
+		}
 	}
 }

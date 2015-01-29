@@ -58,8 +58,8 @@ void test_process_1() {
     kprintf("Initializing APICs.\n");
 	logger_flush_buffer();
 	initialize_apics();
-	logger_flush_buffer();
-	system_halt;
+	//logger_flush_buffer();
+	//system_halt;
 
     kprintf("Starting kernel worker thread.\n");
     k_work::start();

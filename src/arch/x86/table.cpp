@@ -127,9 +127,9 @@ void tss::read_active() {
 }
 
 void add_irq_entry(int irq_num, size_t func) {
-    idt_structs[PIC_IRQ_OFFSET_1+irq_num].offset = func;
-    idt_structs[PIC_IRQ_OFFSET_1+irq_num].type_attr = IDT_ATTR_PRESENT | IDT_ATTR_PRIV0 | IDT_INT_GATE_32;
-    idt_structs[PIC_IRQ_OFFSET_1+irq_num].selector = 0x08;
+    idt_structs[32+irq_num].offset = func;
+    idt_structs[32+irq_num].type_attr = IDT_ATTR_PRESENT | IDT_ATTR_PRIV0 | IDT_INT_GATE_32;
+    idt_structs[32+irq_num].selector = 0x08;
 }
 
 // encode_*dt_entry - convert a gdt_entry or idt_entry struct to an actual descriptor of the corresponding type.
@@ -292,7 +292,7 @@ void idt_init() {
         add_idt_trap_entry(_isr_reserved, i)
     }
     add_idt_trap_entry(_isr_security, 30)
-    add_idt_trap_entry(_isr_test, 0xFF)
+    //add_idt_trap_entry(_isr_test, 0xFF)
     add_irq_entry(0, (size_t)&_isr_irq_0);
     add_irq_entry(1, (size_t)&_isr_irq_1);
     add_irq_entry(2, (size_t)&_isr_irq_2);

@@ -126,7 +126,7 @@ void cpu_regs::load_to_active() {
 // a syscall(0) looks exactly like a context switch from the perspective of the switching code.
 uint32_t syscall(uint32_t syscall_n, uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t arg4, uint32_t arg5) {
     uint32_t ret_val;
-    asm volatile("int $0x5C" : "=a" (ret_val) : "a"(syscall_n), "b"(arg1), "c"(arg2), "d"(arg3), "D"(arg4), "S"(arg5) : "memory");
+    asm volatile("int $0x20" : "=a" (ret_val) : "a"(syscall_n), "b"(arg1), "c"(arg2), "d"(arg3), "D"(arg4), "S"(arg5) : "memory");
     return ret_val;
 }
 

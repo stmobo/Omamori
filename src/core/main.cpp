@@ -52,11 +52,17 @@ void test_process_1() {
     logger_initialize();
     kprintf("Initialized kernel logger process.\n");
     
-    kprintf("Starting kernel worker thread.\n");
-    k_work::start();
-
     terminal_writestring("Initializing ACPI.\n");
     initialize_acpi();
+
+    kprintf("Initializing APICs.\n");
+	logger_flush_buffer();
+	initialize_apics();
+	logger_flush_buffer();
+	system_halt;
+
+    kprintf("Starting kernel worker thread.\n");
+    k_work::start();
     
     kprintf("Initializing PS/2 controller.\n");
     ps2_controller_init();
@@ -137,11 +143,6 @@ void test_process_1() {
         
         kprintf("Initializing AHCI.\n");
         ahci_initialize();
-        
-        kprintf("Initializing LAPIC.\n");
-        lapic_detect();
-        //logger_flush_buffer();
-        //system_halt;
 
         // format partition 1 as FAT (using our own code):
         //fat32_do_format( 1 );

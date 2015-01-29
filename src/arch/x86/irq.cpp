@@ -6,10 +6,11 @@
 #include "arch/x86/irq.h"
 #include "lib/vector.h"
 
-// remove this line at some point (it's just for debugging)
+// remove these lines at some point (it's just for debugging)
 #include "arch/x86/multitask.h"
+#include "device/vga.h"
 
-vector<size_t> irq_handlers[16];
+vector<size_t> irq_handlers[256];
 signed int waiting_for = -1;
 bool do_wait = false;
 bool in_irq_context = false;
@@ -36,21 +37,41 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
             in_irq15 = true;
         }
     }
+    if( irq_num == 255 ) {
+    	return;
+    }
+    if( irq_num == 16 ) {
+    	uint16_t isr = pic_get_isr();
+    	for(unsigned int i=0;i<16;i++) {
+    		if( isr & (1<<i) ) {
+    			irq_num = i;
+    			break;
+    		}
+    	}
+    }
     
     in_irq_context = true;
-    /*
     if(irq_num != 0) {
-    	irqsafe_kprintf("Handling irq: %u.\n", irq_num);
+    	//irqsafe_kprintf("Handling irq: %u.\n", irq_num);
+    	//logger_flush_buffer();
+    	char* n = itoa( irq_num );
+    	terminal_writestring( "Handling irq: " );
+    	terminal_writestring( n );
+    	terminal_writestring( "\n" );
+    	kfree(n);
     }
-    */
-    if(irq_handlers[irq_num].length() > 0) {
-        for( unsigned int i=0;i<irq_handlers[irq_num].length();i++ ) {
-            bool(*handler)(void) = (bool(*)())(irq_handlers[irq_num].get(i)); // jump to the stored function pointer...
-            if(handler()) {
-                break; // irq's handled, we're done here
-            }
-        }
-    }
+	if(irq_handlers[irq_num].length() > 0) {
+		for( unsigned int i=0;i<irq_handlers[irq_num].length();i++ ) {
+			bool(*handler)(void) = (bool(*)())(irq_handlers[irq_num].get(i)); // jump to the stored function pointer...
+			if( handler == NULL ) {
+				irqsafe_kprintf("irq: NULL handler for irq %u?\n", irq_num);
+				continue;
+			}
+			if(handler()) {
+				break; // irq's handled, we're done here
+			}
+		}
+	}
     pic_end_interrupt(irq_num);
     if( irq_num == 7 ) {
         in_irq7 = false;

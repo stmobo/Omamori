@@ -310,11 +310,22 @@ void idt_init() {
     add_irq_entry(13, (size_t)&_isr_irq_13);
     add_irq_entry(14, (size_t)&_isr_irq_14);
     add_irq_entry(15, (size_t)&_isr_irq_15);
+
+    //add_irq_entry(255-PIC_IRQ_OFFSET_1, (size_t)&_isr_irq_ff);
+    idt_structs[0xFF].offset = (size_t)&_isr_irq_ff;
+	idt_structs[0xFF].type_attr = IDT_ATTR_PRESENT | IDT_ATTR_PRIV0 | IDT_INT_GATE_32;
+	idt_structs[0xFF].selector = 0x08;
     
-    idt_structs[0x5C].offset = (size_t)&__syscall_entry;
-    idt_structs[0x5C].type_attr = IDT_ATTR_PRESENT | IDT_ATTR_PRIV3 | IDT_INT_GATE_32;
-    idt_structs[0x5C].selector = 0x08;
+    idt_structs[0x20].offset = (size_t)&__syscall_entry;
+    idt_structs[0x20].type_attr = IDT_ATTR_PRESENT | IDT_ATTR_PRIV3 | IDT_INT_GATE_32;
+    idt_structs[0x20].selector = 0x08;
     
+    for(unsigned int i=0x21;i<=0xFE;i++) {
+    	idt_structs[i].offset = (size_t)&_isr_irq_generic;
+		idt_structs[i].type_attr = IDT_ATTR_PRESENT | IDT_ATTR_PRIV0 | IDT_INT_GATE_32;
+		idt_structs[i].selector = 0x08;
+    }
+
     sync_idt();
     
     loadIDT((size_t)0x800-1, (size_t)idt);
@@ -332,18 +343,15 @@ void idt_init() {
 // void* isr in add_idt_entry refers to the ASSEMBLY ISR (the one that uses "iret" to return), not whatever C function
 // you may be using as a handler!
 bool add_idt_entry(void* isr, int index, bool is_active) {
-    if(index > 30) {
-        if(isr != NULL)
-            idt_structs[index].offset = (size_t)isr;
-        if(is_active)
-            idt_structs[index].type_attr = IDT_ATTR_PRESENT | IDT_ATTR_PRIV3 | IDT_INT_GATE_32;
-        else
-            idt_structs[index].type_attr = IDT_ATTR_PRIV3 | IDT_INT_GATE_32;
-        idt_structs[index].selector = 0x08;
-        sync_idt();
-        return true;
-    }
-    return false;
+	if(isr != NULL)
+		idt_structs[index].offset = (size_t)isr;
+	if(is_active)
+		idt_structs[index].type_attr = IDT_ATTR_PRESENT | IDT_ATTR_PRIV0 | IDT_INT_GATE_32;
+	else
+		idt_structs[index].type_attr = IDT_ATTR_PRIV0 | IDT_INT_GATE_32;
+	idt_structs[index].selector = 0x08;
+	sync_idt();
+	return true;
 }
 
 bool add_gdt_entry(int index, size_t base, size_t limit, char access) {

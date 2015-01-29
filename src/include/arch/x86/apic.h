@@ -9,4 +9,5 @@
 #include "includes.h"
 
 extern uint64_t lapic_base;
-void lapic_detect();
+bool lapic_detect();
+void initialize_apics();

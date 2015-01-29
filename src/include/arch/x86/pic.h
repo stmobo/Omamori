@@ -20,3 +20,4 @@ extern void pic_set_mask(uint16_t);
 extern uint16_t pic_get_mask(void);
 extern uint16_t pic_get_isr();
 extern uint16_t pic_get_irr();
+extern bool pic_8259_initialized;

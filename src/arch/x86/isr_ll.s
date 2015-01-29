@@ -262,6 +262,16 @@ _isr_irq_15:
     push $do_irq
     jmp _isr_call_cpp_func
     
+ _isr_irq_ff:
+    push $255
+    push $do_irq
+    jmp _isr_call_cpp_func
+
+_isr_irq_generic:
+    push $16
+    push $do_irq
+    jmp _isr_call_cpp_func
+
 .globl _isr_div_zero
 .globl _isr_debug
 .globl _isr_nmi
@@ -300,3 +310,5 @@ _isr_irq_15:
 .globl _isr_irq_13
 .globl _isr_irq_14
 .globl _isr_irq_15
+.globl _isr_irq_ff
+.globl _isr_irq_generic

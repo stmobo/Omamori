@@ -4,6 +4,8 @@
 #include "core/sys.h"
 #include "arch/x86/pic.h"
 
+bool pic_8259_initialized;
+
 void pic_end_interrupt(int irq) {
     if(irq > 7)
         io_outb(SLAVE_PIC_BASE, PIC_CMD_END_INTERRUPT);
@@ -36,6 +38,7 @@ void pic_initialize(char vector_offset_1) {
     io_wait();
     io_outb(SLAVE_PIC_BASE+1, 0xFF);
     io_wait();
+    pic_8259_initialized = true;
     asm volatile("sti" : : : "memory");
 }
 

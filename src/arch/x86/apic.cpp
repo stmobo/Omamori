@@ -12,6 +12,7 @@
 #include "core/paging.h"
 #include "core/acpi.h"
 #include "lib/vector.h"
+#include "device/pit.h"
 
 uint64_t lapic_base;
 uintptr_t lapic_vaddr;
@@ -56,10 +57,7 @@ void lapic_write_register( uint32_t addr, uint32_t val ) {
 }
 
 void lapic_initialize() {
-	// force interrupts to APIC (IMCR)
-	io_outb( 0x22, 0x70 );
-	io_outb( 0x23, 1 );
-
+	//system_disable_interrupts();
 	lapic_vaddr = k_vmem_alloc(1);
 	paging_set_pte( lapic_vaddr, lapic_base, (1<<6) );
 
@@ -75,6 +73,7 @@ void lapic_initialize() {
 	ACPI_STATUS stat = AcpiGetTable( table_sig, 1, &madt_base );
 
 	if( stat != AE_OK ) {
+		//system_enable_interrupts();
 		kprintf("apic: failed to retrieve MADT, error code 0x%x: %s\n", stat, const_cast<char*>(AcpiFormatException(stat)));
 		return;
 	}
@@ -107,13 +106,59 @@ void lapic_initialize() {
 		nmi_lint_entry |= (1<<14);
 	}
 
+	uint32_t extint_lint_entry = (7<<8);
+
 	if( nmi_pin == 0 ) {
 		lapic_write_register( 0x350, nmi_lint_entry );
+		lapic_write_register( 0x360, extint_lint_entry );
 	} else if( nmi_pin == 1 ) {
+		lapic_write_register( 0x350, extint_lint_entry );
 		lapic_write_register( 0x360, nmi_lint_entry );
 	}
 
+	lapic_write_register( 0xD0, 0x01000000 );
+	lapic_write_register( 0xE0, 0xFFFFFFFF );
+	lapic_write_register( 0x80, 0 );
+
+	//system_enable_interrupts();
+
+	kprintf("apic: enabling local APIC.\n");
+	logger_flush_buffer();
 	lapic_write_register( 0xF0, 0x1FF );
+
+	// set up timer:
+	lapic_write_register( 0x3E0, 3 ); // set timer divide to 16
+	lapic_write_register( 0x320, 32 ); // enable APIC timer (mapped to IRQ1)
+
+	// set PIT channel 2 for the same frequency
+	io_outb( 0x61, io_inb(0x61)&0xFD ); // disable PC Speaker
+	io_outb( 0x43, 0xB2 ); // PIT channel 2, lo-hi sequential access, hardware retriggerable one-shot
+	io_outb( 0x42, 0x9B ); // LSB
+	io_inb(0x60); //
+	io_outb( 0x42, 0x2E ); // MSB
+
+	uint8_t tmp = io_inb( 0x61 ) & 0xFE;
+	io_outb(  0x61, tmp );
+	io_outb(  0x61, tmp | 1 );
+	lapic_write_register( 0x380, 0xFFFFFFFF ); // start counting
+
+	while( !( (io_inb(0x61) & 0x20) > 0) );
+
+	lapic_write_register( 0x320, 0x10000 ); // stop APIC timer
+	uint32_t current_apic_tmr_val = lapic_read_register( 0x390 );
+	uint32_t interval = 0xFFFFFFFF - current_apic_tmr_val;
+	interval += 1;
+	uint32_t apic_timer_interval = interval / 10;
+
+	lapic_write_register( 0x380, (apic_timer_interval < 16 ? 16 : apic_timer_interval) ); // set up timer again
+	lapic_write_register( 0x320, 32 | (1<<17) ); // set up timer periodic interrupt
+	lapic_write_register( 0x3E0, 3 );
+
+	kprintf("apic: interval set to %u.\n", (apic_timer_interval < 16 ? 16 : apic_timer_interval) );
+
+	// force interrupts to APIC (IMCR)
+	io_outb( 0x22, 0x70 );
+	io_outb( 0x23, 1 );
 
 	kprintf("apic: Initialized version %#x LAPIC with ID = %#x and NMI pin %u (%s).\n", lapic_version, lapic_id, nmi_pin, (nmi_polarity == 3) ? "active low" : "active high");
 }
@@ -247,19 +292,19 @@ void io_apic::initialize() {
 
 void initialize_apics() {
 	if( lapic_detect() ) {
+		enumerate_apics();
+
+		lapic_initialize();
+
 		if( pic_8259_initialized ) {
 			// disable the 8259
 			pic_set_mask(0xFFFF);
 			pic_8259_initialized = false;
 		}
 
-		enumerate_apics();
-
 		for(unsigned int i=0;i<io_apics.count();i++) {
 			io_apics[i]->initialize();
 		}
-
-		lapic_initialize();
 
 		// now identity-map the original 8259 interrupts
 		// first, find the IO APIC handing interrupts from base 0.
@@ -307,7 +352,6 @@ void initialize_apics() {
 
 				madt_entries = (uint8_t*)( ((uintptr_t)madt_entries)+len );
 			}
-
 			isa_apic->update_redir_entries();
 		}
 

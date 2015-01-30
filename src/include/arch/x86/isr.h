@@ -39,6 +39,7 @@ extern "C" {
     extern void _isr_irq_13(void);
     extern void _isr_irq_14(void);
     extern void _isr_irq_15(void);
+    extern void _isr_irq_fe(void);
     extern void _isr_irq_ff(void);
     extern void _isr_irq_generic(void);
 }

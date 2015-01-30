@@ -39,8 +39,35 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
         }
     }
     if( irq_num == 255 ) {
+    	// APIC spurious interrupt
+    	terminal_writestring( "irq: spurious interrupt (IRQ255)\n" );
     	return;
     }
+    if( irq_num == 254 ) {
+    	terminal_writestring( "irq: uninitialized device sent IRQ through APICs (IRQ254)\n" );
+		for(unsigned int i=0;i<8;i++) {
+			uint32_t isr = lapic_read_register( 0x100 + (0x10*i) );
+			if( isr != 0 ) {
+				for(unsigned int j=0;j<32;j++) {
+					if( (isr & (1<<j)) > 0 ) {
+						irq_num = (i*32)+j;
+						irq_num -= 32;
+
+						//char* n = itoa( irq_num );
+						//terminal_writestring("irq: APIC says IRQ is ");
+						//terminal_writestring( n );
+						//terminal_writestring("\n");
+
+						break;
+					}
+				}
+				break;
+			}
+		}
+    	//lapic_eoi(); // uninitialized device sending IRQs through the IOAPIC.
+		//return;
+	}
+
     if( irq_num == 16 ) {
     	if( apics_initialized ) {
     		for(unsigned int i=0;i<8;i++) {
@@ -49,6 +76,7 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
     				for(unsigned int j=0;j<32;j++) {
     					if( (isr & (1<<j)) > 0 ) {
     						irq_num = (i*32)+j;
+    						irq_num -= 32;
     						break;
     					}
     				}
@@ -63,21 +91,32 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
 					break;
 				}
 			}
+    	} else {
+    		char* n = itoa( irq_num );
+			terminal_writestring( "irq: received irq " );
+			terminal_writestring( n );
+			terminal_writestring( " with no initialized irq handlers\n" );
+    		lapic_eoi();
+    		pic_end_interrupt( irq_num );
+    		return;
     	}
     }
     
     in_irq_context = true;
+    /*
     if(irq_num != 0) {
     	/*
     	irqsafe_kprintf("Handling irq: %u.\n", irq_num);
     	logger_flush_buffer();
-    	*/
+    	*//*
     	char* n = itoa( irq_num );
     	terminal_writestring( "Handling irq: " );
     	terminal_writestring( n );
     	terminal_writestring( "\n" );
     	kfree(n);
     }
+    */
+
 	if(irq_handlers[irq_num].length() > 0) {
 		for( unsigned int i=0;i<irq_handlers[irq_num].length();i++ ) {
 			bool(*handler)(void) = (bool(*)())(irq_handlers[irq_num].get(i)); // jump to the stored function pointer...
@@ -185,8 +224,13 @@ void set_all_irq_status(bool status) {
 
 void irq_end_interrupt( unsigned int irq_num ) {
 	if( apics_initialized ) {
+		//terminal_writestring( "irq: ending interrupt via LAPIC.\n" );
 		lapic_eoi();
 	} else if( pic_8259_initialized ) {
+		//kprintf("irq: ending interrupt via 8259 PIC.\n");
 		pic_end_interrupt(irq_num);
+	} else {
+		pic_end_interrupt(irq_num);
+		lapic_eoi();
 	}
 }

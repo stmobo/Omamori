@@ -47,12 +47,12 @@ uintptr_t lapic_getbase() {
 }
 
 uint32_t lapic_read_register( uint32_t addr ) {
-	uint32_t *lapic_mem = (uint32_t*)(lapic_vaddr+addr);
+	volatile uint32_t *lapic_mem = (uint32_t*)(lapic_vaddr+addr);
 	return *lapic_mem;
 }
 
 void lapic_write_register( uint32_t addr, uint32_t val ) {
-	uint32_t *lapic_mem = (uint32_t*)(lapic_vaddr+addr);
+	volatile uint32_t *lapic_mem = (uint32_t*)(lapic_vaddr+addr);
 	*lapic_mem = val;
 }
 
@@ -126,6 +126,16 @@ void lapic_initialize() {
 	logger_flush_buffer();
 	lapic_write_register( 0xF0, 0x1FF );
 
+	apics_initialized = true;
+
+	// self-test IPI
+	kprintf("apic: self-test IPI 1.\n");
+	logger_flush_buffer();
+	lapic_write_register( 0x300, 33 | (1<<14) | (1<<18) );
+	kprintf("apic: self-test IPI 2.\n");
+	logger_flush_buffer();
+	lapic_write_register( 0x300, 33 | (1<<14) | (1<<18) );
+
 	// set up timer:
 	lapic_write_register( 0x3E0, 3 ); // set timer divide to 16
 	lapic_write_register( 0x320, 32 ); // enable APIC timer (mapped to IRQ1)
@@ -150,9 +160,13 @@ void lapic_initialize() {
 	interval += 1;
 	uint32_t apic_timer_interval = interval / 10;
 
-	lapic_write_register( 0x380, (apic_timer_interval < 16 ? 16 : apic_timer_interval) ); // set up timer again
+	lapic_write_register( 0x2F0, 0x10000 ); // CMCI
+	lapic_write_register( 0x330, 0x10000 ); // Thermal
+	lapic_write_register( 0x340, 0x10000 ); // Perf. Counters
+	lapic_write_register( 0x370, 0x10000 ); // Error
 	lapic_write_register( 0x320, 32 | (1<<17) ); // set up timer periodic interrupt
 	lapic_write_register( 0x3E0, 3 );
+	lapic_write_register( 0x380, (apic_timer_interval < 16 ? 16 : apic_timer_interval) ); // set up timer again
 
 	kprintf("apic: interval set to %u.\n", (apic_timer_interval < 16 ? 16 : apic_timer_interval) );
 
@@ -242,13 +256,16 @@ void enumerate_apics() {
 }
 
 uint32_t io_apic::read_register( uint32_t index ) {
-	*(uint32_t*)(this->vaddr) = index;
-	return *(uint32_t*)(this->vaddr+0x10);
+	volatile uint32_t* base = (uint32_t*)this->vaddr;
+	*(base) = index;
+	return base[4];
 }
 
 void io_apic::write_register( uint32_t index, uint32_t value ) {
-	*(uint32_t*)(this->vaddr) = index;
-	*(uint32_t*)(this->vaddr+0x10) = value;
+	volatile uint32_t* base = (uint32_t*)this->vaddr;
+	*(base) = index;
+	base[4] = value;
+	//*(uint32_t*)(this->vaddr+0x10) = value;
 }
 
 void io_apic::set_redir_entry( ioapic_redir_entry *ent, unsigned int index ) {
@@ -261,13 +278,21 @@ void io_apic::set_redir_entry( ioapic_redir_entry *ent, unsigned int index ) {
 		reg1 |= ( ( ent->level_triggered ? 1 : 0 ) << 15 );
 		reg1 |= ( ( ent->masked ? 1 : 0 ) << 16 );
 		this->write_register( 0x10+(index*2), reg1 );
-		this->write_register( 0x11+(index*2), (ent->destination << 24) );
+		this->write_register( 0x11+(index*2), (((uint32_t)ent->destination) << 24) );
 	}
 }
 
 void io_apic::update_redir_entries() {
 	for(unsigned int i=0;i<this->max_redir_entry;i++) {
-		this->set_redir_entry( this->entries+i, i );
+		uint32_t reg1 = this->entries[i].vector;
+		reg1 |= ( this->entries[i].delivery_mode << 8 );
+		reg1 |= ( ( this->entries[i].logical_destination ? 1 : 0 ) << 11 );
+		reg1 |= ( ( this->entries[i].active_low ? 1 : 0 ) << 13 );
+		reg1 |= ( ( this->entries[i].remote_irr ? 1 : 0 ) << 14 );
+		reg1 |= ( ( this->entries[i].level_triggered ? 1 : 0 ) << 15 );
+		reg1 |= ( ( this->entries[i].masked ? 1 : 0 ) << 16 );
+		this->write_register( 0x10+(i*2), reg1 );
+		this->write_register( 0x11+(i*2), (((uint32_t)this->entries[i].destination) << 24) );
 	}
 }
 
@@ -281,7 +306,14 @@ void io_apic::initialize() {
 	this->entries = new ioapic_redir_entry[this->max_redir_entry];
 
 	for(unsigned int i=0;i<this->max_redir_entry;i++) {
-		this->entries[i].vector = 0xFE;
+		this->entries[i].delivery_mode = ioapic_delivery_mode::fixed;
+		this->entries[i].active_low = false;
+		this->entries[i].level_triggered = false;
+		this->entries[i].masked = false;
+		this->entries[i].remote_irr = false;
+		this->entries[i].logical_destination = false;
+
+		this->entries[i].vector = 32 + this->int_base + i;
 		this->entries[i].destination = local_apics[0]->lapic_id;
 	}
 
@@ -317,6 +349,7 @@ void initialize_apics() {
 		}
 
 		if( isa_apic != NULL ) {
+			/*
 			if( isa_apic->max_redir_entry >= 16 ) {
 				for(unsigned int i=0;i<16;i++) {
 					isa_apic->entries[i].vector = 32+i;
@@ -324,7 +357,9 @@ void initialize_apics() {
 					isa_apic->entries[i].active_low = false;
 					isa_apic->entries[i].destination = local_apics[0]->lapic_id;
 				}
+				kprintf("apic: assigned ISA IRQs to IO APIC %u.\n", isa_apic->ioapic_id);
 			}
+			*/
 
 
 			// now handle MADT Interrupt Source Overrides
@@ -346,6 +381,15 @@ void initialize_apics() {
 				if( type == 2 ) {
 					uint32_t redirect_from = *(uint32_t*)( ((uintptr_t)madt_entries)+4 );
 					uint8_t redirect_to = madt_entries[3];
+					uint8_t flags = madt_entries[8];
+					if( (flags & 3) == 3 ) {
+						isa_apic->entries[redirect_from].active_low = true;
+						kprintf("apic: IOAPIC ISA interrupt %u is active low.\n", redirect_from);
+					}
+					if( ((flags >> 2) & 3) == 3 ) {
+						isa_apic->entries[redirect_from].level_triggered = true;
+						kprintf("apic: IOAPIC ISA interrupt %u is level triggered.\n", redirect_from);
+					}
 					isa_apic->entries[redirect_from].vector = 32+redirect_to;
 					kprintf("apic: IOAPIC ISA interrupt %u redirected to IRQ%u.\n", redirect_from, redirect_to);
 				}

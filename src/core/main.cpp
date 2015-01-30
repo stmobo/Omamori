@@ -58,8 +58,24 @@ void test_process_1() {
     kprintf("Initializing APICs.\n");
 	logger_flush_buffer();
 	initialize_apics();
+	//logger_flush_buffer();
+	//kprintf("Done initializing APICs.\n");
+	//logger_flush_buffer();
+
+	/*
+	unsigned long long int last_ticked = get_sys_time_counter();
+	kprintf("Current system timer = %llu.\n", last_ticked);
 	logger_flush_buffer();
-	system_halt;
+	while(true) {
+		if( last_ticked != get_sys_time_counter() ) {
+			kprintf("Tick.\nCurrent system timer = %llu.\n", last_ticked);
+			logger_flush_buffer();
+			last_ticked = get_sys_time_counter();
+		}
+	}
+	*/
+
+	//system_halt;
 
     kprintf("Starting kernel worker thread.\n");
     k_work::start();

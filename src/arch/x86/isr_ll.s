@@ -261,6 +261,11 @@ _isr_irq_15:
     push $15
     push $do_irq
     jmp _isr_call_cpp_func
+
+ _isr_irq_fe:
+    push $254
+    push $do_irq
+    jmp _isr_call_cpp_func
     
  _isr_irq_ff:
     push $255
@@ -310,5 +315,6 @@ _isr_irq_generic:
 .globl _isr_irq_13
 .globl _isr_irq_14
 .globl _isr_irq_15
+.globl _isr_irq_fe
 .globl _isr_irq_ff
 .globl _isr_irq_generic

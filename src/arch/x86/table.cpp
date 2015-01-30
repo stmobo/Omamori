@@ -294,7 +294,7 @@ void idt_init() {
     add_idt_trap_entry(_isr_security, 30)
     //add_idt_trap_entry(_isr_test, 0xFF)
 
-    for(unsigned int i=(32+16);i<=0xFE;i++) {
+    for(unsigned int i=0x20;i<=0xFD;i++) {
 		idt_structs[i].offset = (size_t)&_isr_irq_generic;
 		idt_structs[i].type_attr = IDT_ATTR_PRESENT | IDT_ATTR_PRIV0 | IDT_INT_GATE_32;
 		idt_structs[i].selector = 0x08;
@@ -319,6 +319,10 @@ void idt_init() {
     add_irq_entry(15, (size_t)&_isr_irq_15);
 
     //add_irq_entry(255-PIC_IRQ_OFFSET_1, (size_t)&_isr_irq_ff);
+    idt_structs[0xFE].offset = (size_t)&_isr_irq_fe;
+	idt_structs[0xFE].type_attr = IDT_ATTR_PRESENT | IDT_ATTR_PRIV0 | IDT_INT_GATE_32;
+	idt_structs[0xFE].selector = 0x08;
+
     idt_structs[0xFF].offset = (size_t)&_isr_irq_ff;
 	idt_structs[0xFF].type_attr = IDT_ATTR_PRESENT | IDT_ATTR_PRIV0 | IDT_INT_GATE_32;
 	idt_structs[0xFF].selector = 0x08;

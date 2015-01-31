@@ -181,6 +181,8 @@ void ata::initialize() {
 			dev->child_id = pnt->children.count();
 			pnt->children.add_end(dev);
 
+			controller->dev_node = dev;
+
 			break;
 		}
 	}

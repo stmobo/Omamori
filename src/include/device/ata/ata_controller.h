@@ -8,6 +8,7 @@
 #pragma once
 #include "includes.h"
 #include "device/pci.h"
+#include "core/device_manager.h"
 
 namespace ata {
 	struct ata_channel;
@@ -27,6 +28,7 @@ namespace ata {
 		bool atapi_data_wait = false;
 
 		ata_channel* channels[2];
+		device_manager::device_node* dev_node;
 
 		ata_controller( pci_device *dev );
 		static bool handle_irq();

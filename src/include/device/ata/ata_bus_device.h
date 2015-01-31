@@ -7,6 +7,7 @@
 
 #pragma once
 #include "includes.h"
+#include "core/device_manager.h"
 
 namespace ata {
 
@@ -26,6 +27,9 @@ namespace ata {
 
 		uint64_t n_sectors;
 		uint32_t sector_size;
+
+		device_manager::device_node* dev;
+		//ata_io_disk *io_disk;
 
 		void initialize();
 		void identify();

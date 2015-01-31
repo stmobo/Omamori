@@ -119,11 +119,43 @@ ata::ata_channel::ata_channel( ata_controller* controller, unsigned int channel_
 
 	if(this->master->present) {
 		ata_io_disk *disk = new ata_io_disk( this, this->master );
+
+		device_manager::device_node* dev = new device_manager::device_node;
+		device_manager::device_node* base = this->controller->dev_node;
+		dev->child_id = base->children.count();
+		dev->enabled = true;
+		dev->type = device_manager::dev_type::storage_controller;
+		if( !this->master->is_atapi ) {
+			dev->human_name = const_cast<char*>("ATA Master Drive");
+		} else {
+			dev->human_name = const_cast<char*>("ATAPI Master Drive");
+		}
+		dev->device_data = (void*)disk;
+
+		base->children.add_end(dev);
+		this->master->dev = dev;
+
 		io_register_disk( disk );
 	}
 
 	if(this->slave->present) {
 		ata_io_disk *disk = new ata_io_disk( this, this->slave );
+
+		device_manager::device_node* dev = new device_manager::device_node;
+		device_manager::device_node* base = this->controller->dev_node;
+		dev->child_id = base->children.count();
+		dev->enabled = true;
+		dev->type = device_manager::dev_type::storage_controller;
+		if( !this->slave->is_atapi ) {
+			dev->human_name = const_cast<char*>("ATA Slave Drive");
+		} else {
+			dev->human_name = const_cast<char*>("ATAPI Slave Drive");
+		}
+		dev->device_data = (void*)disk;
+
+		base->children.add_end(dev);
+		this->slave->dev = dev;
+
 		io_register_disk( disk );
 	}
 

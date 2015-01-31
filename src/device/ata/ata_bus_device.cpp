@@ -135,6 +135,7 @@ ata::ata_device::ata_device( ata_channel* channel, bool slave ) {
 		//logger_flush_buffer();
 		//system_halt;
 	}
+
 }
 
 void ata::ata_device::do_pio_transfer( ata_transfer_request* req ) {

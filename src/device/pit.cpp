@@ -8,6 +8,7 @@
 #include "core/scheduler.h"
 #include "device/vga.h"
 #include "device/pit.h"
+#include "core/device_manager.h"
 
 unsigned long long int tick_counter = 0;
 
@@ -63,4 +64,20 @@ void pit_initialize(short reload_val) {
     ms_per_tick = (1/pit_frequency);
     set_pit_reload_val(reload_val);
     irq_add_handler(0, (size_t)&irq0_handler);
+
+    device_manager::device_node* dev = new device_manager::device_node;
+	dev->child_id = device_manager::root.children.count();
+	dev->enabled = true;
+	dev->type = device_manager::dev_type::timer;
+	dev->human_name = const_cast<char*>("8254 PIT");
+
+	device_manager::device_resource* res = new device_manager::device_resource;
+	res->consumes = true;
+	res->type = device_manager::res_type::io_port;
+	res->io_port.start = 0x40;
+	res->io_port.end = 0x43;
+
+	dev->resources.add_end(res);
+
+	device_manager::root.children.add_end( dev );
 }

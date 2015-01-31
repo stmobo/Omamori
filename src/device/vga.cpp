@@ -3,6 +3,7 @@
 #include "includes.h"
 #include "lib/sync.h"
 #include "device/vga.h"
+#include "core/device_manager.h"
 
 static spinlock __vga_write_lock;
 

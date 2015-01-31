@@ -46,6 +46,7 @@ void pic_initialize(char vector_offset_1) {
 	dev->child_id = device_manager::root.children.count();
 	dev->enabled = true;
 	dev->type = device_manager::dev_type::ioapic;
+	dev->human_name = const_cast<char*>("8259 PICs");
 
 	device_manager::device_resource* res = new device_manager::device_resource;
 	res->consumes = true;

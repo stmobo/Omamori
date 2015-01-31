@@ -48,8 +48,9 @@ void kernel_init(multiboot_info_t* mb_info, unsigned int magic) {
     }
     kprintf("Called %u global constructors.\n", (unsigned long long int)n_constructors_called);
     
-    terminal_writestring("\nInitializing device manager subsystem.\n");
+    terminal_writestring("Initializing device manager subsystem.\n");
     device_manager::initialize();
+    terminal_device_initialize();
 
     //system_halt;
     kprintf("Kernel begins at physical address 0x%x, corresponding to pageframe ID %u.\n", (unsigned long long int)(&kernel_start_phys), (unsigned long long int)(pageframe_get_block_from_addr( (size_t)&kernel_start_phys )) );

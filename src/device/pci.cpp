@@ -184,6 +184,19 @@ void pci_register_function(uint8_t bus, uint8_t device, uint8_t func, device_man
         dev->enabled = true;
         dev->child_id = bus_node->children.count();
         dev->type = device_manager::dev_type::pci_device;
+
+        char* bus_str = itoa( bus, 16 );
+        char* dev_str = itoa( device, 16 );
+        char* fnc_str = itoa( func, 16 );
+        char* tmp_str_1 = concatentate_strings( bus_str, dev_str );
+        char* tmp_str_2 = concatentate_strings( tmp_str_1, fnc_str );
+		dev->human_name = concatentate_strings(const_cast<char*>("PCI-"), tmp_str_2 );
+		kfree(bus_str);
+		kfree(dev_str);
+		kfree(fnc_str);
+		kfree(tmp_str_1);
+		kfree(tmp_str_2);
+
         bus_node->children.add_end(dev);
 
         char* ven_name = pci_get_ven_name(new_device->vendorID);
@@ -274,6 +287,10 @@ void pci_check_bus( uint8_t bus, uint8_t bus_bloc, uint8_t bus_dloc, uint8_t bus
 	bus_node->device_data = (void*)new_device;
 	bus_node->child_id = device_manager::root.children.count();
 	bus_node->enabled = true;
+
+	char* bus_str = itoa( bus, 16 );
+	bus_node->human_name = concatentate_strings(const_cast<char*>("PCI"), bus_str );
+	kfree(bus_str);
 
 	device_manager::root.children.add_end(bus_node);
 

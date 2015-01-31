@@ -3,6 +3,7 @@
 #include "arch/x86/apic.h"
 #include "core/acpi.h"
 #include "core/scheduler.h"
+#include "core/device_manager.h"
 #include "device/ahci.h"
 #include "device/ata.h"
 #include "device/pci.h"
@@ -14,6 +15,7 @@
 #include "core/k_worker_thread.h"
 #include "fs/fat/fat_fs.h"
 #include "fs/iso9660/iso9660.h"
+#include "fs/dev_fs.h"
 
 extern "C" {
     #include "lua.h"
@@ -176,9 +178,17 @@ void test_process_1() {
 
         fat_fs::fat_fs f( 1 );
 		iso9660::iso9660_fs f2(2);
+		device_manager::dev_fs f3;
 		vfs::vfs_root = f.base;
 
 		vfs::vfs_status fop_stat = vfs::mount(&f2, (unsigned char*)(const_cast<char*>("/cd")));
+		if( fop_stat != vfs::vfs_status::ok ) {
+			kprintf("FS mount failed with error: %s.\n", vfs::status_description(fop_stat));
+		} else {
+			kprintf("FS mount succeeded.\n");
+		}
+
+		fop_stat = vfs::mount(&f3, (unsigned char*)(const_cast<char*>("/dev")));
 		if( fop_stat != vfs::vfs_status::ok ) {
 			kprintf("FS mount failed with error: %s.\n", vfs::status_description(fop_stat));
 		} else {

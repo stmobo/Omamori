@@ -62,6 +62,7 @@ extern uint8_t pci_read_config_8(uint8_t, uint8_t, uint8_t, uint8_t);
 extern uint16_t pci_read_config_16(uint8_t, uint8_t, uint8_t, uint8_t);
 extern uint32_t pci_read_config_32(uint8_t, uint8_t, uint8_t, uint8_t);
 
+extern device_manager::device_node* pci_search_device_tree( uint8_t bus, uint8_t device=0xFF, uint8_t func=0xFF );
 extern void pci_check_bus( uint8_t bus, uint8_t bus_bloc, uint8_t bus_dloc, uint8_t bus_floc );
 extern void pci_check_all_buses();
 extern void pci_check_device( uint8_t bus, uint8_t device, device_manager::device_node* bus_node );

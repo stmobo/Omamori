@@ -9,6 +9,8 @@
 #include "device/ata.h"
 #include "arch/x86/sys.h"
 #include "arch/x86/irq.h"
+#include "device/pci.h"
+#include "core/device_manager.h"
 
 ata::ata_controller* ata::controller;
 
@@ -118,6 +120,67 @@ void ata::initialize() {
 		if( (current->class_code == 0x01) && (current->subclass_code == 0x01) ) {
 			kprintf("ata: found controller (device ID: %u [%u/%u/%u])\n", i, current->bus, current->device, current->func);
 			controller = new ata_controller( current );
+
+			device_manager::device_node* dev = new device_manager::device_node;
+			//dev->child_id = device_manager::root.children.count();
+			dev->enabled = true;
+			dev->type = device_manager::dev_type::storage_controller;
+			dev->human_name = const_cast<char*>("ATA Controller");
+			void** ptrs = new void*[2];
+			ptrs[0] = (void*)current;
+			ptrs[1] = (void*)controller;
+			dev->device_data = (void*)ptrs;
+
+			device_manager::device_resource* res = new device_manager::device_resource;
+			res->consumes = true;
+			res->type = device_manager::res_type::io_port;
+			res->io_port.start = 0x1F0;
+			res->io_port.end = 0x1F7;
+
+			dev->resources.add_end(res);
+
+			res = new device_manager::device_resource;
+			res->consumes = true;
+			res->type = device_manager::res_type::io_port;
+			res->io_port.start = 0x3F6;
+			res->io_port.end = 0x3F6;
+
+			dev->resources.add_end(res);
+
+			res = new device_manager::device_resource;
+			res->consumes = true;
+			res->type = device_manager::res_type::io_port;
+			res->io_port.start = 0x170;
+			res->io_port.end = 0x177;
+
+			dev->resources.add_end(res);
+
+			res = new device_manager::device_resource;
+			res->consumes = true;
+			res->type = device_manager::res_type::io_port;
+			res->io_port.start = 0x376;
+			res->io_port.end = 0x376;
+
+			dev->resources.add_end(res);
+
+			res = new device_manager::device_resource;
+			res->consumes = true;
+			res->type = device_manager::res_type::interrupt;
+			res->interrupt = 14;
+
+			dev->resources.add_end(res);
+
+			res = new device_manager::device_resource;
+			res->consumes = true;
+			res->type = device_manager::res_type::interrupt;
+			res->interrupt = 15;
+
+			dev->resources.add_end(res);
+
+			device_manager::device_node* pnt = pci_search_device_tree( current->bus, 0xFF, 0xFF );
+			dev->child_id = pnt->children.count();
+			pnt->children.add_end(dev);
+
 			break;
 		}
 	}

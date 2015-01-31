@@ -49,9 +49,9 @@ namespace device_manager {
 		res_type type;
 		bool consumes; // true if consuming defined resource, false if providing defined resources
 		union {
-			res_memory memory;
-			res_ioport io_port;
-			uint8_t interrupt;
+			res_memory memory;			// Memory range start / end (inclusive)
+			res_ioport io_port;			// Port range start / end (inclusive)
+			uint8_t interrupt;			// GSI number
 		};
 	} device_resource;
 

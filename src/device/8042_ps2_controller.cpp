@@ -9,7 +9,8 @@
 #include "device/pit.h"
 #include "device/ps2_controller.h"
 #include "lib/sync.h"
-#include "../../wip/include/message.h"
+#include "core/message.h"
+#include "core/device_manager.h"
 
 bool port1_status = false;
 bool port2_status = false;
@@ -77,6 +78,7 @@ volatile unsigned int  port1_data_head = 0;
 volatile unsigned int  port1_data_tail = 0;
 process *current_waiter = NULL;
 
+// TODO: Make this use messaging
 unsigned char ps2_receive_byte(bool port2) {
     //kprintf("ps2_receive_byte: checking/waiting for data...\n");
     
@@ -257,6 +259,30 @@ void ps2_controller_init() {
     irq_add_handler( 12, (size_t)&irq12_handler );
     ps2_send_command(PS2_CMD_WRITE_CCB);
     ps2_send_byte(PS2_CCB_PORT1_INT | PS2_CCB_PORT2_INT | PS2_CCB_SYS_FLAG | PS2_CCB_PORT1_CLK | PS2_CCB_PORT2_CLK, false);
+
+    device_manager::device_node* dev = new device_manager::device_node;
+	dev->child_id = device_manager::root.children.count();
+	dev->enabled = true;
+	dev->type = device_manager::dev_type::ps2_controller;
+	dev->human_name = const_cast<char*>("8042 Keyboard Controller");
+
+	device_manager::device_resource* res = new device_manager::device_resource;
+	res->consumes = true;
+	res->type = device_manager::res_type::io_port;
+	res->io_port.start = 0x60;
+	res->io_port.end = 0x60;
+
+	dev->resources.add_end(res);
+
+	res = new device_manager::device_resource;
+	res->consumes = true;
+	res->type = device_manager::res_type::io_port;
+	res->io_port.start = 0x64;
+	res->io_port.end = 0x64;
+
+	dev->resources.add_end(res);
+
+	device_manager::root.children.add_end( dev );
 }
 
 uint16_t ps2_get_ident_bytes(bool port2) {

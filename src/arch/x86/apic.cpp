@@ -405,6 +405,24 @@ void initialize_apics() {
 		}
 
 		apics_initialized = true;
+
+		// tell ACPI that we're using the APICs
+
+		ACPI_OBJECT_LIST params;
+		params.Count = 1;
+		params.Pointer = new ACPI_OBJECT;
+		params.Pointer->Type = ACPI_TYPE_INTEGER;
+		params.Pointer->Integer.Type = ACPI_TYPE_INTEGER; // not sure if i need to set Type twice
+		params.Pointer->Integer.Value = 1;
+
+		ACPI_STATUS stat = AcpiEvaluateObject( ACPI_ROOT_OBJECT, "_PIC", &params, NULL );
+
+		if( stat != AE_OK ) {
+			kprintf("apic: failed to call _PIC method, error code 0x%x: %s\n", stat, const_cast<char*>(AcpiFormatException(stat)));
+			return;
+		} else {
+			kprintf("apic: called ACPI global _PIC method.\n");
+		}
 	}
 }
 

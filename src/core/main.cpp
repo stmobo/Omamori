@@ -75,7 +75,7 @@ void test_process_1() {
 	}
 	*/
 
-	//system_halt;
+	//while(true) { asm volatile("pause"); };
 
     kprintf("Starting kernel worker thread.\n");
     k_work::start();

@@ -42,6 +42,25 @@ void terminal_initialize()
 		}
 	}
 }
+
+void terminal_device_initialize() {
+	device_manager::device_node* dev = new device_manager::device_node;
+	dev->child_id = device_manager::root.children.count();
+	dev->enabled = true;
+	dev->type = device_manager::dev_type::human_output;
+	dev->device_data = NULL;
+	dev->human_name = const_cast<char*>("VGA Terminal");
+
+	device_manager::device_resource* res = new device_manager::device_resource;
+	res->consumes = true;
+	res->type = device_manager::res_type::memory;
+	res->memory.start = (uintptr_t)terminal_buffer;
+	res->memory.end = ((uintptr_t)terminal_buffer) + (( VGA_HEIGHT*VGA_WIDTH ) * 2);
+
+	dev->resources.add_end(res);
+
+	device_manager::root.children.add_end( dev );
+}
  
 void terminal_setcolor(char color)
 {

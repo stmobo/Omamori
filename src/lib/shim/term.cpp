@@ -9,6 +9,7 @@
 #include "lib/shim/computercraft.h"
 
 static vga_color cc_num_to_color( unsigned int col ) {
+	switch(col) {
 	default:
 	case 1:
 		return vga_color::COLOR_WHITE;
@@ -42,6 +43,7 @@ static vga_color cc_num_to_color( unsigned int col ) {
 		return vga_color::COLOR_RED;
 	case 32768:
 		return vga_color::COLOR_BLACK;
+	}
 }
 
 namespace computercraft {
@@ -121,7 +123,7 @@ namespace computercraft {
 		lua_rawset( L, -2 );
 
 		lua_pushstring(L, "clearLine");
-		lua_pushcfunction(L, term_clearLine);
+		lua_pushcfunction(L, term_clearline);
 		lua_rawset( L, -2 );
 
 		lua_pushstring(L, "getCursorPos");

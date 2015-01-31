@@ -220,6 +220,24 @@ void register_channel( char* channel_name ) {
 	channels.set(channel_name, ch);
 }
 
+unsigned int wait_multiple( vector<channel_receiver*>& recv_list ) {
+	while(true) {
+		for(unsigned int i=0;i<recv_list.count();i++) {
+			if( recv_list[i]->update() ) {
+				return i;
+			}
+
+			if( recv_list[i]->queue.count() > 0 ) {
+				return i;
+			}
+		}
+
+		process_sleep();
+	}
+
+	return 0;
+}
+
 unsigned int wait_multiple( unsigned int n_receivers, channel_receiver* recv_1, ... ) {
 	vector< channel_receiver* > recv_list;
 	va_list args;

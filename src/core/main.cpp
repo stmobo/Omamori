@@ -55,6 +55,9 @@ void test_process_1() {
     kprintf("Starting kernel worker thread.\n");
     k_work::start();
 
+    kprintf("Starting kernel timer thread.\n");
+    timer_initialize();
+
     terminal_writestring("Initializing ACPI.\n");
     initialize_acpi();
     
@@ -278,48 +281,9 @@ void test_process_1() {
 
 						kprintf("file data: %s\n", (unsigned char*)buffer );
 					} else if( strcmp( cmd, const_cast<char*>("execute") ) || strcmp( cmd, const_cast<char*>("exec") ) ) {
-						vfs_node* node = NULL;
-						vfs::vfs_status fop_stat = vfs::get_file_info( (unsigned char*)arg1, &node );
-						if( fop_stat != vfs::vfs_status::ok ) {
-							kprintf("FS get info failed with error: %s\n", vfs::status_description(fop_stat));
-						} else {
-							kprintf("FS get info succeeded.\n");
-						}
-
-						if( node != NULL ) {
-							if( node->type != vfs_node_types::file ) {
-								kprintf("FS read failed with error: incorrect type\n");
-								continue;
-							}
-						}
-
-						vfs_file* fn = (vfs_file*)node;
-						void* buffer = kmalloc( fn->size );
-
-						fop_stat = vfs::read_file( (unsigned char*)arg1, buffer );
-						if( fop_stat != vfs::vfs_status::ok ) {
-							kprintf("FS read failed with error: %s\n", vfs::status_description(fop_stat));
-						} else {
-							kprintf("FS read succeeded.\n");
-							lua_State *st = luaL_newstate();
-							luaL_openlibs( st );
-							computercraft_fs::luaopen_fs( st );
-							computercraft_term::luaopen_term( st );
-							int stat = luaL_loadbuffer( st, (const char*)buffer, fn->size, "program" );
-
-							if( stat == 0 ) {
-								stat = lua_pcall( st, 0, 1, 0 );
-								if( stat == 0 ) { // get return values
-									kprintf("Program executed successfully.\n");
-								}
-							}
-							if( stat != 0 ) { // was there an error?
-								const char *err = lua_tostring(st, -1);
-								kprintf("lua-error: %s\n", err);
-								lua_pop(st, 1);
-							}
-							lua_close(st);
-						}
+						computercraft::cc_process *proc = computercraft::create_cc_process();
+						computercraft::load_file( proc, (unsigned char*)arg1 );
+						computercraft::event_loop( proc );
 					} else if( strcmp( cmd, const_cast<char*>("delete") ) || strcmp( cmd, const_cast<char*>("rm") ) ) {
 						vfs::vfs_status fop_stat = vfs::delete_file( (unsigned char*)arg1 );
 						if( fop_stat != vfs::vfs_status::ok ) {

@@ -223,50 +223,62 @@ namespace computercraft {
 	void luaopen_cc_fs( lua_State* L ) {
 		lua_createtable( L, 0, 11 );
 
+		kprintf("Registering \"list\".\n");
 		lua_pushstring(L, "list");
 		lua_pushcfunction(L, fs_list);
 		lua_rawset( L, -2 );
 
+		kprintf("Registering \"exists\".\n");
 		lua_pushstring(L, "exists");
 		lua_pushcfunction(L, fs_exists);
 		lua_rawset( L, -2 );
 
+		kprintf("Registering \"isDir\".\n");
 		lua_pushstring(L, "isDir");
 		lua_pushcfunction(L, fs_isDir);
 		lua_rawset( L, -2 );
 
+		kprintf("Registering \"isReadOnly\".\n");
 		lua_pushstring(L, "isReadOnly");
 		lua_pushcfunction(L, fs_isReadOnly);
 		lua_rawset( L, -2 );
 
+		kprintf("Registering \"getSize\".\n");
 		lua_pushstring(L, "getSize");
 		lua_pushcfunction(L, fs_getSize);
 		lua_rawset( L, -2 );
 
+		kprintf("Registering \"makeDir\".\n");
 		lua_pushstring(L, "makeDir");
 		lua_pushcfunction(L, fs_makeDir);
 		lua_rawset( L, -2 );
 
+		kprintf("Registering \"move\".\n");
 		lua_pushstring(L, "move");
 		lua_pushcfunction(L, fs_move);
 		lua_rawset( L, -2 );
 
+		kprintf("Registering \"copy\".\n");
 		lua_pushstring(L, "copy");
 		lua_pushcfunction(L, fs_copy);
 		lua_rawset( L, -2 );
 
+		kprintf("Registering \"delete\".\n");
 		lua_pushstring(L, "delete");
 		lua_pushcfunction(L, fs_delete);
 		lua_rawset( L, -2 );
 
+		kprintf("Registering \"read\".\n");
 		lua_pushstring(L, "read");
 		lua_pushcfunction(L, fs_read);
 		lua_rawset( L, -2 );
 
+		kprintf("Registering \"write\".\n");
 		lua_pushstring(L, "write");
 		lua_pushcfunction(L, fs_write);
 		lua_rawset( L, -2 );
 
+		kprintf("Setting global \"fs\" table.\n");
 		lua_setglobal( L, "fs" );
 	}
 }

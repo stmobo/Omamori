@@ -1,6 +1,7 @@
 // pit.h
 #pragma once
 #include "includes.h"
+#include "core/scheduler.h"
 
 // PIT input signal runs at 1.193182 MHz.
 // this #define is for the input signal in KHz.
@@ -15,38 +16,14 @@ These classes "reserve" an element in the vector. Upon destruction, another time
 freed timer_wait object.
 */
 
-class timer_wait { 
-    signed int ticks_left;
-    
-    public:
-    bool in_use;
-    signed int reload_val;
-    bool repeating;
-    bool active;
-    void(*callback)(void);
-    
-    timer_wait();
-    void decrement(int);
-    void reload();
-};
-
-typedef class timer_wait timer_wait;
-
-typedef class timer {
-    timer_wait *internal;
-    public:
-    void set_callback(void(*)(void));
-    void set_repeat(bool);
-    void set_active(bool);
-    void set_reload_val(int);
-    bool get_repeat();
-    bool get_active();
-    int get_reload_val();
-    void reload();
-    timer(int,bool,bool,void(*)(void));
-    ~timer();
+typedef struct timer {
+	uint64_t n_ticks;
+	unsigned int id;
 } timer;
 
 extern unsigned long long int get_sys_elapsed_time(void);
 extern unsigned long long int get_sys_time_counter(void);
 extern void pit_initialize(short reload_val);
+
+void timer_initialize();
+unsigned int start_timer( uint64_t n_ticks );

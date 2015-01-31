@@ -48,11 +48,11 @@ extern "C" {
         	file_descriptor *file = new file_descriptor;
         	file->node = node;
         	file->process = process_current;
-        	file->name = (unsigned char*)kmalloc(strlen(name)+1);
-        	for(unsigned int i=0;i<strlen(name);i++) {
+        	file->name = (unsigned char*)kmalloc(strlen((unsigned char*)const_cast<char*>(name))+1);
+        	for(unsigned int i=0;i<strlen((unsigned char*)const_cast<char*>(name));i++) {
         		file->name[i] = name[i];
         	}
-        	file->name[strlen(name)] = '\0';
+        	file->name[strlen((unsigned char*)const_cast<char*>(name))] = '\0';
 
         	open_files.add_end(file);
 
@@ -67,7 +67,7 @@ extern "C" {
         if( open_files[file] != NULL ) {
         	file_descriptor *f = open_files[file];
 
-        	if( process_current != f->process.raw ) {
+        	if( process_current != f->process.raw_ptr() ) {
         		errno = EACCES;
         		return -1;
         	}

@@ -2,6 +2,7 @@
 #pragma once
 #include "includes.h"
 #include "lib/vector.h"
+#include "core/device_manager.h"
 
 #define PCI_IO_CONFIG_ADDRESS       0xCF8
 #define PCI_IO_CONFIG_DATA          0xCFC
@@ -44,6 +45,7 @@ typedef struct pci_device {
     uint8_t prog_if;
     uint8_t header_type;
     pci_bar registers[6];
+    uint8_t secondary_bus;
 } pci_device;
 
 extern vector<pci_device*> pci_devices;
@@ -60,10 +62,10 @@ extern uint8_t pci_read_config_8(uint8_t, uint8_t, uint8_t, uint8_t);
 extern uint16_t pci_read_config_16(uint8_t, uint8_t, uint8_t, uint8_t);
 extern uint32_t pci_read_config_32(uint8_t, uint8_t, uint8_t, uint8_t);
 
-extern void pci_check_bus( uint8_t );
+extern void pci_check_bus( uint8_t bus, uint8_t bus_bloc, uint8_t bus_dloc, uint8_t bus_floc );
 extern void pci_check_all_buses();
-extern void pci_check_device( uint8_t, uint8_t );
-extern void pci_check_bridge( uint8_t, uint8_t, uint8_t );
+extern void pci_check_device( uint8_t bus, uint8_t device, device_manager::device_node* bus_node );
+extern void pci_check_bridge( uint8_t bus, uint8_t device, uint8_t func );
 extern void pci_initialize();
 
 extern void pci_get_info_three (

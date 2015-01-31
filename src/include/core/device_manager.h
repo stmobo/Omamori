@@ -17,7 +17,8 @@ namespace device_manager {
 		lapic,				 // local APICs
 		ioapic,			     // I/O APICs (8259s count too)
 		timer,				 // PITs and the LAPIC Timer
-		pci_bus,			 // PCI buses, obviously
+		pci_device,			 // PCI devices
+		pci_bus,			 // PCI busses
 		usb_bus,			 // USB hub / bus things
 		ps2_controller,		 // the 8042 controller
 		storage_controller,  // The ATA controller, etc.
@@ -58,9 +59,11 @@ namespace device_manager {
 		vector< device_resource* > resources;
 		unsigned int child_id;
 		unsigned int global_id;
+
+		device_tree_node();
 	} device_node;
 
 
-	device_tree_node root;
+	extern device_node root;
 
 };

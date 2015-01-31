@@ -7,6 +7,8 @@
 #include "device/pci.h"
 #include "device/pci_dev_info.h"
 #include "lib/vector.h"
+#include "core/acpi.h"
+#include "core/device_manager.h"
 
 vector<pci_device*> pci_devices;
 // pages used to allocate MMIO ranges that are less than a page in size
@@ -68,6 +70,34 @@ void pci_mmio_range_allocate( unsigned int length ) {
     
 }
 
+void pci_get_int_routing() {
+	ACPI_HANDLE pci0;
+	ACPI_STATUS stat = AcpiGetHandle( ACPI_ROOT_OBJECT, "_SB_.PCI0", &pci0 );
+
+	if( stat != AE_OK ) {
+		kprintf("pci: failed to retrieve PCI root bus object, error code 0x%x: %s\n", stat, const_cast<char*>(AcpiFormatException(stat)));
+		return;
+	} else {
+		kprintf("pci: retrieved PCI root bus object.\n");
+	}
+
+	ACPI_BUFFER buf;
+	buf.Length = ACPI_ALLOCATE_BUFFER;
+	stat = AcpiEvaluateObject( pci0, "_PRT", NULL, &buf );
+
+	if( stat != AE_OK ) {
+		kprintf("pci: failed to call _PRT method on PCI0, error code 0x%x: %s\n", stat, const_cast<char*>(AcpiFormatException(stat)));
+		return;
+	} else {
+		kprintf("pci: retrieved PCI interrupt routing table.\n");
+	}
+
+	ACPI_OBJECT *o = (ACPI_OBJECT*)buf.Pointer;
+	// _PRT should return a package of packages
+
+	kfree(buf.Pointer);
+}
+
 uint32_t pci_read_config_32(uint8_t bus, uint8_t device, uint8_t func, uint8_t offset) {
     uint32_t config_addr = (0x80000000 | (((uint32_t)bus)<<16) | (((uint32_t)device)<<11) | (((uint32_t)func)<<8) | (offset&0xFC));
     io_outd(PCI_IO_CONFIG_ADDRESS, config_addr);
@@ -110,7 +140,7 @@ void pci_write_config_8(uint8_t bus, uint8_t device, uint8_t func, uint8_t offse
     return pci_write_config_32(bus, device, func, offset, tmp);
 }
 
-void pci_register_function(uint8_t bus, uint8_t device, uint8_t func) {
+void pci_register_function(uint8_t bus, uint8_t device, uint8_t func, device_manager::device_node* bus_node) {
     if( pci_read_config_16(bus, device, 0, 0) != 0xFFFF ) {
         pci_device *new_device = new pci_device;
         if( new_device == NULL )
@@ -148,6 +178,14 @@ void pci_register_function(uint8_t bus, uint8_t device, uint8_t func) {
             pci_write_config_32(bus, device, func, 0x10 + (i*4), bar);
         }
         pci_devices.add(new_device);
+
+        device_manager::device_node* dev = new device_manager::device_node;
+        dev->device_data = (void*)new_device;
+        dev->enabled = true;
+        dev->child_id = bus_node->children.count();
+        dev->type = device_manager::dev_type::pci_device;
+        bus_node->children.add_end(dev);
+
         char* ven_name = pci_get_ven_name(new_device->vendorID);
         char* dev_type = pci_get_dev_type( new_device->class_code, new_device->subclass_code, new_device->prog_if );
         //kprintf("pci: registered new device on b%u/d%u/f%u.\n", bus, device, func);
@@ -165,20 +203,20 @@ void pci_check_bridge( uint8_t bus, uint8_t device, uint8_t func ) {
     
     if( (class_code == 0x06) && (subclass_code == 0x04) ) {
         uint8_t secondary_bus = pci_read_config_8( bus, device, func, 0x19 );
-        pci_check_bus( secondary_bus );
+        pci_check_bus( secondary_bus, bus, device, func );
     }
 }
 
-void pci_check_device( uint8_t bus, uint8_t device ) {
+void pci_check_device( uint8_t bus, uint8_t device, device_manager::device_node* bus_node ) {
     uint16_t vendorID = pci_read_config_16(bus, device, 0, 0);
     if( vendorID != 0xFFFF ) {
         uint8_t headerType = pci_read_config_8(bus, device, 0, 0x0E);
-        pci_register_function( bus, device, 0 );
+        pci_register_function( bus, device, 0, bus_node );
         pci_check_bridge( bus, device, 0 );
         if( (headerType & 0x80) > 0 ) {
             for(uint8_t func=1;func<8;func++) {
                 if( pci_read_config_16(bus, device, func, 0) != 0xFFFF ) {
-                    pci_register_function( bus, device, func );
+                    pci_register_function( bus, device, func, bus_node );
                     pci_check_bridge( bus, device, func );
                 }
             }
@@ -186,20 +224,72 @@ void pci_check_device( uint8_t bus, uint8_t device ) {
     }
 }
 
-void pci_check_bus( uint8_t bus ) {
+device_manager::device_node* pci_search_device_tree( uint8_t bus, uint8_t device, uint8_t func ) {
+	for(unsigned int i=0;i<device_manager::root.children.count();i++) {
+		if( device_manager::root.children[i]->type == device_manager::dev_type::pci_bus ) {
+			device_manager::device_node* dev = device_manager::root.children[i];
+			pci_device *dev_data = (pci_device*)dev->device_data;
+
+			if( dev_data->secondary_bus == bus ) {
+				if( device == 0xFF ) {
+					return dev;
+				} else {
+					for(unsigned int j=0;j<dev->children.count();j++) {
+						device_manager::device_node* child = dev->children[j];
+						if( child->type == device_manager::dev_type::pci_device ) {
+							pci_device *chld_data = (pci_device*)child->device_data;
+							if( chld_data->device == device ) {
+								if( (func == 0xFF) || (chld_data->func == func) ) {
+									return child;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return NULL;
+}
+
+void pci_check_bus( uint8_t bus, uint8_t bus_bloc, uint8_t bus_dloc, uint8_t bus_floc ) {
+	device_manager::device_node* bus_node = new device_manager::device_node;
+
+	pci_device *new_device = new pci_device;
+	if( new_device == NULL )
+		panic("pci: failed to allocate new device structure!");
+	new_device->bus           = bus_bloc;
+	new_device->device        = bus_dloc;
+	new_device->func          = bus_floc;
+	new_device->prog_if       = pci_read_config_8( bus_bloc, bus_dloc, bus_floc, 0x09 );
+	new_device->subclass_code = pci_read_config_8( bus_bloc, bus_dloc, bus_floc, 0x0A );
+	new_device->class_code    = pci_read_config_8( bus_bloc, bus_dloc, bus_floc, 0x0B );
+	new_device->header_type   = pci_read_config_8( bus_bloc, bus_dloc, bus_floc, 0x0E);
+	new_device->vendorID      = pci_read_config_16(bus_bloc, bus_dloc, bus_floc, 0);
+	new_device->deviceID      = pci_read_config_16(bus_bloc, bus_dloc, bus_floc, 2);
+	new_device->secondary_bus = bus;
+
+	bus_node->type = device_manager::dev_type::pci_bus;
+	bus_node->device_data = (void*)new_device;
+	bus_node->child_id = device_manager::root.children.count();
+	bus_node->enabled = true;
+
+	device_manager::root.children.add_end(bus_node);
+
     for( uint8_t device=0;device<32;device++ ) {
-        pci_check_device( bus, device );
+        pci_check_device( bus, device, bus_node );
     }
 }
 
 void pci_check_all_buses() {
     uint8_t main_header_type = pci_read_config_8(0,0,0, 0x0E);
     if( (main_header_type & 0x80) == 0 ) {
-        pci_check_bus(0);
+        pci_check_bus(0, 0, 0, 0);
     } else {
         for( uint8_t func=0;func<8;func++ ) {
             if( pci_read_config_16(0, 0, func, 0) != 0xFFFF ) {
-                pci_check_bus( func );
+                pci_check_bus( func, 0, 0, func );
             }
         }
     }

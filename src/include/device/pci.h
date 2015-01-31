@@ -64,6 +64,7 @@ extern void pci_check_bus( uint8_t );
 extern void pci_check_all_buses();
 extern void pci_check_device( uint8_t, uint8_t );
 extern void pci_check_bridge( uint8_t, uint8_t, uint8_t );
+extern void pci_initialize();
 
 extern void pci_get_info_three (
   unsigned char		baseid,

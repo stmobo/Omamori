@@ -6,6 +6,7 @@
 #include "core/paging.h"
 #include "device/pit.h"
 #include "device/vga.h"
+#include "core/device_manager.h"
 
 #if defined(__linux__)
 #error "You are not using a cross-compiler, you will most certainly run into trouble"
@@ -47,6 +48,9 @@ void kernel_init(multiboot_info_t* mb_info, unsigned int magic) {
     }
     kprintf("Called %u global constructors.\n", (unsigned long long int)n_constructors_called);
     
+    terminal_writestring("\nInitializing device manager subsystem.\n");
+    device_manager::initialize();
+
     //system_halt;
     kprintf("Kernel begins at physical address 0x%x, corresponding to pageframe ID %u.\n", (unsigned long long int)(&kernel_start_phys), (unsigned long long int)(pageframe_get_block_from_addr( (size_t)&kernel_start_phys )) );
     kprintf("Kernel ends at physical address 0x%x, corresponding to pageframe ID %u.\n", (unsigned long long int)(&kernel_end_phys), (unsigned long long int)(pageframe_get_block_from_addr( (size_t)&kernel_end_phys )) );

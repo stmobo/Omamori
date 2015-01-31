@@ -185,6 +185,14 @@ void lapic_initialize() {
 	dev->enabled = true;
 	dev->type = device_manager::dev_type::lapic;
 
+	for(unsigned int i=0;i<local_apics.count();i++) {
+		local_apic* lapic = local_apics[i];
+		if( lapic->lapic_id == lapic_id ) {
+			dev->device_data = (void*)lapic;
+			break;
+		}
+	}
+
 	device_manager::device_resource* res = new device_manager::device_resource;
 	res->consumes = true;
 	res->type = device_manager::res_type::memory;
@@ -344,6 +352,7 @@ void io_apic::initialize() {
 	dev->child_id = device_manager::root.children.count();
 	dev->enabled = true;
 	dev->type = device_manager::dev_type::ioapic;
+	dev->device_data = (void*)this;
 
 	device_manager::device_resource* res = new device_manager::device_resource;
 	res->consumes = true;

@@ -40,12 +40,17 @@ namespace device_manager {
 		uintptr_t end;		   // inclusive!
 	} res_memory;
 
+	typedef struct device_ioport_resource {
+		uint16_t start;	   // Both
+		uint16_t end;	   // inclusive!
+	} res_ioport;
+
 	typedef struct device_resource {
 		res_type type;
 		bool consumes; // true if consuming defined resource, false if providing defined resources
 		union {
 			res_memory memory;
-			uint16_t io_port;
+			res_ioport io_port;
 			uint8_t interrupt;
 		};
 	} device_resource;
@@ -65,5 +70,5 @@ namespace device_manager {
 
 
 	extern device_node root;
-
+	void initialize();
 };

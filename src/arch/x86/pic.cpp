@@ -3,6 +3,7 @@
 #include "arch/x86/sys.h"
 #include "core/sys.h"
 #include "arch/x86/pic.h"
+#include "core/device_manager.h"
 
 bool pic_8259_initialized;
 
@@ -40,6 +41,38 @@ void pic_initialize(char vector_offset_1) {
     io_wait();
     pic_8259_initialized = true;
     asm volatile("sti" : : : "memory");
+
+    device_manager::device_node* dev = new device_manager::device_node;
+	dev->child_id = device_manager::root.children.count();
+	dev->enabled = true;
+	dev->type = device_manager::dev_type::ioapic;
+
+	device_manager::device_resource* res = new device_manager::device_resource;
+	res->consumes = true;
+	res->type = device_manager::res_type::io_port;
+	res->io_port.start = MASTER_PIC_BASE;
+	res->io_port.end = MASTER_PIC_BASE+1;
+
+	dev->resources.add_end(res);
+
+	res = new device_manager::device_resource;
+	res->consumes = true;
+	res->type = device_manager::res_type::io_port;
+	res->io_port.start = SLAVE_PIC_BASE;
+	res->io_port.end = SLAVE_PIC_BASE+1;
+
+	dev->resources.add_end(res);
+
+	for(unsigned int i=0;i<16;i++) {
+		res = new device_manager::device_resource;
+		res->consumes = false;
+		res->type = device_manager::res_type::interrupt;
+		res->interrupt = i;
+
+		dev->resources.add_end(res);
+	}
+
+	device_manager::root.children.add_end( dev );
 }
 
 uint16_t pic_get_mask() {

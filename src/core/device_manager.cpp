@@ -23,16 +23,6 @@ namespace device_manager {
 		root.child_id = 0;
 		root.enabled = true;
 		root.type = dev_type::computer;
-
-		// add initial "processor" node
-		device_node* init_processor = new device_node;
-		init_processor->device_data = NULL;
-		init_processor->global_id = global_ids++;
-		init_processor->child_id = 0;
-		init_processor->enabled = true;
-		init_processor->type = dev_type::processor;
-
-		root.children.add_end(init_processor);
 	}
 
 }

@@ -13,7 +13,7 @@ namespace device_manager {
 
 	typedef enum class device_node_type {
 		computer,   		 // "root node" type thing
-		processor, 		 	 // NUMA domain?
+		processor, 		 	 // logical / physical CPU
 		lapic,				 // local APICs
 		ioapic,			     // I/O APICs (8259s count too)
 		timer,				 // PITs and the LAPIC Timer

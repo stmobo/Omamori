@@ -13,6 +13,7 @@
 #include "core/acpi.h"
 #include "lib/vector.h"
 #include "device/pit.h"
+#include "core/device_manager.h"
 
 uint64_t lapic_base;
 uintptr_t lapic_vaddr;
@@ -179,6 +180,21 @@ void lapic_initialize() {
 	io_outb( 0x22, 0x70 );
 	io_outb( 0x23, 1 );
 
+	device_manager::device_node* dev = new device_manager::device_node;
+	dev->child_id = device_manager::root.children.count();
+	dev->enabled = true;
+	dev->type = device_manager::dev_type::lapic;
+
+	device_manager::device_resource* res = new device_manager::device_resource;
+	res->consumes = true;
+	res->type = device_manager::res_type::memory;
+	res->memory.start = lapic_vaddr;
+	res->memory.end = lapic_vaddr+0xFFF;
+
+	dev->resources.add_end(res);
+
+	device_manager::root.children.add_end( dev );
+
 	kprintf("apic: Initialized version %#x LAPIC with ID = %#x and NMI pin %u (%s).\n", lapic_version, lapic_id, nmi_pin, (nmi_polarity == 3) ? "active low" : "active high");
 }
 
@@ -323,6 +339,30 @@ void io_apic::initialize() {
 	}
 
 	this->update_redir_entries();
+
+	device_manager::device_node* dev = new device_manager::device_node;
+	dev->child_id = device_manager::root.children.count();
+	dev->enabled = true;
+	dev->type = device_manager::dev_type::ioapic;
+
+	device_manager::device_resource* res = new device_manager::device_resource;
+	res->consumes = true;
+	res->type = device_manager::res_type::memory;
+	res->memory.start = this->vaddr;
+	res->memory.end = this->vaddr+0xFFF;
+
+	dev->resources.add_end(res);
+
+	for(unsigned int i=0;i<this->max_redir_entry;i++) {
+		res = new device_manager::device_resource;
+		res->consumes = false;
+		res->type = device_manager::res_type::interrupt;
+		res->interrupt = this->int_base + i;
+
+		dev->resources.add_end(res);
+	}
+
+	device_manager::root.children.add_end( dev );
 
 	kprintf("apic: Initialized IOAPIC with ID %#x at p%#x / v%#x and %u interrupts from %u.\n", this->ioapic_id, this->paddr, this->vaddr, this->max_redir_entry+1, this->int_base);
 }

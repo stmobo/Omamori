@@ -9,8 +9,9 @@
 #include "device/vga.h"
 #include "lib/vector.h"
 #include "lib/refcount.h"
+#include "core/device_manager.h"
 
-// for now, we'll just assume that port1 is always connected to the keyboard.
+// TODO: for now, we'll just assume that port1 is always connected to the keyboard.
 // Because virtualbox's emulated keyboard apparently does not send ident bytes in response to an 0xF2.
 
 bool shift_stat, alt_stat, ctrl_stat;
@@ -163,6 +164,23 @@ void ps2_keyboard_initialize() {
     keyboard_input_process = new process( (size_t)&ps2_keyboard_input_process, false, 0, "ps2kb_in" ,NULL, 0 );
     spawn_process( keyboard_input_process, true );
     register_channel( "keypress" );
+
+    device_manager::device_node* kbc = NULL;
+
+    for(unsigned int i=0;i<device_manager::root.children.count();i++) {
+    	if( device_manager::root.children[i]->type == device_manager::dev_type::ps2_controller ) {
+    		kbc = device_manager::root.children[i];
+    		break;
+    	}
+    }
+
+    device_manager::device_node* dev = new device_manager::device_node;
+	dev->child_id = kbc->children.count();
+	dev->enabled = true;
+	dev->type = device_manager::dev_type::human_input;
+	dev->human_name = const_cast<char*>("PS/2 Keyboard");
+
+	kbc->children.add_end(dev);
 }
 
 char* ps2_keyboard_readline(unsigned int *len) {

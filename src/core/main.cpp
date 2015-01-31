@@ -127,6 +127,7 @@ void test_process_1() {
             }
         }
         */
+        /*
 		unsigned long long int last_ticked = 0;
 		while(true) {
 			if(last_ticked+1000 <= get_sys_time_counter()) {
@@ -134,6 +135,8 @@ void test_process_1() {
 				last_ticked = get_sys_time_counter();
 			}
 		}
+		*/
+
     } else {
         kprintf("Hello from (parent) process %u!\n", process_current->id);
         kprintf("Starting lua interpretation.\n");

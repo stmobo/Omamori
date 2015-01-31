@@ -52,8 +52,7 @@ ata::ata_controller::ata_controller( pci_device *dev ) {
 			irq_add_handler(14, (size_t)(&this->handle_irq14));
 			irq_add_handler(15, (size_t)(&this->handle_irq15));
 		} else {
-			// in this case we must be using the APIC (Interrupt Line field is R/O)
-			// well, just do nothing in this case (we don't support the APIC yet)
+			// we'll figure this out someday
 			kprintf("ata: Interrupt Line field is for APIC\n");
 		}
 	}
@@ -87,6 +86,9 @@ ata::ata_controller::ata_controller( pci_device *dev ) {
 
 bool ata::ata_controller::handle_irq() {
 	kprintf("ata: IRQ received.\n");
+	if( controller == NULL ) {
+		return false;
+	}
 	if(controller->channels[0] != NULL) {
 		controller->channels[0]->irq();
 	}

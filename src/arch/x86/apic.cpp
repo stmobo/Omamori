@@ -138,13 +138,13 @@ void lapic_initialize() {
 
 	// set up timer:
 	lapic_write_register( 0x3E0, 3 ); // set timer divide to 16
-	lapic_write_register( 0x320, 32 ); // enable APIC timer (mapped to IRQ1)
+	lapic_write_register( 0x320, 32 ); // enable APIC timer (mapped to IRQ0)
 
 	// set PIT channel 2 for the same frequency
 	io_outb( 0x61, io_inb(0x61)&0xFD ); // disable PC Speaker
 	io_outb( 0x43, 0xB2 ); // PIT channel 2, lo-hi sequential access, hardware retriggerable one-shot
 	io_outb( 0x42, 0x9B ); // LSB
-	io_inb(0x60); //
+	io_inb(0x60);
 	io_outb( 0x42, 0x2E ); // MSB
 
 	uint8_t tmp = io_inb( 0x61 ) & 0xFE;
@@ -158,7 +158,9 @@ void lapic_initialize() {
 	uint32_t current_apic_tmr_val = lapic_read_register( 0x390 );
 	uint32_t interval = 0xFFFFFFFF - current_apic_tmr_val;
 	interval += 1;
-	uint32_t apic_timer_interval = interval / 10;
+	uint32_t cpu_bus_freq = interval * 16 * 100;
+	uint32_t apic_timer_interval = interval / 1000;
+	apic_timer_interval /= 16;
 
 	lapic_write_register( 0x2F0, 0x10000 ); // CMCI
 	lapic_write_register( 0x330, 0x10000 ); // Thermal
@@ -169,6 +171,9 @@ void lapic_initialize() {
 	lapic_write_register( 0x380, (apic_timer_interval < 16 ? 16 : apic_timer_interval) ); // set up timer again
 
 	kprintf("apic: interval set to %u.\n", (apic_timer_interval < 16 ? 16 : apic_timer_interval) );
+
+	io_outb( 0x43, (3<<4) ); // disable PIT
+	io_outb( 0x40, 0 ); // as best we can, anyways
 
 	// force interrupts to APIC (IMCR)
 	io_outb( 0x22, 0x70 );

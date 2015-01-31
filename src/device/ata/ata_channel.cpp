@@ -121,7 +121,7 @@ ata::ata_channel::ata_channel( ata_controller* controller, unsigned int channel_
 		ata_io_disk *disk = new ata_io_disk( this, this->master );
 
 		device_manager::device_node* dev = new device_manager::device_node;
-		device_manager::device_node* base = this->controller->dev_node;
+		device_manager::device_node* base = &device_manager::root; //controller->dev_node;
 		dev->child_id = base->children.count();
 		dev->enabled = true;
 		dev->type = device_manager::dev_type::storage_controller;
@@ -142,7 +142,7 @@ ata::ata_channel::ata_channel( ata_controller* controller, unsigned int channel_
 		ata_io_disk *disk = new ata_io_disk( this, this->slave );
 
 		device_manager::device_node* dev = new device_manager::device_node;
-		device_manager::device_node* base = this->controller->dev_node;
+		device_manager::device_node* base = &device_manager::root; //this->controller->dev_node;
 		dev->child_id = base->children.count();
 		dev->enabled = true;
 		dev->type = device_manager::dev_type::storage_controller;
@@ -176,4 +176,4 @@ void ata::ata_io_disk::send_request( transfer_request* req ) {
 }
 
 unsigned int ata::ata_io_disk::get_sector_size()  { return this->device->sector_size; };
-unsigned int ata::ata_io_disk::get_total_size()  { return this->device->n_sectors * 512; };
+unsigned int ata::ata_io_disk::get_total_size()  { return this->device->n_sectors * this->device->sector_size; };

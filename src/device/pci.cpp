@@ -18,6 +18,8 @@ vector<uint32_t>    pci_mmio_unallocated;
 // MMIO ranges are allocated in 128-byte blocks, giving us 32 blocks per page
 // MMIO ranges are never released.
 
+
+
 static void pci_mmio_range_add_block() {
     page_frame *new_frame = pageframe_allocate(1);
     size_t new_page = k_vmem_alloc(1);
@@ -94,6 +96,45 @@ void pci_get_int_routing() {
 
 	ACPI_OBJECT *o = (ACPI_OBJECT*)buf.Pointer;
 	// _PRT should return a package of packages
+	if( o->Type == ACPI_TYPE_PACKAGE ) {
+		ACPI_OBJECT *itr = o->Package.Elements;
+		kprintf("pci: PCI0._PRT returned %u elements\n", o->Package.Count);
+		for(unsigned int i=0;i<o->Package.Count;i++) {
+			if( itr->Type == ACPI_TYPE_PACKAGE ) {
+				ACPI_OBJECT *obj = itr->Package.Elements;
+				if( itr->Package.Count == 4 ) {
+					ACPI_INTEGER addr = obj[0].Integer.Value;
+					ACPI_INTEGER pin = obj[1].Integer.Value;
+					ACPI_STRING  int_link_name = obj[2].String.Pointer;
+					ACPI_INTEGER index = obj[3].Integer.Value;
+
+					//pci_intpin *p = new pci_intpin;
+					//p->bus = 0;
+					uint16_t device = ((addr & 0xFFFF0000) >> 16);
+
+					device_manager::device_node* dev = pci_search_device_tree( 0, device, 0xFF );
+
+					if( dev != NULL ) {
+						if( index != 0 ) {
+							kprintf("pci: found non-zero index value for device %u, ", device);
+							kprintf("pin %u: ", pin);
+							kprintf("%u\n", index);
+
+							pci_device *dev_data = (pci_device*)dev->device_data;
+							dev_data->ints[pin] = index;
+						}
+					}
+				} else {
+					kprintf("pci: _PTR package object %u has incorrect number of elements\n", i);
+				}
+			} else {
+				kprintf("pci: _PRT package object %u is not a package\n", i);
+			}
+			itr++;
+		}
+	} else {
+		kprintf("pci: _PRT didn't return package type\n");
+	}
 
 	kfree(buf.Pointer);
 }

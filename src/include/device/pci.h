@@ -34,6 +34,15 @@ typedef struct pci_bar {
     void allocate_mmio();
 } pci_bar;
 
+/*
+typedef struct pci_intpin {
+	uint8_t bus;
+	uint8_t device;
+	uint8_t pin;
+	uint8_t gsi;
+} pci_intpin;
+*/
+
 typedef struct pci_device {
     uint8_t bus;
     uint8_t device;
@@ -46,6 +55,7 @@ typedef struct pci_device {
     uint8_t header_type;
     pci_bar registers[6];
     uint8_t secondary_bus;
+    uint8_t ints[4];
 } pci_device;
 
 extern vector<pci_device*> pci_devices;
@@ -68,6 +78,7 @@ extern void pci_check_all_buses();
 extern void pci_check_device( uint8_t bus, uint8_t device, device_manager::device_node* bus_node );
 extern void pci_check_bridge( uint8_t bus, uint8_t device, uint8_t func );
 extern void pci_initialize();
+extern void pci_get_int_routing();
 
 extern void pci_get_info_three (
   unsigned char		baseid,

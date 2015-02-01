@@ -50,8 +50,7 @@ extern void ps2_set_interrupt_status(bool);
 extern uint16_t ps2_get_ident_bytes(bool);
 extern unsigned char ps2_wait_for_input();
 
-typedef struct ps2_event_data {
-    uint8_t data;
-    uint64_t sequence_no;
-    bool port2;
-} ps2_event_data;
+struct ps2_data {
+	uint8_t data;
+	bool port;
+};

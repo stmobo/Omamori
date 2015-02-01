@@ -116,6 +116,50 @@ channel_receiver::~channel_receiver() {
 	this->remote_channel->lock.unlock();
 }
 
+void channel_receiver::sort_internal( unsigned int lo_index, unsigned int hi_index ) {
+	if( lo_index < hi_index ) {
+		if( (hi_index - lo_index) == 1 ) { // size 0, 1, and 2 lists are trivially sorted
+			if( this->queue[hi_index]->uid < this->queue[lo_index]->uid ) {
+				message* tmp = this->queue[hi_index];
+				this->queue.set( hi_index, this->queue[lo_index] );
+				this->queue.set( lo_index, tmp );
+			}
+			return;
+		}
+
+		unsigned int pivot_index = (lo_index + hi_index) / 2; // simple middle index pivot selection
+		uint64_t pivot_value = this->queue[pivot_index]->uid;
+
+		// partition:
+		message* tmp = this->queue[pivot_index];
+		this->queue.set( pivot_index, this->queue[hi_index] );
+		this->queue.set( hi_index, tmp );
+
+		unsigned int store_index = lo_index;
+		for(unsigned int i=lo_index;i<=hi_index-1;i++) {
+			if( this->queue[i]->uid < pivot_value ) {
+				tmp = this->queue[i];
+				this->queue.set( i, this->queue[store_index] );
+				this->queue.set( store_index, tmp );
+				store_index++;
+			}
+		}
+
+		tmp = this->queue[store_index];
+		this->queue.set( store_index, this->queue[hi_index] );
+		this->queue.set( hi_index, tmp );
+
+		this->sort_internal( lo_index, ((store_index > 0) ? store_index-1 : 0) );
+		return this->sort_internal( store_index+1, hi_index );
+	}
+}
+
+void channel_receiver::sort() {
+	if( this->queue.count() > 1 ) {
+		return this->sort_internal( 0, this->queue.count()-1 );
+	}
+}
+
 bool channel_receiver::update() {
 	this->remote_channel->lock.lock();
 
@@ -149,6 +193,9 @@ bool channel_receiver::update() {
 			}
 
 			this->remote_channel->lock.unlock();
+
+			this->sort();
+
 			return true;
 		}
 	}

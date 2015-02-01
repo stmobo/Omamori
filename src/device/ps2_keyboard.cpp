@@ -130,17 +130,38 @@ ps2_keypress* ps2_keyboard_get_keystroke() { // blocks for a keystroke
 void ps2_keyboard_input_process() {
     bool e0 = false;
     bool f0 = false;
-    
+
+    channel_receiver ch = listen_to_channel("ps2_data");
     while(true) {
-        unsigned char data = ps2_receive_byte(false);
+    	unsigned char data;
+
+    	// wait for ps2 data:
+    	while(true) {
+			ch.wait();
+
+			message* m = ch.queue.remove(0);
+			if( m != NULL ) {
+				ps2_data* d = (ps2_data*)m->data;
+				if( !d->port ) {
+					data = d->data;
+					delete m;
+					break;
+				}
+				delete m;
+			}
+    	}
+
+        //unsigned char data = ps2_receive_byte(false);
+        //kprintf("ps2kb_in: got ps2 byte: %#x.\n", data);
         if(data == 0xE0) {
             e0 = true;
         } else if(data == 0xF0) {
             f0 = true;
         } else {
-            ps2_keypress* key = convert_scancode(f0, e0, data);
-            message msg( key, sizeof(ps2_keypress) );
-            send_to_channel( "keypress", msg );
+        	ps2_keypress* key = convert_scancode(f0, e0, data);
+        	//kprintf("ps2kb_in: sending keypress event (release=%s).\n", (key->released ? "true" : "false"));
+			message msg( key, sizeof(ps2_keypress) );
+			send_to_channel( "keypress", msg );
             e0 = false;
             f0 = false;
         }
@@ -158,6 +179,12 @@ void ps2_keyboard_initialize() {
         ps2_wait_for_input();
         ps2_send_byte(0x02, false); // sub-command for the above
         ps2_wait_for_input();
+        /*
+        ps2_send_byte(0xF3, false); // 0xF3 - Set typematic settings
+		ps2_wait_for_input();
+		ps2_send_byte( 1 | (3<<5), false); // sub-command for the above (1000ms repeat delay, 15?Hz repeat rate)
+		ps2_wait_for_input();
+        */
         ps2_send_byte(0xF4, false); // 0xF4 - Enable scanning
         ps2_wait_for_input();
     //}

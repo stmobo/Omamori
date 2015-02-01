@@ -1,34 +1,34 @@
 #include "includes.h"
 #include <cpuid.h>
 
-inline void io_outb(short port, char data) {
+inline void io_outb(uint16_t port, uint8_t data) {
     asm volatile("out %0, %1\n\t" : : "a"(data), "d"(port) );
     return;
 }
 
-inline void io_outw(short port, short data) {
+inline void io_outw(uint16_t port, uint16_t data) {
     asm volatile("out %0, %1\n\t" : : "a"(data), "d"(port) );
     return;
 }
 
-inline void io_outd(short port, int data) {
+inline void io_outd(uint16_t port, uint32_t data) {
     asm volatile("out %0, %1\n\t" : : "a"(data), "d"(port) );
     return;
 }
 
-inline char io_inb(short port) {
+inline uint8_t io_inb(uint16_t port) {
     char data;
     asm volatile("in %1, %0\n\t" : "=a"(data) : "d"(port) );
     return data;
 }
 
-inline short io_inw(short port) {
+inline uint16_t io_inw(uint16_t port) {
     short data;
     asm volatile("in %1, %0\n\t" : "=a"(data) : "d"(port) );
     return data;
 }
 
-inline int io_ind(short port) {
+inline uint32_t io_ind(uint16_t port) {
     int data;
     asm volatile("in %1, %0\n\t" : "=a"(data) : "d"(port) );
     return data;

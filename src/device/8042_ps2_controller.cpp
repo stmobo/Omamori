@@ -78,12 +78,6 @@ volatile unsigned int  port1_data_head = 0;
 volatile unsigned int  port1_data_tail = 0;
 process *current_waiter = NULL;
 
-struct ps2_data {
-	uint8_t data;
-	bool port;
-};
-
-// TODO: Make this use messaging
 unsigned char ps2_receive_byte(bool port2) {
     //kprintf("ps2_receive_byte: checking/waiting for data...\n");
     
@@ -101,8 +95,9 @@ unsigned char ps2_receive_byte(bool port2) {
 		if( m != NULL ) {
 			ps2_data* d = (ps2_data*)m->data;
 			if( d->port == port2 ) {
+				unsigned char ret = d->data;
 				delete m;
-				return d->data;
+				return ret;
 			}
 			delete m;
 		}

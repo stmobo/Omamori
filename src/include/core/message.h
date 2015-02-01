@@ -42,6 +42,7 @@ typedef struct message {
 typedef class channel_receiver {
 	channel *remote_channel;
 	uint64_t last_seen_uid;
+	void sort_internal( unsigned int lo_index, unsigned int hi_index );
 public:
 	vector< message* > queue;
 
@@ -49,6 +50,7 @@ public:
 
 	void wait();
 	bool update();
+	void sort();
 	channel_receiver( channel* remote );
 	channel_receiver( const channel_receiver& copy );
 	~channel_receiver();

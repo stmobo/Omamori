@@ -182,29 +182,25 @@ char *concatentate_strings(char* str1, char *str2) {
         return NULL;
     if( str1 == NULL ) {
         char *out = (char*)kmalloc( strlen(str2)+1 );
-        for(size_t i=0;i<=strlen(str2);i++) {
+        for(size_t i=0;i<strlen(str2);i++) {
             out[i] = str2[i];
         }
         return out;
     }
     if( str2 == NULL ) {
         char *out = (char*)kmalloc( strlen(str1)+1 );
-        for(size_t i=0;i<=strlen(str1);i++) {
+        for(size_t i=0;i<strlen(str1);i++) {
             out[i] = str1[i];
         }
         return out;
     }
     int len = (strlen(str1) + strlen(str2));
     char *out = (char*)kmalloc(len + 1);
-    for(size_t i=0;i<=strlen(str1);i++) {
+    for(size_t i=0;i<strlen(str1);i++) {
         out[i] = str1[i];
-        if( out[i] == 0 )
-            break;
     }
-    for(size_t i=0;i<=strlen(str2);i++) {
-        out[ i+strlen(str1)+1 ] = str2[i];
-        if( out[ i+strlen(str1)+1 ] == 0 )
-            break;
+    for(size_t i=0;i<strlen(str2);i++) {
+        out[ i+strlen(str1) ] = str2[i];
     } 
     out[len] = '\0';
     return out;

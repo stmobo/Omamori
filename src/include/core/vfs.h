@@ -37,9 +37,10 @@ struct vfs_file;
 
 struct vfs_directory : public vfs_node {
     vector<vfs_node*> files;
+    bool expanded;
 
-    vfs_directory( vfs_node* p, vfs_fs *f, void* d, unsigned char* n ) : vfs_node(p, f, d, n) { this->type = vfs_node_types::directory; };
-	vfs_directory(vfs_node* cp) : vfs_node( cp->parent, cp->fs, cp->fs_info, cp->name ) { this->type = vfs_node_types::directory; };
+    vfs_directory( vfs_node* p, vfs_fs *f, void* d, unsigned char* n ) : vfs_node(p, f, d, n) { this->type = vfs_node_types::directory; this->expanded = false; };
+	vfs_directory(vfs_node* cp) : vfs_node( cp->parent, cp->fs, cp->fs_info, cp->name ) { this->type = vfs_node_types::directory; this->expanded = false; };
 	~vfs_directory();
 };
 
@@ -52,7 +53,7 @@ public:
 	virtual void write_file( vfs_file* file, void* buffer, size_t size)  =0;
 	//virtual vfs_file* copy_file( vfs_file* file, vfs_directory* destination ) =0;
 	//virtual vfs_file* move_file( vfs_file* file, vfs_directory* destination ) =0;
-	virtual vfs_directory* read_directory( vfs_directory* parent, vfs_node *child ) =0;
+	virtual void read_directory( vfs_directory* parent, vfs_directory *child ) =0;
 	virtual void cleanup_node( vfs_node* node ) { kfree( node->fs_info ); };
 
 	virtual ~vfs_fs() { delete this->base; }

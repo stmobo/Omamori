@@ -37,11 +37,13 @@ void iso9660::iso9660_fs::read_direntry( iso9660_directory_entry* entry, void *b
 	kfree(sec_data);
 }
 
-vfs_directory* iso9660::iso9660_fs::read_directory( vfs_directory* parent, vfs_node *child ) {
+void iso9660::iso9660_fs::read_directory( vfs_directory* parent, vfs_directory *child ) {
 	void *directory_data = this->read_direntry( (iso9660_directory_entry*)child->fs_info );
-	vfs_directory *out = new vfs_directory( parent, this, (void*)child->fs_info, child->name );
+	//vfs_directory *out = new vfs_directory( parent, this, (void*)child->fs_info, child->name );
 
 	iso9660_directory_entry* cur = (iso9660_directory_entry*)directory_data;
+
+	//child->files.clear();
 
 	while(cur->size > 0) {
 		vfs_node *node;
@@ -53,7 +55,7 @@ vfs_directory* iso9660::iso9660_fs::read_directory( vfs_directory* parent, vfs_n
 
 		if(cur->flags & 0x02) {
 			// directory
-			vfs_directory *dir = new vfs_directory( (vfs_node*)out, this, (void*)fs_data, name );
+			vfs_directory *dir = new vfs_directory( (vfs_node*)child, this, (void*)fs_data, name );
 
 			node = (vfs_node*)dir;
 		} else {
@@ -70,18 +72,18 @@ vfs_directory* iso9660::iso9660_fs::read_directory( vfs_directory* parent, vfs_n
 				truncated_name[i] = name[i];
 			}
 			kfree(name);
-			vfs_file *fn = new vfs_file( (vfs_node*)out, this, (void*)fs_data, truncated_name );
+			vfs_file *fn = new vfs_file( (vfs_node*)child, this, (void*)fs_data, truncated_name );
 			fn->size = cur->extent_size;
 
 			node = (vfs_node*)fn;
 		}
 		node->attr.read_only = true;
-		out->files.add_end(node);
+		child->files.add_end(node);
 		cur = cur->next_directory();
 	}
 
 	kfree(directory_data);
-	return out;
+	//return out;
 }
 
 void iso9660::iso9660_fs::read_file(vfs_file* file, void* buffer) {
@@ -174,4 +176,6 @@ iso9660::iso9660_fs::iso9660_fs(unsigned int device_id) {
 
 	kfree(directory_data);
 	kfree(pvd_data);
+
+	this->base->expanded = true;
 }

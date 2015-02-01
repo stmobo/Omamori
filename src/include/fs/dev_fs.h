@@ -21,7 +21,8 @@ namespace device_manager {
 		void write_file( vfs_file* file, void* buffer, size_t size) {};
 		vfs_file* copy_file( vfs_file* file, vfs_directory* destination ) { return NULL; };
 		vfs_file* move_file( vfs_file* file, vfs_directory* destination ) { return NULL; };
-		vfs_directory* read_directory( vfs_directory* parent, vfs_node *child );
+		void read_directory( vfs_directory* parent, vfs_directory *child );
+		void cleanup_node( vfs_node* node ) { return; }; // do nothing
 
 		dev_fs();
 	};

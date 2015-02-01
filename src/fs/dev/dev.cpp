@@ -84,40 +84,62 @@ void dev_fs::read_file( vfs_file* file, void* buffer ) {
 	}
 }
 
-vfs_directory* dev_fs::read_directory( vfs_directory* parent, vfs_node *child ) {
+void dev_fs::read_directory( vfs_directory* parent, vfs_directory *child ) {
 	device_node* device = (device_node*)child->fs_info;
 
-	vfs_directory *out = new vfs_directory( parent, this, (void*)child->fs_info, child->name );
+	//vfs_directory *out = new vfs_directory( parent, this, (void*)child->fs_info, child->name );
 	for(unsigned int i=0;i<device->children.count();i++) {
-		vfs_directory* dir = new vfs_directory( out, this, (void*)device->children[i], (unsigned char*)device->children[i]->human_name  );
-		out->files.add_end(dir);
+		unsigned char* new_name = (unsigned char*)kmalloc(strlen(device->children[i]->human_name));
+
+		strcpy( new_name, (unsigned char*)device->children[i]->human_name );
+
+		for(unsigned int i=0;i<strlen(new_name);i++) {
+			if( new_name[i] == ' ' ) {
+				new_name[i] = '_';
+			}
+		}
+
+		vfs_directory* dir = new vfs_directory( child, this, (void*)device->children[i], new_name  );
+		child->files.add_end(dir);
 	}
+
+	//kprintf("dev_fs: device has %u resources.\n", device->resources.count());
 
 	for(unsigned int i=0;i<device->resources.count();i++) {
 		vfs_file* file = NULL;
-		switch(device->resources[i]->type) {
+		device_resource *rsc = device->resources[i];
+		switch(rsc->type) {
 		case res_type::memory:
 		{
-			file = new vfs_file( out, this, (void*)device->resources[i], (unsigned char*)concatentate_strings( const_cast<char*>("memory-"), itoa(i) ) );
+			char* n = itoa(i);
+			file = new vfs_file( child, this, (void*)rsc, (unsigned char*)concatentate_strings( const_cast<char*>("memory-"), n ) );
+			kfree(n);
 			break;
 		}
 		case res_type::io_port:
 		{
-			file = new vfs_file( out, this, (void*)device->resources[i], (unsigned char*)concatentate_strings( const_cast<char*>("ioport-"), itoa(i) ) );
+			char* n = itoa(i);
+			file = new vfs_file( child, this, (void*)rsc, (unsigned char*)concatentate_strings( const_cast<char*>("ioport-"), n ) );
+			kfree(n);
 			break;
 		}
 		case res_type::interrupt:
 		{
-			file = new vfs_file( out, this, (void*)device->resources[i], (unsigned char*)concatentate_strings( const_cast<char*>("interrupt-"), itoa(i) ) );
+			char* n = itoa(i);
+			file = new vfs_file( child, this, (void*)rsc, (unsigned char*)concatentate_strings( const_cast<char*>("interrupt-"), n ) );
+			kfree(n);
 			break;
 		}
+		default:
+		case res_type::unknown:
+		{
+			continue;
 		}
-		if( file != NULL ) {
-			out->files.add_end(file);
 		}
+		child->files.add_end(file);
 	}
 
-	return out;
+	//return out;
 }
 
 dev_fs::dev_fs() {
@@ -125,7 +147,17 @@ dev_fs::dev_fs() {
 
 	vfs_directory *out = new vfs_directory( NULL, this, (void*)device, NULL );
 	for(unsigned int i=0;i<device->children.count();i++) {
-		vfs_directory* dir = new vfs_directory( out, this, (void*)device->children[i], (unsigned char*)device->children[i]->human_name  );
+		unsigned char* new_name = (unsigned char*)kmalloc(strlen(device->children[i]->human_name));
+
+		strcpy( new_name, (unsigned char*)device->children[i]->human_name );
+
+		for(unsigned int i=0;i<strlen(new_name);i++) {
+			if( new_name[i] == ' ' ) {
+				new_name[i] = '_';
+			}
+		}
+
+		vfs_directory* dir = new vfs_directory( out, this, (void*)device->children[i], new_name  );
 		out->files.add_end(dir);
 	}
 
@@ -158,4 +190,6 @@ dev_fs::dev_fs() {
 	}
 
 	this->base = out;
+
+	this->base->expanded = true;
 }

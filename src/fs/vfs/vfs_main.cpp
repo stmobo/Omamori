@@ -38,6 +38,7 @@ vfs::vfs_status vfs::get_file_info( unsigned char* path, vfs_node** out ) {
 		return vfs_status::ok;
 	}
 
+	vfs_directory* last = NULL;
 	vfs_directory* cur = vfs_root;
 	for(unsigned int i=1;i<path_components.count();i++) {
 		bool found = false;
@@ -45,7 +46,14 @@ vfs::vfs_status vfs::get_file_info( unsigned char* path, vfs_node** out ) {
 			//kprintf("vfs_get_file_info: j=%u / %u\n", j, cur->files.count());
 			vfs_node* cur_node = cur->files[j];
 			if( strcmp(cur_node->name, path_components[i-1]) && (cur_node->type == vfs_node_types::directory) ) {
+				last = cur;
 				cur = (vfs_directory*)cur_node;
+
+				if( !(cur->expanded) ) {
+					cur->fs->read_directory( last, cur );
+				}
+				cur->expanded = true;
+
 				found = true;
 				break;
 			}
@@ -103,6 +111,18 @@ vfs::vfs_status vfs::list_directory(unsigned char* path, vector<vfs_node*>* out)
 	}
 
 	vfs_directory *dir = (vfs_directory*)node;
+	vfs_directory *parent;
+
+	stat = get_path_parent( path, &parent );
+	if( stat != vfs_status::ok ) {
+		return stat;
+	}
+
+	if( !(dir->expanded) ) {
+		dir->fs->read_directory( parent, dir );
+	}
+	dir->expanded = true;
+
 	for(unsigned int i=0;i<dir->files.count();i++) {
 		out->add_end( dir->files[i] );
 	}
@@ -113,12 +133,24 @@ vfs::vfs_status vfs::list_directory(unsigned char* path, vector<vfs_node*>* out)
 vfs::vfs_status vfs::create_directory( unsigned char* path ) {
 	vfs_directory* parent;
 	vfs_status stat;
+	unsigned char* name = vfs::get_filename(path);
 
 	if( (stat = get_path_parent( path, &parent )) != vfs_status::ok ) {
 		return stat;
 	}
 
-	vfs_node* new_node = (vfs_node*)parent->fs->create_directory( vfs::get_filename(path), parent );
+	if( !(parent->expanded) ) {
+		parent->fs->read_directory( (vfs_directory*)parent->parent, parent );
+	}
+	parent->expanded = true;
+
+	for(unsigned int i=0;i<parent->files.count();i++) {
+		if( strcmp( parent->files[i]->name, name ) ) {
+			return vfs_status::already_exists;
+		}
+	}
+
+	vfs_node* new_node = (vfs_node*)parent->fs->create_directory( name, parent );
 	parent->files.add(new_node);
 
 	return vfs_status::ok;
@@ -174,33 +206,55 @@ vfs::vfs_status vfs::write_file(unsigned char* path, void* buffer, size_t size) 
 
 	vfs_node *node;
 	stat = get_file_info( path, &node );
-	if( stat == vfs_status::not_found ) {
-		// file does not exist, create it
-		vfs_directory *parent;
 
-		if( (stat = get_path_parent( path, &parent )) != vfs_status::ok ) {
-			return stat;
+	if( !((buffer == NULL) || (size == 0)) ) {
+		if( stat == vfs_status::not_found ) {
+			// file does not exist, create it
+			vfs_directory *parent;
+
+			if( (stat = get_path_parent( path, &parent )) != vfs_status::ok ) {
+				return stat;
+			}
+
+			node = parent->fs->create_file( get_filename(path), parent );
+			parent->files.add_end( node );
+
+			stat = vfs_status::ok;
 		}
 
-		node = parent->fs->create_file( get_filename(path), parent );
-		parent->files.add_end( node );
+		if( stat == vfs_status::ok ) {
+			if( node->type == vfs_node_types::file ) {
+				node->fs->write_file((vfs_file*)node, buffer, size);
+				vfs_file* fn = (vfs_file*)node;
+				fn->size = size;
 
-		stat = vfs_status::ok;
-	}
+				return vfs_status::ok;
+			} else {
+				return vfs_status::incorrect_type;
+			}
+		}
 
-	if( stat == vfs_status::ok ) {
-		if( node->type == vfs_node_types::file ) {
-			node->fs->write_file((vfs_file*)node, buffer, size);
-			vfs_file* fn = (vfs_file*)node;
-			fn->size = size;
+		return stat;
+	} else { // just create the file, nothing more
+		if( stat == vfs_status::not_found ) {
+			vfs_directory *parent;
+
+			if( (stat = get_path_parent( path, &parent )) != vfs_status::ok ) {
+				return stat;
+			}
+
+			node = parent->fs->create_file( get_filename(path), parent );
+			parent->files.add_end( node );
 
 			return vfs_status::ok;
+		} else if( stat == vfs_status::ok ) {
+			return vfs_status::already_exists;
 		} else {
-			return vfs_status::incorrect_type;
+			return stat;
 		}
 	}
 
-	return stat;
+	return vfs_status::unknown_error;
 }
 
 vfs::vfs_status vfs::copy_file( unsigned char* to, unsigned char* from ) {

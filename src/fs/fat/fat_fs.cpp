@@ -9,9 +9,11 @@
 #include "core/vfs.h"
 #include "core/io.h"
 
-vfs_directory* fat_fs::fat_fs::read_directory( vfs_directory* parent, vfs_node *child ) {
-	fat_directory_entry *entry = (fat_directory_entry*)child->fs_info;
-	vfs_directory *out = new vfs_directory( parent, this, (void*)entry, child->name );
+void fat_fs::fat_fs::read_directory( vfs_directory* parent, vfs_directory *out ) {
+	fat_directory_entry *entry = (fat_directory_entry*)out->fs_info;
+	//vfs_directory *out = new vfs_directory( parent, this, (void*)entry, child->name );
+
+	//out->files.clear();
 
 	fat_cluster_chain directory_chain(this, entry->start_cluster());
 	void *directory_data = directory_chain.read();
@@ -78,7 +80,7 @@ vfs_directory* fat_fs::fat_fs::read_directory( vfs_directory* parent, vfs_node *
 			if(cur->attr & FAT_FILE_ATTR_DIRECTORY) {
 				node = new vfs_directory( out, this, tmp, name );
 			} else {
-				vfs_file *f = new vfs_file( this->base, this, tmp, name );
+				vfs_file *f = new vfs_file( out, this, tmp, name );
 				f->size = cur->fsize;
 				node = (vfs_node*)f;
 			}
@@ -92,7 +94,7 @@ vfs_directory* fat_fs::fat_fs::read_directory( vfs_directory* parent, vfs_node *
 
 	kfree(directory_data);
 
-	return out;
+	//return out;
 }
 
 // use to update fs_info in vfs_node
@@ -644,6 +646,8 @@ fat_fs::fat_fs::fat_fs( unsigned int part_no ) {
 		cur++;
 		bytes_read += sizeof(fat_directory_entry);
 	} while(bytes_read < directory_chain.get_size());
+
+	this->base->expanded = true;
 
 	kfree(directory_data);
 }

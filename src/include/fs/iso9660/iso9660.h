@@ -70,9 +70,9 @@ namespace iso9660 {
 		void delete_file( vfs_file* file ) {};
 		void read_file( vfs_file* file, void* buffer );
 		void write_file( vfs_file* file, void* buffer, size_t size) {};
-		vfs_file* copy_file( vfs_file* file, vfs_directory* destination ) { return NULL; };
-		vfs_file* move_file( vfs_file* file, vfs_directory* destination ) { return NULL; };
-		vfs_directory* read_directory( vfs_directory* parent, vfs_node *child );
+		//vfs_file* copy_file( vfs_file* file, vfs_directory* destination ) { return NULL; };
+		//vfs_file* move_file( vfs_file* file, vfs_directory* destination ) { return NULL; };
+		void read_directory( vfs_directory* parent, vfs_directory *child );
 
 		iso9660_fs( unsigned int device_id );
 	};

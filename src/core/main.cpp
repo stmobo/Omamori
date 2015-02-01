@@ -96,7 +96,7 @@ void test_process_1() {
     pci_check_all_buses();
 
     pci_get_int_routing();
-    while(true) { asm volatile("pause"); };
+    //while(true) { asm volatile("pause"); };
 
     kprintf("Initializing ATA storage.\n");
     ata::initialize();

@@ -123,47 +123,17 @@ unsigned char ps2_receive_byte(bool port2) {
     //kprintf("ps2_receive_byte: got data 0x%x.\n", (unsigned long long int)data);
 }
 
-bool irq1_handler() {
-    unsigned char data = io_inb(0x60);
+bool ps2_irq_handler( uint8_t irq_num ) {
+	unsigned char data = io_inb(0x60);
 
-    ps2_data *d = new ps2_data;
-    d->data = data;
-    d->port = false;
-
-    message m( (void*)d, sizeof(ps2_data) );
-    send_to_channel("ps2_data", m);
-
-    /*
-    port1_input_buffer[port1_data_head] = data;
-    port1_data_head = (port1_data_head+1) % 0x1000;
-    if(current_waiter != NULL) {
-        current_waiter->state = process_state::runnable;
-        process_add_to_runqueue( current_waiter );
-    }
-    */
-    return true;
-}
-
-bool irq12_handler() {
-    unsigned char data = io_inb(0x60);
-
-    ps2_data *d = new ps2_data;
+	ps2_data *d = new ps2_data;
 	d->data = data;
-	d->port = true;
+	d->port = ( irq_num == 12 );
 
 	message m( (void*)d, sizeof(ps2_data) );
 	send_to_channel("ps2_data", m);
 
-	/*
-#ifdef DEBUG
-    kprintf("IRQ 12! Data=0x%x\n", data);
-#endif
-    port2_input_buffer[port2_buffer_length] = data;
-    port2_buffer_length++;
-    if(port2_buffer_length > 255)
-        port2_buffer_length = 0;
-	*/
-    return true;
+	return ((irq_num == 1) || (irq_num == 12));
 }
 
 void ps2_set_interrupt_status(bool status, bool port2) {
@@ -292,8 +262,8 @@ void ps2_controller_init() {
     kprintf("Port 2 ident: 0x%x\n", port2_ident);
 #endif 
     // Now enable interrupts.
-    irq_add_handler( 1, (size_t)&irq1_handler );
-    irq_add_handler( 12, (size_t)&irq12_handler );
+    irq_add_handler( 1, &ps2_irq_handler );
+    irq_add_handler( 12, &ps2_irq_handler );
     ps2_send_command(PS2_CMD_WRITE_CCB);
     ps2_send_byte(PS2_CCB_PORT1_INT | PS2_CCB_PORT2_INT | PS2_CCB_SYS_FLAG | PS2_CCB_PORT1_CLK | PS2_CCB_PORT2_CLK, false);
 

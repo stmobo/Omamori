@@ -31,8 +31,8 @@ namespace ata {
 		device_manager::device_node* dev_node;
 
 		ata_controller( pci_device *dev );
-		static bool handle_irq();
-		static bool handle_irq14();
-		static bool handle_irq15();
+		static bool handle_irq( uint8_t irq_num );
+		static bool handle_irq14( uint8_t irq_num );
+		static bool handle_irq15( uint8_t irq_num );
 	};
 };

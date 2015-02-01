@@ -351,7 +351,7 @@ extern "C" {
 
     ACPI_OSD_HANDLER __acpi_irq;
     void* __acpi_irq_context;
-    bool __acpi_interrupt() {
+    bool __acpi_interrupt( uint8_t irq_num ) {
         __acpi_irq(__acpi_irq_context);
         return true;
     }
@@ -359,12 +359,12 @@ extern "C" {
     ACPI_STATUS AcpiOsInstallInterruptHandler(UINT32 InterruptLevel, ACPI_OSD_HANDLER Handler, void *Context) {
         __acpi_irq = Handler;
         __acpi_irq_context = Context;
-        irq_add_handler(InterruptLevel, (size_t)&__acpi_interrupt);
+        irq_add_handler(InterruptLevel, &__acpi_interrupt);
         return AE_OK;
     }
     
     ACPI_STATUS AcpiOsRemoveInterruptHandler(UINT32 InterruptNumber, ACPI_OSD_HANDLER Handler) {
-        irq_remove_handler(InterruptNumber, (size_t)&__acpi_interrupt);
+        irq_remove_handler(InterruptNumber, &__acpi_interrupt);
         return AE_OK;
     }
     

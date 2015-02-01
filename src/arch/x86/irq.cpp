@@ -11,7 +11,7 @@
 #include "arch/x86/multitask.h"
 #include "device/vga.h"
 
-vector<size_t> irq_handlers[256];
+vector<irq_handler> irq_handlers[256];
 signed int waiting_for = -1;
 bool do_wait = false;
 bool in_irq_context = false;
@@ -119,12 +119,12 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
 
 	if(irq_handlers[irq_num].length() > 0) {
 		for( unsigned int i=0;i<irq_handlers[irq_num].length();i++ ) {
-			bool(*handler)(void) = (bool(*)())(irq_handlers[irq_num].get(i)); // jump to the stored function pointer...
+			irq_handler handler = irq_handlers[irq_num].get(i); // jump to the stored function pointer...
 			if( handler == NULL ) {
 				irqsafe_kprintf("irq: NULL handler for irq %u?\n", irq_num);
 				continue;
 			}
-			if(handler()) {
+			if(handler( irq_num )) {
 				break; // irq's handled, we're done here
 			}
 		}
@@ -142,7 +142,7 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
     return;
 }
 
-bool irq_add_handler(int irq_num, size_t addr) {
+bool irq_add_handler(int irq_num, irq_handler addr) {
     for( unsigned int i=0;i<irq_handlers[irq_num].length();i++ ) {
         if( irq_handlers[irq_num].get(i) == addr ) {
             return false;
@@ -153,7 +153,7 @@ bool irq_add_handler(int irq_num, size_t addr) {
     return true;
 }
 
-bool irq_remove_handler(int irq_num, size_t addr) {
+bool irq_remove_handler(int irq_num, irq_handler addr) {
     for( unsigned int i=0;i<irq_handlers[irq_num].length();i++ ) {
         if( irq_handlers[irq_num].get(i) == addr ) {
             irq_handlers[irq_num].remove(i);

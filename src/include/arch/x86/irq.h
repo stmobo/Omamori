@@ -2,10 +2,12 @@
 #pragma once
 #include "includes.h"
 
+typedef bool(*irq_handler)(uint8_t);
+
 extern "C" {
     extern void do_irq(size_t,size_t,size_t);
-    extern bool irq_add_handler(int, size_t);
-    extern bool irq_remove_handler(int, size_t);
+    extern bool irq_add_handler(int, irq_handler);
+    extern bool irq_remove_handler(int, irq_handler);
     extern void block_for_irq(int);
     extern bool in_irq_context;
 }

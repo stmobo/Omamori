@@ -198,7 +198,7 @@ void uart_fifo_reader() {
 }
 
 // serial_irq - UART interrupt handler
-bool serial_irq() {
+bool serial_irq( uint8_t irq_num ) {
     short port = COM1_BASE_PORT;
     char iir;
     if( ((iir = io_inb(COM1_BASE_PORT+2)) & (IIR_INT_NOT_PENDING)) == 0 ) {
@@ -231,7 +231,7 @@ void initialize_serial(short base, short divisor) {
     
     uart_writer_process = new process( (size_t)&uart_fifo_writer, false, 0, "uart_writer", NULL, 0 );
     uart_reader_process = new process( (size_t)&uart_fifo_reader, false, 0, "uart_reader", NULL, 0 );
-    irq_add_handler(4, (size_t)&serial_irq);
+    irq_add_handler(4, &serial_irq);
     serial_enable_interrupts();
     serial_initialized = true;
 }

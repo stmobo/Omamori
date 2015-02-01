@@ -29,16 +29,27 @@ ata::ata_controller::ata_controller( pci_device *dev ) {
 	kprintf("ata: secondary channel at %s address %#x.\n", (this->device->registers[2].io_space ? "IO" : "Memory"), this->device->registers[2].raw );
 	kprintf("ata: secondary control at %s address %#x.\n", (this->device->registers[3].io_space ? "IO" : "Memory"), this->device->registers[3].raw );
 	*/
-	kprintf("ata: controller BMIDE registers at %s address %#x.\n", (this->device->registers[4].io_space ? "IO" : "Memory"), this->device->registers[4].raw);
+	kprintf("ata: controller BMIDE registers at %s address %#x.\n", (this->device->registers[4].io_space ? "IO" : "Memory"), this->device->registers[4].phys_address);
 	// PCI command register:
 	pci_write_config_16( this->device->bus, this->device->device, this->device->func, 0x04, 0x5 ); // Bus Master Enable | I/O Space Enable
 
 	// determine IRQs:
+	irq_add_handler(14, &this->handle_irq);
+	irq_add_handler(this->device->ints[0], &this->handle_irq);
+	irq_add_handler(this->device->ints[1], &this->handle_irq);
+	irq_add_handler(this->device->ints[2], &this->handle_irq);
+	irq_add_handler(this->device->ints[3], &this->handle_irq);
+
+	kprintf("ata: adding IRQ handlers to IRQs: 14 ", this->device->ints[0]);
+	kprintf("%u ", this->device->ints[1]);
+	kprintf("%u ", this->device->ints[2]);
+	kprintf("%u.", this->device->ints[3]);
+	/*
 	uint8_t prior_config = pci_read_config_8( this->device->bus, this->device->device, this->device->func, 0x3C );
 	uint8_t int_pin = pci_read_config_8( this->device->bus, this->device->device, this->device->func, 0x3D );
 	pci_write_config_8( this->device->bus, this->device->device, this->device->func, 0x3C, 0xFE );
 	if( pci_read_config_8( this->device->bus, this->device->device, this->device->func, 0x3C ) == 0xFE ) {
-		// device needs IRQ assignment (we'll just use IRQ14 in this case)
+		// device needs IRQ assignment (we'll just use pin 0 in this case)
 		kprintf("ata: controller IRQ assignment required (previous assignment was %u, interrupt pin is %u)\n", prior_config, int_pin);
 		irq_add_handler(14, (size_t)(&this->handle_irq));
 		pci_write_config_8( this->device->bus, this->device->device, this->device->func, 0x3C, 14 );
@@ -58,6 +69,7 @@ ata::ata_controller::ata_controller( pci_device *dev ) {
 			kprintf("ata: Interrupt Line field is for APIC\n");
 		}
 	}
+	*/
 
 	uint8_t test_ch0 = io_inb(this->primary_channel+7);
 	uint8_t test_ch1 = io_inb(this->secondary_channel+7);
@@ -86,8 +98,8 @@ ata::ata_controller::ata_controller( pci_device *dev ) {
 	this->ready = true;
 }
 
-bool ata::ata_controller::handle_irq() {
-	kprintf("ata: IRQ received.\n");
+bool ata::ata_controller::handle_irq( uint8_t irq_num ) {
+	kprintf("ata: IRQ %u received.\n", irq_num);
 	if( controller == NULL ) {
 		return false;
 	}
@@ -100,14 +112,14 @@ bool ata::ata_controller::handle_irq() {
 	return true;
 }
 
-bool ata::ata_controller::handle_irq14() {
+bool ata::ata_controller::handle_irq14( uint8_t irq_num ) {
 	if(controller->channels[0] != NULL) {
 		controller->channels[0]->irq();
 	}
 	return true;
 }
 
-bool ata::ata_controller::handle_irq15() {
+bool ata::ata_controller::handle_irq15( uint8_t irq_num ) {
 	if(controller->channels[1] != NULL) {
 		controller->channels[1]->irq();
 	}

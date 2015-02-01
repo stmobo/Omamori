@@ -20,7 +20,7 @@ double sys_timer_ms_fraction = 0;
 double ms_per_tick = 0; // (1/pit_frequency)*1000
 
 // This is called AFTER context switching, but before new task context is loaded.
-bool irq0_handler() {
+bool irq0_handler( uint8_t irq_num ) {
     /*
     if(multitasking_enabled) {
         kprintf("IRQ0!\nTimeslice counter: 0x%x!\n", (unsigned long long int)multitasking_timeslice_tick_count);
@@ -63,7 +63,7 @@ void pit_initialize(short reload_val) {
     pit_frequency = PIT_BASE_TIMER_SIGNAL / reload_val;
     ms_per_tick = (1/pit_frequency);
     set_pit_reload_val(reload_val);
-    irq_add_handler(0, (size_t)&irq0_handler);
+    irq_add_handler(0, &irq0_handler);
 
     device_manager::device_node* dev = new device_manager::device_node;
 	dev->child_id = device_manager::root.children.count();

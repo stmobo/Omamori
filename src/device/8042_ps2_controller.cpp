@@ -78,6 +78,11 @@ volatile unsigned int  port1_data_head = 0;
 volatile unsigned int  port1_data_tail = 0;
 process *current_waiter = NULL;
 
+struct ps2_data {
+	uint8_t data;
+	bool port;
+};
+
 // TODO: Make this use messaging
 unsigned char ps2_receive_byte(bool port2) {
     //kprintf("ps2_receive_byte: checking/waiting for data...\n");
@@ -87,6 +92,23 @@ unsigned char ps2_receive_byte(bool port2) {
     delete msg;
     return (unsigned char)data;
     */
+
+	channel_receiver ch = listen_to_channel("ps2_data");
+	while( true ) {
+		ch.wait();
+
+		message* m = ch.queue.remove(0);
+		if( m != NULL ) {
+			ps2_data* d = (ps2_data*)m->data;
+			if( d->port == port2 ) {
+				delete m;
+				return d->data;
+			}
+			delete m;
+		}
+	}
+
+	/*
     irq1_buffer_mutex.lock();
     current_waiter = process_current;
     while( true ) {
@@ -101,24 +123,43 @@ unsigned char ps2_receive_byte(bool port2) {
     port1_data_tail %= 0x1000;
     current_waiter = NULL;
     irq1_buffer_mutex.unlock();
+    */
     
     //kprintf("ps2_receive_byte: got data 0x%x.\n", (unsigned long long int)data);
-    return data;
 }
 
 bool irq1_handler() {
     unsigned char data = io_inb(0x60);
+
+    ps2_data *d = new ps2_data;
+    d->data = data;
+    d->port = false;
+
+    message m( (void*)d, sizeof(ps2_data) );
+    send_to_channel("ps2_data", m);
+
+    /*
     port1_input_buffer[port1_data_head] = data;
     port1_data_head = (port1_data_head+1) % 0x1000;
     if(current_waiter != NULL) {
         current_waiter->state = process_state::runnable;
         process_add_to_runqueue( current_waiter );
     }
+    */
     return true;
 }
 
 bool irq12_handler() {
     unsigned char data = io_inb(0x60);
+
+    ps2_data *d = new ps2_data;
+	d->data = data;
+	d->port = true;
+
+	message m( (void*)d, sizeof(ps2_data) );
+	send_to_channel("ps2_data", m);
+
+	/*
 #ifdef DEBUG
     kprintf("IRQ 12! Data=0x%x\n", data);
 #endif
@@ -126,6 +167,7 @@ bool irq12_handler() {
     port2_buffer_length++;
     if(port2_buffer_length > 255)
         port2_buffer_length = 0;
+	*/
     return true;
 }
 
@@ -283,6 +325,8 @@ void ps2_controller_init() {
 	dev->resources.add_end(res);
 
 	device_manager::root.children.add_end( dev );
+
+	register_channel("ps2_data");
 }
 
 uint16_t ps2_get_ident_bytes(bool port2) {

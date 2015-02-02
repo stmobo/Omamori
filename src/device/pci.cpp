@@ -99,6 +99,7 @@ void pci_get_int_routing() {
 	if( o->Type == ACPI_TYPE_PACKAGE ) {
 		ACPI_OBJECT *itr = o->Package.Elements;
 		kprintf("pci: PCI0._PRT returned %u elements\n", o->Package.Count);
+		device_manager::device_node* bus = pci_search_device_tree( 0, 0xFF, 0xFF );
 		for(unsigned int i=0;i<o->Package.Count;i++) {
 			if( itr->Type == ACPI_TYPE_PACKAGE ) {
 				ACPI_OBJECT *obj = itr->Package.Elements;
@@ -110,22 +111,24 @@ void pci_get_int_routing() {
 
 					//pci_intpin *p = new pci_intpin;
 					//p->bus = 0;
-					uint16_t device = ((addr & 0xFFFF0000) >> 16);
+					uint16_t device = ((addr >> 16) & 0xFFFF);
 
-					device_manager::device_node* dev = pci_search_device_tree( 0, device, 0xFF );
+					if( index != 0 ) {
+						for(unsigned int i=0;i<bus->children.count();i++) {
+							pci_device* dev_data = (pci_device*)bus->children[i]->device_data;
+							//kprintf("pci: bus0: %u/%u\n", dev_data->device, dev_data->func);
+							if( dev_data->device == device ) {
+								kprintf("pci: found interrupt for device %u, ", dev_data->device);
+								kprintf("function %u, ", dev_data->func);
+								kprintf("pin %u: ", pin);
+								kprintf("%u\n", index);
 
-					if( dev != NULL ) {
-						if( index != 0 ) {
-							kprintf("pci: found non-zero index value for device %u, ", device);
-							kprintf("pin %u: ", pin);
-							kprintf("%u\n", index);
-
-							pci_device *dev_data = (pci_device*)dev->device_data;
-							dev_data->ints[pin] = index;
+								dev_data->ints[pin] = index;
+							}
 						}
 					}
 				} else {
-					kprintf("pci: _PTR package object %u has incorrect number of elements\n", i);
+					kprintf("pci: _PRT package object %u has incorrect number of elements\n", i);
 				}
 			} else {
 				kprintf("pci: _PRT package object %u is not a package\n", i);

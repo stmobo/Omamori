@@ -98,6 +98,7 @@ void ata::ata_channel::irq() {
 	if( this->waiting_on_atapi_irq ) {
 		this->waiting_on_atapi_irq = false;
 	}
+	io_inb( this->base+7 ); // clear IRQ flag
 	process_wake( this->delayed_starter );
 }
 

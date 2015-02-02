@@ -234,3 +234,20 @@ void irq_end_interrupt( unsigned int irq_num ) {
 		lapic_eoi();
 	}
 }
+
+bool irq_get_in_service( unsigned int irq_num ) {
+	if( apics_initialized ) {
+		unsigned int reg_num = irq_num / 32;
+		unsigned int reg_offset = irq_num % 32;
+		uint32_t isr = lapic_read_register( 0x100 + (0x10*reg_num) );
+
+		return (( isr & (1<<reg_offset) ) > 0);
+	} else if( pic_8259_initialized ) {
+		if( irq_num > 16 )
+			return false;
+		uint16_t isr = pic_get_isr();
+		return ( ( isr & (1<<irq_num) ) > 0 );
+	} else {
+		return false;
+	}
+}

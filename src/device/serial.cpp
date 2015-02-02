@@ -3,25 +3,11 @@
 #include "arch/x86/sys.h"
 #include "arch/x86/irq.h"
 #include "core/scheduler.h"
+#include "core/message.h"
 #include "device/serial.h"
-#include "device/vga.h"
-#include "lib/sync.h"
-
-char input_buffer[SERIAL_BUFFER_SIZE];
-char output_buffer[SERIAL_BUFFER_SIZE];
-
-static unsigned int input_buffer_head = 0;
-static unsigned int input_buffer_tail = 0;
-
-static unsigned int output_buffer_head = 0;
-static unsigned int output_buffer_tail = 0;
-
-mutex     output_buffer_writers_mutex;
-mutex     input_buffer_readers_mutex;
-process *uart_read_wait_process = NULL;
+#include "lib/refcount.h"
 
 static process *uart_writer_process; 
-static process *uart_reader_process; 
 bool serial_initialized = false;
 
 // set_dlab - set or clear the DLAB bit.
@@ -103,6 +89,24 @@ char serial_receive(short base) {
     return io_inb(base);
 }
 
+/*
+unsigned char* read_uart( short base, size_t* len ) {
+	unsigned int bytes_read = 0;
+	vector<unsigned char> buf;
+	while( io_inb(base+LSR_OFFSET) & LSR_DATA_READY ) {
+		buf.add_end( io_inb(base) );
+	}
+	unsigned char* b2 = kmalloc(buf.count());
+	*len = buf.count();
+
+	for(unsigned int i=0;i<buf.count();i++) {
+		b2[i] = buf[i];
+	}
+
+	return b2;
+}
+
+
 unsigned int read_uart_fifo(short base) {
     unsigned int bytes_read = 0;
     while( io_inb(base+LSR_OFFSET) & LSR_DATA_READY ) {
@@ -115,6 +119,17 @@ unsigned int read_uart_fifo(short base) {
         process_add_to_runqueue(uart_read_wait_process);
     }
     return bytes_read;
+}
+
+
+unsigned int write_uart_fifo(short base) {
+    unsigned int bytes_written = 0;
+    while( (output_buffer_head != output_buffer_tail) && (io_inb(base+LSR_OFFSET) & LSR_EMPTY_TRANS_HOLD) ) {
+        io_outb(base, output_buffer[output_buffer_tail++]);
+        output_buffer_tail %= SERIAL_BUFFER_SIZE;
+        bytes_written++;
+    }
+    return bytes_written;
 }
 
 char* serial_read(int *ret_bytes) {
@@ -180,14 +195,7 @@ void serial_write(char* data) {
 }
 
 // bottom half processes
-void uart_fifo_writer() {
-    while(true) {
-        if( write_uart_fifo(COM1_BASE_PORT) == 0 ) {
-            process_switch_immediate();
-        }
-    }
-}
-
+/*
 void uart_fifo_reader() {
     while(true) {
         if( read_uart_fifo(COM1_BASE_PORT) == 0 ) {
@@ -196,26 +204,59 @@ void uart_fifo_reader() {
         }
     }
 }
+*/
+
+void uart_writer() {
+	channel_receiver ch = listen_to_channel("serial_xmit");
+    while(true) {
+    	ch.wait();
+
+    	unique_ptr<message> m = ch.queue.remove(0);
+
+    	unsigned short base;
+    	unsigned char* data = (unsigned char*)m->data;
+
+    	if( (io_inb(COM1_BASE_PORT+LSR_OFFSET) & LSR_EMPTY_TRANS_HOLD) == 0 ) {
+    		process_sleep();
+    	}
+
+    	for(unsigned int i=0;i<m->data_size;i++) {
+    		io_outb(COM1_BASE_PORT, data[i]);
+    	}
+    }
+}
 
 // serial_irq - UART interrupt handler
 bool serial_irq( uint8_t irq_num ) {
-    short port = COM1_BASE_PORT;
+    unsigned short port = COM1_BASE_PORT;
+    unsigned int port_int = 0;
     char iir;
     if( ((iir = io_inb(COM1_BASE_PORT+2)) & (IIR_INT_NOT_PENDING)) == 0 ) {
         port = COM1_BASE_PORT;
+        port_int = 1;
     } else if( ((iir = io_inb(COM2_BASE_PORT+2)) & (IIR_INT_NOT_PENDING)) == 0 ) {
         port = COM2_BASE_PORT;
+        port_int = 2;
     } else if( ((iir = io_inb(COM3_BASE_PORT+2)) & (IIR_INT_NOT_PENDING)) == 0 ) {
         port = COM3_BASE_PORT;
+        port_int = 3;
     } else if( ((iir = io_inb(COM4_BASE_PORT+2)) & (IIR_INT_NOT_PENDING)) == 0 ) {
         port = COM4_BASE_PORT;
+        port_int = 4;
     }
+
     if( (iir & 7) == 1 ) { // Transmitter holding buffer empty
-        uart_writer_process->state = process_state::runnable;
-        process_add_to_runqueue(uart_writer_process);
+        process_wake(uart_writer_process);
     } else if( (iir & 7) == 2 ) { // Received data
-        uart_writer_process->state = process_state::runnable;
-        process_add_to_runqueue(uart_reader_process);
+    	while( io_inb(port+LSR_OFFSET) & LSR_DATA_READY ) {
+			unsigned char data = io_inb(port);
+			serial_data* d = new serial_data;
+			d->data = data;
+			d->port = port_int;
+
+			message m( (void*)d, sizeof(serial_data) );
+			send_to_channel( "serial_recv", m );
+		}
     }
     
     return true;
@@ -229,8 +270,10 @@ void initialize_serial(short base, short divisor) {
     io_outb(base+FCR_IIR_OFFSET, FCR_FIFO_ON | FCR_FIFO_CLEAR_RECV | FCR_FIFO_CLEAR_TRANS | FCR_FIFO_INT_TRIG_14x);
     io_outb(base+MCR_OFFSET, MCR_DATA_TERM_READY | MCR_REQUEST_TO_SEND | MCR_AUX_OUT_2);
     
-    uart_writer_process = new process( (size_t)&uart_fifo_writer, false, 0, "uart_writer", NULL, 0 );
-    uart_reader_process = new process( (size_t)&uart_fifo_reader, false, 0, "uart_reader", NULL, 0 );
+    uart_writer_process = new process( (size_t)&uart_writer, false, 0, "uart_writer", NULL, 0 );
+    register_channel( "serial_recv" );
+    register_channel( "serial_xmit" );
+	spawn_process(uart_writer_process);
     irq_add_handler(4, &serial_irq);
     serial_enable_interrupts();
     serial_initialized = true;
@@ -238,10 +281,4 @@ void initialize_serial(short base, short divisor) {
 
 void initialize_serial() {
     return initialize_serial( COM1_BASE_PORT, LP_8N1 );
-}
-
-void flush_serial_buffer(void* n) {
-    while(output_buffer_head != output_buffer_tail) {
-        process_switch_immediate();
-    }
 }

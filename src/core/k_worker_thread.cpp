@@ -42,7 +42,7 @@ void k_worker_thread() {
 	}
 }
 
-k_work::work::work( unsigned int(*func)(void*, unsigned int), void* context_1, unsigned int context_2, bool auto_remove ) {
+k_work::work::work( work_func func, void* context_1, unsigned int context_2, bool auto_remove ) {
 	this->spawning_pid = process_current->id;
 	this->work_id = current_work_id++;
 	this->func = func;
@@ -104,7 +104,7 @@ unsigned int k_work::work::wait() {
 	return ret;
 }
 
-k_work::work* k_work::schedule( unsigned int(*func)(void*, unsigned int), void* context_1, unsigned int context_2, bool auto_remove ) {
+k_work::work* k_work::schedule( work_func func, void* context_1, unsigned int context_2, bool auto_remove ) {
 	k_work::work *work = new k_work::work(func, context_1, context_2, auto_remove);
 	work_queue.add_end(work);
 

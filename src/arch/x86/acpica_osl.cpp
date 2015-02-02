@@ -384,7 +384,9 @@ extern "C" {
     ACPI_STATUS AcpiOsExecute(uint32_t Type, void *Function, void *Context) {
         if( Function == NULL )
             return AE_BAD_PARAMETER;
-        process *proc = new process( (size_t)Function, false, 1, concatentate_strings("acpi_process", int_to_decimal(n_acpi_threads)), Context, 1 );
+        char* n = itoa(n_acpi_threads);
+        process *proc = new process( (size_t)Function, false, 1, concatentate_strings("acpi_process", n), Context, 1 );
+        kfree(n);
         if( proc ) {
             spawn_process( proc );
             acpi_threads = extend<process*>(acpi_threads, n_acpi_threads);

@@ -558,10 +558,10 @@ void kernel_main(multiboot_info_t* mb_info, unsigned int magic)
     */
     
     terminal_writestring("Test: ");
-    terminal_writestring(int_to_decimal(test2));
+    char* t = itoa(test2);
+    terminal_writestring(t);
+    kfree(t);
     kprintf("\nTest 2: %u / 0x%x\n.", test2, test2);
-    
-    atexit(&flush_serial_buffer, NULL);
     
     //block_for_interrupt(1);
     kprintf("Time since system startup: %u ticks.", get_sys_time_counter());

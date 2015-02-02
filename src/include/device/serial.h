@@ -67,24 +67,22 @@
 
 #define SERIAL_BUFFER_SIZE      2048
 
+typedef struct serial_data {
+	unsigned char data;
+	unsigned int port;
+} serial_data;
+
 extern void set_divisor(short, short);
 extern void set_lp_settings(short, short);
 extern void serial_enable_interrupts();
 extern void serial_disable_interrupts();
 extern int identify_uart(short);
 
-
 extern void serial_print_basic(char*);
 extern void serial_transmit(short,char);
 extern char serial_receive(short);
-
-extern unsigned int write_uart_fifo(short);
-extern unsigned int read_uart_fifo(short);
-extern char* serial_read();
-extern void serial_write(char*);
 
 extern void initialize_serial(short, short);
 extern void initialize_serial();
 
 extern bool serial_initialized;
-extern void flush_serial_buffer(void*);

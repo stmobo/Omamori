@@ -8,6 +8,7 @@
 #include "lib/sync.h"
 #include "arch/x86/debug.h"
 #include "core/scheduler.h"
+#include "core/message.h"
 #include "lib/print.h"
 
 const char* alphanumeric = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -1111,7 +1112,8 @@ int ksnprintf(char *out, size_t bufsz, const char *fmt, ...) {
 inline void __logger_do_writeout(char* o) {
 #ifdef ENABLE_SERIAL_LOGGING
     if( serial_initialized ) {
-        serial_write( o );
+        message m( (void*)o, strlen(o) );
+		send_to_channel( "serial_xmit", m );
     }
 #endif
     __kprintf_lock.lock();

@@ -179,8 +179,7 @@ void do_context_switch(uint32_t syscall_n, uint32_t arg1, uint32_t arg2, uint32_
         if( (process_current != NULL) && ((process_current->state == process_state::runnable) || (process_current->state == process_state::forking)) )
             process_add_to_runqueue( process_current );
         
-        uint16_t pic_isr = pic_get_isr();
-        if( pic_isr & 1 ) { // do IRQ0 code, but only if bit 0 of the collective ISR is set
+        if( irq_get_in_service(0) ) { // do IRQ0 code, but only if bit 0 of the collective ISR is set
             do_irq( 0, process_current->regs.eip, process_current->regs.cs ); // do_irq sends an EOI, so we don't need to do it ourselves.
             in_irq_context = true;
         }
@@ -208,7 +207,7 @@ void do_context_switch(uint32_t syscall_n, uint32_t arg1, uint32_t arg2, uint32_
             process_current->regs.eflags |= (1<<9); 
             process_current->regs.load_to_active();
         }
-        if( pic_isr & 1 ) { // were we in IRQ context?
+        if( irq_get_in_service(0) ) { // were we in IRQ context?
             in_irq_context = false; // well, we're not going to be anymore after this
         }
     }

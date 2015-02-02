@@ -35,15 +35,14 @@ ata::ata_controller::ata_controller( pci_device *dev ) {
 
 	// determine IRQs:
 	irq_add_handler(14, &this->handle_irq);
-	irq_add_handler(this->device->ints[0], &this->handle_irq);
-	irq_add_handler(this->device->ints[1], &this->handle_irq);
-	irq_add_handler(this->device->ints[2], &this->handle_irq);
-	irq_add_handler(this->device->ints[3], &this->handle_irq);
+	if( this->device->ints[0] != 0 ) { irq_add_handler(this->device->ints[0], &this->handle_irq); }
+	if( this->device->ints[1] != 0 ) { irq_add_handler(this->device->ints[1], &this->handle_irq); }
+	if( this->device->ints[2] != 0 ) { irq_add_handler(this->device->ints[2], &this->handle_irq); }
+	if( this->device->ints[3] != 0 ) { irq_add_handler(this->device->ints[3], &this->handle_irq); }
 
-	kprintf("ata: adding IRQ handlers to IRQs: 14 ", this->device->ints[0]);
-	kprintf("%u ", this->device->ints[1]);
-	kprintf("%u ", this->device->ints[2]);
-	kprintf("%u.", this->device->ints[3]);
+	kprintf("ata: ints array is at %#p\n", this->device->ints);
+
+	kprintf("ata: adding IRQ handlers to IRQs: 14 %u %u %u %u\n", this->device->ints[0], this->device->ints[1], this->device->ints[2], this->device->ints[3]);
 	/*
 	uint8_t prior_config = pci_read_config_8( this->device->bus, this->device->device, this->device->func, 0x3C );
 	uint8_t int_pin = pci_read_config_8( this->device->bus, this->device->device, this->device->func, 0x3D );
@@ -99,10 +98,10 @@ ata::ata_controller::ata_controller( pci_device *dev ) {
 }
 
 bool ata::ata_controller::handle_irq( uint8_t irq_num ) {
-	kprintf("ata: IRQ %u received.\n", irq_num);
 	if( controller == NULL ) {
 		return false;
 	}
+	irqsafe_kprintf("ata: IRQ %u received.\n", irq_num);
 	if(controller->channels[0] != NULL) {
 		controller->channels[0]->irq();
 	}
@@ -130,6 +129,12 @@ void ata::initialize() {
 	for(unsigned int i=0;i<pci_devices.count();i++) {
 		pci_device *current = pci_devices[i];
 		if( (current->class_code == 0x01) && (current->subclass_code == 0x01) ) {
+			device_manager::device_node* pci_dev = pci_search_device_tree( current->bus, current->device, current->func );
+			if( pci_dev == NULL ) {
+				continue;
+			}
+			current = (pci_device*)pci_dev->device_data;
+
 			kprintf("ata: found controller (device ID: %u [%u/%u/%u])\n", i, current->bus, current->device, current->func);
 			controller = new ata_controller( current );
 

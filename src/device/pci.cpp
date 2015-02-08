@@ -98,6 +98,7 @@ void pci_get_int_routing() {
 	// _PRT should return a package of packages
 	if( o->Type == ACPI_TYPE_PACKAGE ) {
 		ACPI_OBJECT *itr = o->Package.Elements;
+		kprintf("pci: reading PCI0._PRT.\n");
 		kprintf("pci: PCI0._PRT returned %u elements\n", o->Package.Count);
 		device_manager::device_node* bus = pci_search_device_tree( 0, 0xFF, 0xFF );
 		for(unsigned int i=0;i<o->Package.Count;i++) {
@@ -118,10 +119,10 @@ void pci_get_int_routing() {
 							pci_device* dev_data = (pci_device*)bus->children[i]->device_data;
 							//kprintf("pci: bus0: %u/%u\n", dev_data->device, dev_data->func);
 							if( dev_data->device == device ) {
-								kprintf("pci: found interrupt for device %u, ", dev_data->device);
-								kprintf("function %u, ", dev_data->func);
-								kprintf("pin %u: ", pin);
-								kprintf("%u\n", index);
+								//kprintf("pci: found interrupt for device %u, ", dev_data->device);
+								//kprintf("function %u, ", dev_data->func);
+								//kprintf("pin %u: ", pin);
+								//kprintf("%u\n", index);
 
 								dev_data->ints[pin] = index;
 							}
@@ -134,6 +135,21 @@ void pci_get_int_routing() {
 				kprintf("pci: _PRT package object %u is not a package\n", i);
 			}
 			itr++;
+		}
+		for(unsigned int i=0;i<bus->children.count();i++) {
+			pci_device* dev_data = (pci_device*)bus->children[i]->device_data;
+			if( dev_data->ints[0] != 0 ) {
+				kprintf("pci: IRQ routing for device 0/%u: ", dev_data->device);
+				for(unsigned int j=0;j<4;j++) {
+					if( dev_data->ints[j] != 0 ) {
+						kprintf("%u", dev_data->ints[j]);
+						if( j != 3 ) {
+							kprintf("-");
+						}
+					}
+				}
+				kprintf("\n");
+			}
 		}
 	} else {
 		kprintf("pci: _PRT didn't return package type\n");

@@ -123,11 +123,11 @@ void lapic_initialize() {
 
 	//system_enable_interrupts();
 
+	apics_initialized = true;
+
 	irqsafe_kprintf("apic: enabling local APIC.\n");
 	logger_flush_buffer();
 	lapic_write_register( 0xF0, 0x1FF );
-
-	apics_initialized = true;
 
 	system_enable_interrupts();
 

@@ -94,6 +94,8 @@ void test_process_1() {
     kprintf("Initializing PCI.\n");
     //pci_initialize();
     pci_check_all_buses();
+    //logger_flush_buffer();
+	//system_halt;
 
     pci_get_int_routing();
     //while(true) { asm volatile("pause"); };
@@ -101,6 +103,12 @@ void test_process_1() {
     kprintf("Initializing ATA storage.\n");
     ata::initialize();
     
+    kprintf("Initializing AHCI storage.\n");
+    ahci::initialize();
+
+    logger_flush_buffer();
+	system_halt;
+
     io_detect_disk( io_get_disk( 1 ) );
 
     kprintf("Scheduling work...\n");
@@ -169,9 +177,6 @@ void test_process_1() {
         }
         lua_close(st);
         //kprintf("Closed state..\n");
-        
-        kprintf("Initializing AHCI.\n");
-        ahci_initialize();
 
         // format partition 1 as FAT (using our own code):
         //fat32_do_format( 1 );

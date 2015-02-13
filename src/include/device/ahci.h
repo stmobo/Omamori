@@ -2,29 +2,25 @@
 
 #pragma once
 
-#define	SATA_SIG_SATA	0x00000101	// SATA drive
-#define	SATA_SIG_SATAPI	0xEB140101	// SATAPI drive
-#define	SATA_SIG_SEMB	0xC33C0101	// Enclosure management bridge
-#define	SATA_SIG_PM 	0x96690101	// Port multiplier
+namespace ahci {
+	enum device_types {
+		sata_drive = 0x00000101,
+		satapi_drive = 0xEB140101,
+		semb_drive = 0xC33C0101,
+		port_multiplier = 0x96690101,
+		none = 0,
+	};
 
-#define SATA_DEV_NULL   0
-#define SATA_DEV_SATA   1
-#define SATA_DEV_SATAPI 2
-#define SATA_DEV_SEMB   3
-#define SATA_DEV_PM     4
-
-	namespace ahci {
 	typedef enum fis_type {
-		FIS_TYPE_REG_H2D	= 0x27,	// Register FIS - host to device
-		FIS_TYPE_REG_D2H	= 0x34,	// Register FIS - device to host
-		FIS_TYPE_DMA_ACT	= 0x39,	// DMA activate FIS - device to host
-		FIS_TYPE_DMA_SETUP	= 0x41,	// DMA setup FIS - bidirectional
-		FIS_TYPE_DATA		= 0x46,	// Data FIS - bidirectional
-		FIS_TYPE_BIST		= 0x58,	// BIST activate FIS - bidirectional
-		FIS_TYPE_PIO_SETUP	= 0x5F,	// PIO setup FIS - device to host
-		FIS_TYPE_DEV_BITS	= 0xA1,	// Set device bits FIS - device to host
+		reg_h2d      = 0x27,	// Register FIS - host to device
+		reg_d2h	     = 0x34,	// Register FIS - device to host
+		activate_dma = 0x39,	// DMA activate FIS - device to host
+		setup_dma	 = 0x41,	// DMA setup FIS - bidirectional
+		data		 = 0x46,	// Data FIS - bidirectional
+		bist		 = 0x58,	// BIST activate FIS - bidirectional
+		setup_pio	 = 0x5F,	// PIO setup FIS - device to host
+		device_bits	 = 0xA1,	// Set device bits FIS - device to host
 	} fis_type;
-
 	struct fis_reg_h2d {
 		uint8_t fis_type;
 		uint8_t pmport_c; // first 4 bits are the port multiplier, and the last bit denotes command or control
@@ -132,79 +128,72 @@
 	} __attribute__((packed));
 
 	struct hba_port {
-		uint32_t   cmd_list; // command list base
-		uint32_t   cmd_list_upper;
-		uint32_t   fis_base; // received FIS base
-		uint32_t   fis_base_upper;
-		//uint32_t cmd_list;
-		//uint32_t cmd_list_upper;
-		//uint32_t fis_base;
-		//uint32_t fis_base_upper;
-		uint32_t int_status;
-		uint32_t int_enable;
-		uint32_t cmd_stat;
-		uint32_t rsvd0 = 0;
-		uint32_t task_fdata;
-		uint32_t sig;
-		uint32_t sata_stat;
-		uint32_t sata_ctrl;
-		uint32_t sata_error;
-		uint32_t sata_active;
-		uint32_t cmd_issue;
-		uint32_t stat_notify;
-		uint32_t fis_switch_ctrl;
-		uint32_t rsvd1[11];
-		uint32_t vendor[4];
+		uint32_t cmd_list; 		  // PxCLB
+		uint32_t cmd_list_upper;  // PxCLBU
+		uint32_t fis_base; 		  // PxFB
+		uint32_t fis_base_upper;  // PxFBU
+		uint32_t int_status;	  // PxIS
+		uint32_t int_enable;	  // PxIE
+		uint32_t cmd_stat;		  // PxCMD
+		uint32_t rsvd0 = 0;		  // reserved
+		uint32_t task_fdata;	  // PxTFD
+		uint32_t sig;			  // PxSIG
+		uint32_t sata_stat;		  // PxSSTS
+		uint32_t sata_ctrl;		  // PxSCTL
+		uint32_t sata_error;	  // PxSERR
+		uint32_t sata_active;	  // PxSACT
+		uint32_t cmd_issue;		  // PxCI
+		uint32_t stat_notify;	  // PxSNTF
+		uint32_t fis_switch_ctrl; // PxFBS
+		uint32_t rsvd1[11];		  // reserved
+		uint32_t vendor[4];		  // PxVS
 	} __attribute__((packed));
 
 	struct hba_mem {
-		uint32_t cap;
-		uint32_t ghc;
-		uint32_t is;
-		uint32_t pi;
-		uint32_t vs;
-		uint32_t ccc_ctrl;
-		uint32_t ccc_pts;
-		uint32_t em_loc;
-		uint32_t em_ctl;
-		uint32_t cap_ext;
-		uint32_t bohc;
+		uint32_t cap;		// 0x00
+		uint32_t ghc;		// 0x04
+		uint32_t is;		// 0x08
+		uint32_t pi;		// 0x0C
+		uint32_t vs;	 	// 0x10
+		uint32_t ccc_ctrl;  // 0x14
+		uint32_t ccc_pts;	// 0x18
+		uint32_t em_loc;	// 0x1C
+		uint32_t em_ctl;	// 0x20
+		uint32_t cap_ext;	// 0x24
+		uint32_t bohc;		// 0x28
 
-		uint8_t rsvd[0xA0-0x2C];
-		uint8_t vendor[0x100-0xA0];
+		uint8_t rsvd[0xA0-0x2C];	// 0x74 bytes
+		uint8_t vendor[0x100-0xA0]; // 0x60 bytes
 
 		volatile hba_port ports[32];
 	} __attribute__((packed));
 
 	struct fis_received {
 		fis_dma_setup dma_setup_fis;
-		uint32_t      pad0;
+		uint8_t 	  pad0[0x20-0x1C];
 
 		fis_pio_setup pio_setup_fis;
-		uint32_t      pad1;
+		uint8_t 	  pad1[0x40-0x34];
 
 		fis_reg_d2h   d2h_reg_fis;
-		uint32_t      pad2;
+		uint8_t 	  pad2[0x58-0x54];
 
 		fis_dev_bits  dev_bits_fis;
 
 		uint8_t       ufis[64];
-		uint8_t       rsvd[0x100 - 0xA0];
 	} __attribute__((packed));
 
 	struct cmd_header {
-		uint8_t lo_params;
+		uint16_t params;
 		// 0:4 - Command FIS length in Dwords, 2 - 16
 		// 5 - ATAPI bit
 		// 6 - Direction (1 - Host->Device, 0 - Device->Host)
 		// 7 - Prefetchable
-
-		uint8_t hi_params;
-		// 0 - Reset
-		// 1 - BIST
-		// 2 - Clear busy upon R_OK
-		// 3 - Reserved
-		// 4:7 - Port multiplier port
+		// 8 - Reset
+		// 9 - BIST
+		// 10 - Clear busy upon R_OK
+		// 11 - Reserved
+		// 12:15 - Port multiplier port
 
 		uint16_t prdt_length;
 
@@ -229,10 +218,21 @@
 
 		uint8_t rsvd[48];
 
-		volatile prdt_entry prdt[1];
+		prdt_entry prdt[1];
 	} __attribute__((packed)); // for ATAPI commands / devices: issue ATAPI_PACKET command, set atapi_cmd (above), and set the ATAPI bit in the cmd_header structure.
 
-	void initialize();
+	struct request {
+		page_frame *frame;
+		uintptr_t vaddr;
+
+		volatile cmd_table* tbl;
+
+		request();
+		~request();
+
+		request& operator=(request& rhs);
+		request(request&);
+	};
 
 	struct ahci_port {
 		unsigned int port_number;
@@ -242,7 +242,19 @@
 		uintptr_t command_list_virt;
 		uintptr_t received_fis_virt;
 
+		device_types type;
+
 		volatile hba_mem* hba;
 		volatile hba_port* registers;
+		volatile fis_received* received_fis;
+
+		void start_cmd();
+		void stop_cmd();
+		int find_cmd_slot();
+		bool identify( page_frame* dest_frame );
+		bool send_rw_command( bool write, uint64_t start, unsigned int count, page_frame* dest_pages );
 	};
+
+	void initialize();
+	bool interrupt( uint8_t irq_num );
 }

@@ -103,12 +103,12 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
     }
     
     in_irq_context = true;
-    /*
     if(irq_num != 0) {
-    	/*
     	irqsafe_kprintf("Handling irq: %u.\n", irq_num);
     	logger_flush_buffer();
-    	*//*
+    }
+
+	/*
     	char* n = itoa( irq_num );
     	terminal_writestring( "Handling irq: " );
     	terminal_writestring( n );

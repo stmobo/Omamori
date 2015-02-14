@@ -58,7 +58,9 @@ void lapic_write_register( uint32_t addr, uint32_t val ) {
 }
 
 void lapic_initialize() {
-	system_disable_interrupts();
+	//system_disable_interrupts();
+	interrupt_status_t int_stat = disable_interrupts();
+
 	lapic_vaddr = k_vmem_alloc(1);
 	paging_set_pte( lapic_vaddr, lapic_base, (1<<6) );
 
@@ -74,7 +76,8 @@ void lapic_initialize() {
 	ACPI_STATUS stat = AcpiGetTable( table_sig, 1, &madt_base );
 
 	if( stat != AE_OK ) {
-		system_enable_interrupts();
+		//system_enable_interrupts();
+		restore_interrupts(int_stat);
 		kprintf("apic: failed to retrieve MADT, error code 0x%x: %s\n", stat, const_cast<char*>(AcpiFormatException(stat)));
 		return;
 	}
@@ -129,7 +132,8 @@ void lapic_initialize() {
 
 	apics_initialized = true;
 
-	system_enable_interrupts();
+	//system_enable_interrupts();
+	restore_interrupts(int_stat);
 
 	// self-test IPI
 	kprintf("apic: self-test IPI 1.\n");

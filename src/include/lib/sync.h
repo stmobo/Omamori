@@ -1,6 +1,7 @@
 // sync.h
 #pragma once
 #include "includes.h"
+#include "arch/x86/sys.h"
 
 #define SPINLOCK_LOCKED_VALUE               0x0010CCED
 #define SPINLOCK_UNLOCKED_VALUE             0
@@ -8,7 +9,7 @@
 typedef class spinlock {
     uint32_t lock_value;
     uint32_t locker;
-    bool int_status;
+    interrupt_status_t int_status;
     
     public:
     spinlock();

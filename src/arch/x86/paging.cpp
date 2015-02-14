@@ -135,7 +135,7 @@ address_space::address_space() {
     if( (pd_frame != NULL) && (pd_vaddr != 0) ) {
         paging_set_pte( pd_vaddr, pd_frame->address, 0 );
         this->page_directory_physical = pd_frame->address;
-        this->page_directory = (uint32_t*)pd_vaddr;
+        this->page_directory = (virt_addr_t*)pd_vaddr;
         this->page_directory[1023] = this->page_directory_physical | 1;
         this->page_tables = new vector<page_table*>;
         this->ready = true;

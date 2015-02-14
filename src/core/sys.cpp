@@ -141,6 +141,24 @@ bool interrupts_enabled() {
     return ((eflags & (1<<9)) > 0);
 }
 
+interrupt_status_t disable_interrupts() {
+	uint32_t eflags;
+	asm volatile("pushf\n\t"
+	"pop %0\n\t"
+	: "=r"(eflags) : : "memory");
+	interrupt_status_t stat = ((eflags & (1<<9)) > 0);
+	asm volatile("cli" : : : "memory");
+	return stat;
+}
+
+void restore_interrupts( interrupt_status_t status ) {
+	if(status) {
+		asm volatile("sti" : : : "memory");
+	} else {
+		asm volatile("cli" : : : "memory");
+	}
+}
+
 /*
  * 64bit integer routines
  */

@@ -27,14 +27,16 @@ page_table::~page_table() {
     this->ready = false;
 }
 
-size_t page_table::map() {
-    size_t vaddr = k_vmem_alloc(1);
+virt_addr_t page_table::map() {
+    virt_addr_t vaddr = k_vmem_alloc(1);
     if( vaddr == NULL )
         return NULL;
     if( __sync_bool_compare_and_swap( &this->map_addr, NULL, vaddr ) ) {
-        system_disable_interrupts();
+        interrupt_status_t stat = disable_interrupts();
+    	//system_disable_interrupts();
         paging_set_pte(vaddr, this->paddr, 0);
-        system_enable_interrupts();
+        //system_enable_interrupts();
+        restore_interrupts(stat);
         return vaddr;
     }
     k_vmem_free(vaddr);
@@ -42,8 +44,7 @@ size_t page_table::map() {
 }
 
 void page_table::unmap() {
-    bool int_on = interrupts_enabled();
-    system_disable_interrupts();
+	interrupt_status_t stat = disable_interrupts();
 
     if( this->map_addr != NULL ) {
         paging_unset_pte( this->map_addr );
@@ -51,6 +52,5 @@ void page_table::unmap() {
         this->map_addr = NULL;
     }
 
-    if( int_on )
-        system_enable_interrupts();
+    restore_interrupts(stat);
 }

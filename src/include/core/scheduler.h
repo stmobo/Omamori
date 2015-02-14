@@ -31,32 +31,32 @@ enum struct process_state {
 };
 
 typedef struct page_table {
-    uint32_t paddr = NULL;
+    phys_addr_t paddr = NULL;
     int      flags = 0;
     int      pde_no = -1;
     bool     ready = false; // is true if the constructor was able to allocate all required resources.
     int      n_entries = 0;
     
-    size_t map_addr = NULL;
+    virt_addr_t map_addr = NULL;
     
-    size_t map();   // this function allocates a page of virtual memory to use for modifying the page table.
+    virt_addr_t map();   // this function allocates a page of virtual memory to use for modifying the page table.
     void unmap();   // this function deallocates the page allocated earlier with map_addr.
     page_table();   // Allocates space for the page table.
     ~page_table();  // Deallocates space for the page table.
 } page_table; 
 
 typedef struct address_space { // implementation in arch/paging.cpp
-    uint32_t                page_directory_physical = NULL; // paddr of the PD
-    uint32_t                *page_directory = NULL;         // a pointer to the PD's vaddr
+	phys_addr_t                page_directory_physical = NULL; // paddr of the PD
+    virt_addr_t                *page_directory = NULL;         // a pointer to the PD's vaddr
     vector<page_table*>     *page_tables = NULL;
     bool                    ready = false;
     
     void unmap_pde( int );
-    void map_pde( int, size_t, int );
-    bool map_new( size_t, int );
-    bool map( size_t, size_t, int );
-    void unmap( size_t );
-    uint32_t get( size_t );
+    void map_pde( int, phys_addr_t, int );
+    bool map_new( virt_addr_t, int );
+    bool map( virt_addr_t, phys_addr_t, int );
+    void unmap( virt_addr_t );
+    uint32_t get( virt_addr_t );
     address_space();
     ~address_space();
 } process_address_space;
@@ -94,7 +94,7 @@ typedef struct process {
     
     ~process();
     process( process* );
-    process( uint32_t entry_point, bool is_usermode, int priority, const char* name, void* args, int n_args );
+    process( virt_addr_t entry_point, bool is_usermode, int priority, const char* name, void* args, int n_args );
     
     void add_reference( process_ptr* );
     void remove_reference( process_ptr* );

@@ -106,8 +106,8 @@ void test_process_1() {
     kprintf("Initializing AHCI storage.\n");
     ahci::initialize();
 
-    logger_flush_buffer();
-	system_halt;
+    //logger_flush_buffer();
+	//system_halt;
 
     io_detect_disk( io_get_disk( 1 ) );
 

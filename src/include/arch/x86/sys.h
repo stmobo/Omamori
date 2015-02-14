@@ -1,3 +1,4 @@
+#pragma once
 #include "includes.h"
 #include <cpuid.h>
 
@@ -71,3 +72,6 @@ inline void write_msr( uint32_t msr_no, uint64_t value ) {
 	uint32_t a = (value & 0xFFFFFFFF);
 	asm volatile( "wrmsr" : : "a"(a), "c"(msr_no), "d"(d) );
 }
+
+interrupt_status_t disable_interrupts();
+void restore_interrupts( interrupt_status_t status );

@@ -52,11 +52,11 @@ unsigned long long int get_sys_time_counter() {
 }
 
 void set_pit_reload_val(short reload_val) {
-    system_disable_interrupts();
+    interrupt_status_t stat = disable_interrupts();
     io_outb(0x43, (3<<1) | (3<<3)); // set PIT command reg. to channel 0, sequential hi/lo byte access
     io_outb(0x40, (reload_val & 0xFF));
     io_outb(0x40, (reload_val >> 8)&0xFF);
-    system_enable_interrupts();
+    restore_interrupts(stat);
 }
 
 void pit_initialize(short reload_val) {

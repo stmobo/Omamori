@@ -15,14 +15,11 @@
 #define HEAP_INITIAL_ALLOCATION     0x400000
 #define HEAP_INITIAL_PHYS_ADDR      0x401000
 #define HEAP_INITIAL_PT_ADDR        (HEAP_INITIAL_PHYS_ADDR+HEAP_INITIAL_ALLOCATION+0x1000)
-//#define DMA_BUFFER_START			HEAP_INITIAL_PT_ADDR+0x1000
-//#define DMA_BUFFER_N_PAGES			2048
-// 8 MiB for DMA buffers
 
 typedef struct memory_range {
-    unsigned long long int base;
-    unsigned long long int end;
-    unsigned long long int length;
+    phys_addr_t base;
+    phys_addr_t end;
+    phys_diff_t length;
     int page_index_start;
     int page_index_end;
     int n_pageframes;
@@ -32,25 +29,16 @@ typedef struct pageframe {
     int id;
     int id_allocated_as;
     int order_allocated_as;
-    size_t address;
+    phys_addr_t address;
 } page_frame;
 
 #define AVL_ORDERING_ELEMENT length
 struct vaddr_range {
-    size_t address;
+    virt_addr_t address;
     bool free;
     struct vaddr_range *next;
     struct vaddr_range *prev;
 };
-
-/*
-typedef struct dma_frame_ll_element {
-    unsigned int id;
-    bool free;
-    dma_frame_ll_element *next;
-    dma_frame_ll_element *prev;
-} dma_frame_range;
-*/
 
 typedef struct vaddr_range vaddr_range;
 
@@ -85,50 +73,46 @@ extern void initialize_pageframes(multiboot_info_t*);
 // pageframe allocator stuff
 extern bool pageframe_get_block_status(int,int);
 extern void pageframe_set_block_status(int,int,bool);
-extern size_t pageframe_get_block_addr(int,int);
+extern phys_addr_t pageframe_get_block_addr(int,int);
 extern int pageframe_get_alloc_order(int);
-extern int pageframe_get_block_from_addr(size_t);
+extern int pageframe_get_block_from_addr(phys_addr_t);
 
 // pageframe allocation/deallocation functions
 extern page_frame* pageframe_allocate(int);
-extern page_frame* pageframe_allocate_at( size_t, int );
+extern page_frame* pageframe_allocate_at( phys_addr_t, int );
 extern page_frame* pageframe_allocate_specific(int,int);
 extern int pageframe_allocate_single(int);
 extern void pageframe_deallocate(page_frame*, int);
 extern void pageframe_deallocate_specific(int, int);
-/*
-extern page_frame* paging_allocate_dma_frames(unsigned int count);
-extern bool paging_free_dma_frames( page_frame *frames );
-*/
 
 // vmem allocation with arbitrary ranges
-extern size_t paging_vmem_alloc( vaddr_range*, size_t, int );
-extern size_t paging_vmem_alloc_specific( vaddr_range*, size_t, size_t );
-extern bool paging_vmem_free( vaddr_range*, size_t );
+extern virt_addr_t paging_vmem_alloc( vaddr_range*, virt_addr_t, int );
+extern virt_addr_t paging_vmem_alloc_specific( vaddr_range*, virt_addr_t, virt_addr_t );
+extern bool paging_vmem_free( vaddr_range*, virt_addr_t );
 
 // vmem allocation with the kernel allocator
-extern size_t k_vmem_alloc( int );
-extern size_t k_vmem_alloc( size_t, size_t );
-extern size_t k_vmem_free( size_t );
+extern virt_addr_t k_vmem_alloc( int );
+extern virt_addr_t k_vmem_alloc( virt_addr_t, virt_addr_t );
+extern virt_addr_t k_vmem_free( virt_addr_t );
 
 // misc. pageframe allocator functions
 extern void pageframe_restrict_range(size_t, size_t);
 
 // page table modification functions
-extern inline void invalidate_tlb(size_t);
-extern void paging_set_pte(size_t, size_t, uint16_t);
-extern uint32_t paging_get_pte(size_t);
-extern void paging_unset_pte(size_t);
+extern inline void invalidate_tlb(virt_addr_t);
+extern void paging_set_pte(virt_addr_t, phys_addr_t, uint16_t);
+extern uint32_t paging_get_pte(virt_addr_t);
+extern void paging_unset_pte(virt_addr_t);
 
 // combination vmem/pmem allocation functions
-extern size_t paging_map_phys_address( size_t, int );
-extern void paging_unmap_phys_address( size_t, int );
-extern size_t mmap(int);
+extern virt_addr_t paging_map_phys_address( phys_addr_t, int );
+extern void paging_unmap_phys_address( phys_addr_t, int );
+extern virt_addr_t mmap(int);
 extern void munmap(size_t);
 
 // misc.
-extern void copy_pageframe_range( uint32_t, uint32_t, int );
-extern page_frame* duplicate_pageframe_range( uint32_t, int );
+extern void copy_pageframe_range( phys_addr_t, phys_addr_t, int );
+extern page_frame* duplicate_pageframe_range( phys_addr_t, int );
 #ifdef __x86__
 inline void invalidate_tlb(size_t address) {
     asm volatile("invlpg (%0)" : : "r"(address) : "memory");

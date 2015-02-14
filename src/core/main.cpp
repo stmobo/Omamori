@@ -170,8 +170,8 @@ void test_process_1() {
         lua_close(st);
         //kprintf("Closed state..\n");
         
-        kprintf("Initializing AHCI.\n");
-        ahci_initialize();
+        //kprintf("Initializing AHCI.\n");
+        //ahci_initialize();
 
         // format partition 1 as FAT (using our own code):
         //fat32_do_format( 1 );

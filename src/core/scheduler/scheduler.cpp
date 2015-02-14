@@ -7,6 +7,7 @@
 
 #include "includes.h"
 #include "core/scheduler.h"
+#include "arch/x86/sys.h"
 
 process *process_current = NULL;
 vector<process*> system_processes;
@@ -105,7 +106,8 @@ bool is_valid_process( process* proc ) {
 }
 
 void process_scheduler() {
-    asm volatile("cli" : : : "memory");
+    //asm volatile("cli" : : : "memory");
+	interrupt_status_t int_stat = disable_interrupts();
     int current_priority = -1;
     for( int i=0;i<SCHEDULER_PRIORITY_LEVELS;i++ ) {
         if( run_queues[i].count() > 0 ) {
@@ -120,6 +122,7 @@ void process_scheduler() {
         asm volatile("sti" : : : "memory"); // make sure we actually can wake up from this
         system_wait_for_interrupt(); // sleep for a bit
         multitasking_enabled = true;
+        restore_interrupts(int_stat);
         return process_scheduler();
     }
 
@@ -129,7 +132,9 @@ void process_scheduler() {
             delete process_current;
             process_current = NULL;
         }
+        restore_interrupts(int_stat);
         return process_scheduler();
     }
+    restore_interrupts(int_stat);
     //kprintf("New pid=%u.\n", (unsigned long long int)process_current->id);
 }

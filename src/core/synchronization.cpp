@@ -14,8 +14,6 @@ spinlock::spinlock() {
     this->lock_value = SPINLOCK_UNLOCKED_VALUE;
 }
 
-// granted, this "spinlock" isn't really a spinlock at all, but this is a single-processor OS (for now), so...
-
 // Lock / Unlock, No interrupt disabling
 void spinlock::lock_no_cli() {
     if(multitasking_enabled) { // No point in locking if we're the only thing running THIS early on
@@ -52,8 +50,7 @@ void spinlock::lock() {
             }
 
             if( process_current != NULL ) {
-                this->int_status = interrupts_enabled();
-                asm volatile("cli" : : : "memory");
+                this->int_status = disable_interrupts();
                 this->locker = process_current->id;
             }
         }
@@ -65,9 +62,7 @@ void spinlock::unlock() {
         asm volatile("" : : : "memory");
         this->lock_value = SPINLOCK_UNLOCKED_VALUE;
         this->locker = 0;
-        if(this->int_status) {
-            asm volatile("sti" : : : "memory");
-        }
+        restore_interrupts( this->int_status );
     }
 }
 

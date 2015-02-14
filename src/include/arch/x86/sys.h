@@ -73,7 +73,5 @@ inline void write_msr( uint32_t msr_no, uint64_t value ) {
 	asm volatile( "wrmsr" : : "a"(a), "c"(msr_no), "d"(d) );
 }
 
-typedef bool interrupt_status_t;
-
 interrupt_status_t disable_interrupts();
 void restore_interrupts( interrupt_status_t status );

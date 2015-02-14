@@ -142,7 +142,7 @@ void do_irq(size_t irq_num, size_t eip, size_t cs) {
     return;
 }
 
-bool irq_add_handler(int irq_num, irq_handler addr) {
+bool irq_add_handler(irq_num_t irq_num, irq_handler addr) {
     for( unsigned int i=0;i<irq_handlers[irq_num].length();i++ ) {
         if( irq_handlers[irq_num].get(i) == addr ) {
             return false;
@@ -153,7 +153,7 @@ bool irq_add_handler(int irq_num, irq_handler addr) {
     return true;
 }
 
-bool irq_remove_handler(int irq_num, irq_handler addr) {
+bool irq_remove_handler(irq_num_t irq_num, irq_handler addr) {
     for( unsigned int i=0;i<irq_handlers[irq_num].length();i++ ) {
         if( irq_handlers[irq_num].get(i) == addr ) {
             irq_handlers[irq_num].remove(i);
@@ -162,7 +162,7 @@ bool irq_remove_handler(int irq_num, irq_handler addr) {
     return true;
 }
 
-void block_for_irq(int irq) {
+void block_for_irq(irq_num_t irq) {
     if((irq < 0) || (irq > 15))
         return;
     waiting_for = irq;
@@ -177,7 +177,7 @@ void block_for_irq(int irq) {
     pic_set_mask(mask);
 }
 
-void irq_set_mask(unsigned char irq, bool set) {
+void irq_set_mask(irq_num_t irq, bool set) {
 	if( apics_initialized ) {
 		ioapic_redir_entry ent = apic_get_gsi_vector( irq );
 		ent.masked = set;
@@ -193,7 +193,7 @@ void irq_set_mask(unsigned char irq, bool set) {
 	}
 }
 
-bool irq_get_mask(unsigned char irq) {
+bool irq_get_mask(irq_num_t irq) {
 	if( apics_initialized ) {
 		ioapic_redir_entry ent = apic_get_gsi_vector( irq );
 		return ent.masked;
@@ -222,7 +222,7 @@ void set_all_irq_status(bool status) {
 	}
 }
 
-void irq_end_interrupt( unsigned int irq_num ) {
+void irq_end_interrupt( irq_num_t irq_num ) {
 	if( apics_initialized ) {
 		//terminal_writestring( "irq: ending interrupt via LAPIC.\n" );
 		lapic_eoi();
@@ -235,7 +235,7 @@ void irq_end_interrupt( unsigned int irq_num ) {
 	}
 }
 
-bool irq_get_in_service( unsigned int irq_num ) {
+bool irq_get_in_service( irq_num_t irq_num ) {
 	if( apics_initialized ) {
 		irq_num += 32;
 		unsigned int reg_num = irq_num / 32;

@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "core/types.h"
 #include "core/sys.h"
 #include "lib/print.h"
 #include "core/dynmem.h"

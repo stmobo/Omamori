@@ -26,7 +26,7 @@ static mutex __frame_allocator_lock;
 
 bool pageframes_initialized = false;
 
-size_t pageframe_get_block_addr(int blk_num, int order) {
+phys_addr_t pageframe_get_block_addr(int blk_num, int order) {
     int zero_order_blk = blk_num*(1<<order);
     for(int i=0;i<n_mem_ranges;i++) {
         if( (memory_ranges[i].page_index_start <= zero_order_blk) && (zero_order_blk < memory_ranges[i].page_index_end) ) {
@@ -38,7 +38,7 @@ size_t pageframe_get_block_addr(int blk_num, int order) {
     return 0; // invalid page
 }
 
-int pageframe_get_block_from_addr(size_t address) {
+int pageframe_get_block_from_addr(phys_addr_t address) {
     size_t fourk_boundary = address - (address%0x1000);
     for(int i=0;i<n_mem_ranges;i++) {
         if( (memory_ranges[i].base <= fourk_boundary) && (fourk_boundary < memory_ranges[i].end) ) {
@@ -220,7 +220,7 @@ page_frame* pageframe_allocate(int n_frames) {
     return NULL;
 }
 
-page_frame* pageframe_allocate_at( size_t where, int n_frames ) {
+page_frame* pageframe_allocate_at( phys_addr_t where, int n_frames ) {
     // find out the order of the allocated frame
     where &= 0xFFFFF000;
     int where_frame = pageframe_get_block_from_addr( where );
@@ -390,7 +390,7 @@ void initialize_vmem_allocator() {
 
 
 // Allocate <n_pages> pages of virtual memory from a predefined list
-size_t paging_vmem_alloc( vaddr_range *start, size_t maximum_address, int n_pages) {
+virt_addr_t paging_vmem_alloc( vaddr_range *start, virt_addr_t maximum_address, int n_pages) {
     vaddr_range *current = start;
     size_t n_bytes = n_pages * 0x1000;
     while( current != NULL ) {
@@ -424,7 +424,7 @@ size_t paging_vmem_alloc( vaddr_range *start, size_t maximum_address, int n_page
 }
 
 // Allocate a specific memory range.
-size_t paging_vmem_alloc_specific( vaddr_range *start, size_t start_addr, size_t end_addr) {
+virt_addr_t paging_vmem_alloc_specific( vaddr_range *start, virt_addr_t start_addr, virt_addr_t end_addr) {
     vaddr_range *current = start;
     size_t n_bytes = end_addr - start_addr;
     while( current != NULL ) {
@@ -457,7 +457,7 @@ size_t paging_vmem_alloc_specific( vaddr_range *start, size_t start_addr, size_t
     return NULL;
 }
 
-bool paging_vmem_free( vaddr_range *start, size_t address ) {
+bool paging_vmem_free( vaddr_range *start, virt_addr_t address ) {
     vaddr_range *current = start;
     while( current != NULL ) {
         if( current->address == address ) {
@@ -503,19 +503,19 @@ bool paging_vmem_free( vaddr_range *start, size_t address ) {
     return false;
 }
 
-size_t k_vmem_alloc( int n_pages ) {
+virt_addr_t k_vmem_alloc( int n_pages ) {
     return paging_vmem_alloc( &k_vmem_linked_list, (size_t)0xFFC00000, n_pages );
 }
 
-size_t k_vmem_alloc( size_t begin, size_t end ) {
+virt_addr_t k_vmem_alloc( size_t begin, size_t end ) {
     return paging_vmem_alloc_specific( &k_vmem_linked_list, begin, end );
 }
 
-size_t k_vmem_free( size_t address ) {
+virt_addr_t k_vmem_free( size_t address ) {
     return paging_vmem_free( &k_vmem_linked_list, address );
 }
 
-size_t paging_map_phys_address( size_t paddr, int n_frames ) {
+virt_addr_t paging_map_phys_address( phys_addr_t paddr, int n_frames ) {
     page_frame *frames = pageframe_allocate_at( paddr, n_frames );
     size_t vaddr = k_vmem_alloc( n_frames );
     if( vaddr == NULL ) {
@@ -534,7 +534,7 @@ size_t paging_map_phys_address( size_t paddr, int n_frames ) {
     return NULL;
 }
 
-void paging_unmap_phys_address( size_t vaddr, int n_frames ) {
+void paging_unmap_phys_address( virt_addr_t vaddr, int n_frames ) {
     size_t base_paddr = paging_get_pte( vaddr&0xFFFFF000 ) & 0xFFFFF000;
     int base_id = pageframe_get_block_from_addr( base_paddr );
     page_frame *frame = (page_frame*)kmalloc(sizeof(page_frame));
@@ -553,7 +553,7 @@ void paging_unmap_phys_address( size_t vaddr, int n_frames ) {
     k_vmem_free( vaddr );
 }
 
-void copy_pageframe_range( uint32_t src_page, uint32_t dst_page, int n_pages ) {
+void copy_pageframe_range( phys_addr_t src_page, phys_addr_t dst_page, int n_pages ) {
     src_page &= 0xFFFFF000;
     dst_page &= 0xFFFFF000;
     
@@ -576,7 +576,7 @@ void copy_pageframe_range( uint32_t src_page, uint32_t dst_page, int n_pages ) {
     k_vmem_free(tmp_pages);
 }
 
-page_frame* duplicate_pageframe_range( uint32_t src_page, int n_pages ) {
+page_frame* duplicate_pageframe_range( phys_addr_t src_page, int n_pages ) {
     src_page &= 0xFFFFF000;
     
     size_t tmp_pages = k_vmem_alloc(2);
@@ -600,7 +600,7 @@ page_frame* duplicate_pageframe_range( uint32_t src_page, int n_pages ) {
     return new_frames;
 }
 
-size_t mmap(int n_pages) {
+virt_addr_t mmap(int n_pages) {
     size_t alloc_start = k_vmem_alloc(n_pages);
     page_frame *alloc_frames = pageframe_allocate(n_pages);
     if( alloc_start != NULL && alloc_frames != NULL ) {
@@ -611,7 +611,7 @@ size_t mmap(int n_pages) {
     return alloc_start;
 }
 
-void munmap(size_t alloc_start, int n_pages) {
+void munmap(virt_addr_t alloc_start, int n_pages) {
     for(int i=0;i<n_pages;i++) {
         size_t vaddr = alloc_start + (i*0x1000);
         size_t paddr = paging_get_pte( vaddr ) & 0xFFFFF000;

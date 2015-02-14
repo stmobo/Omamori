@@ -26,7 +26,7 @@ static mutex __frame_allocator_lock;
 
 bool pageframes_initialized = false;
 
-static dma_frame_range dma_allocator;
+//static dma_frame_range dma_allocator;
 
 size_t pageframe_get_block_addr(int blk_num, int order) {
     int zero_order_blk = blk_num*(1<<order);
@@ -338,7 +338,7 @@ void initialize_pageframes(multiboot_info_t* mb_info) {
     pageframe_restrict_range( HEAP_INITIAL_PT_ADDR, HEAP_INITIAL_PT_ADDR+0xFFF );
     pageframe_restrict_range( 0, 0x400000 );
     pageframe_restrict_range( HEAP_INITIAL_PHYS_ADDR, HEAP_INITIAL_PHYS_ADDR+HEAP_INITIAL_ALLOCATION );
-    pageframe_restrict_range( DMA_BUFFER_START, DMA_BUFFER_START+(0x1000*DMA_BUFFER_N_PAGES) );
+    //pageframe_restrict_range( DMA_BUFFER_START, DMA_BUFFER_START+(0x1000*DMA_BUFFER_N_PAGES) );
     //k_vmem_alloc( 0xC0000000, 0xC0400000 );
     k_vmem_alloc( (size_t)buddy_maps, (size_t)(((size_t)buddy_maps)+((BUDDY_MAX_ORDER+1)*sizeof(size_t*))) );
     kprintf("Map of buddy maps begins at 0x%x and ends at 0x%x\n", (unsigned long long int)buddy_maps, (unsigned long long int)(((size_t)buddy_maps)+((BUDDY_MAX_ORDER+1)*sizeof(size_t*))) );
@@ -645,6 +645,7 @@ int pageframe_allocate_single(int order) {
     return frame_id;
 }
 
+/*
 page_frame* paging_allocate_dma_frames(unsigned int count) {
 	dma_frame_range *current = &dma_allocator;
 	bool found = false;
@@ -723,3 +724,4 @@ bool paging_free_dma_frames( page_frame *frames ) {
     }
     return false;
 }
+*/

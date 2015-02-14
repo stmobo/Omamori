@@ -62,12 +62,22 @@ void ahci::initialize() {
             		p->registers->fis_base = p->control_mem_phys->address+0x400;
 
             		p->command_list_virt = k_vmem_alloc(1);
-            		p->received_fis_virt = p->command_list_virt+0x400;
-            		p->received_fis = (volatile fis_received*)p->received_fis_virt;
 
             		paging_set_pte( p->command_list_virt, p->control_mem_phys->address, (1<<6) );
 
+            		p->received_fis_virt = p->command_list_virt+0x400;
+
+            		p->received_fis = (volatile fis_received*)p->received_fis_virt;
+            		p->cmd_list = (cmd_header*)p->command_list_virt;
+            		p->c_tbl = (volatile cmd_table*)p->command_list_virt+0x400+sizeof(fis_received);
+
+            		p->cmd_list[0].cmdt_addr = p->control_mem_phys->address+0x400+sizeof(fis_received);
+
             		kprintf("ahci: Port registers mapped to %#p\n", (void*)p->registers);
+            		kprintf("ahci: Command list at %#x\n", p->command_list_virt);
+            		kprintf("ahci: Received FIS at %#x\n", p->command_list_virt+0x400);
+            		kprintf("ahci: Command table at %#x\n", p->command_list_virt+0x400+sizeof(fis_received));
+            		logger_flush_buffer();
 
             		ports.add_end(p);
 
@@ -75,9 +85,27 @@ void ahci::initialize() {
             		uint8_t ipm = (stat >> 8) & 0x0F;
             		uint8_t det = stat & 0x0F;
 
-            		p->registers->int_enable = 0xFF;
+            		// disable power state transitions
+            		p->registers->sata_ctrl |= 0x300;
 
-            		p->start_cmd();
+            		// clear int state
+            		p->registers->int_status = p->registers->int_status;
+
+            		// enable all interrupts
+					p->registers->int_enable = 0xFF;
+
+					// clear error bits
+					p->registers->sata_error = p->registers->sata_error;
+
+					p->registers->cmd_stat |= (1<<2); // power on device
+
+					p->registers->cmd_stat |= (1<<1); // spin up device
+
+					p->registers->cmd_stat = (p->registers->cmd_stat & ~(0xF<<28)) | (1<<28); // enable link
+
+					p->registers->cmd_stat |= (1<<4); // enable FIS Receive DMA
+
+					p->registers->cmd_stat |= 1; 	 // start command list processing
 
             		if( det == 3 ) {
             			if( ipm == 1 ) {
@@ -176,26 +204,7 @@ int ahci::ahci_port::find_cmd_slot() {
 }
 
 bool ahci::ahci_port::identify( page_frame *dest_frame ) {
-	// construct a table
-	int command_slot = this->find_cmd_slot();
-
-	if( command_slot == -1 ) {
-		kprintf("ahci::identify - cannot find free command slot on port %u\n", this->port_number);
-		return false;
-	} else {
-		kprintf("ahci::identify - using command slot %d\n", command_slot);
-	}
-	logger_flush_buffer();
-
-	page_frame* table_frame = pageframe_allocate(1);
-	uintptr_t table_ptr = k_vmem_alloc(1);
-
-	paging_set_pte( table_ptr, table_frame->address, (1<<6) );
-
-	cmd_table* cmd = (cmd_table*)table_ptr;
-	fis_reg_h2d* fis = (fis_reg_h2d*)(cmd->cmd_fis);
-
-	kprintf("ahci::identify - command table at %#x\n", table_ptr);
+	fis_reg_h2d* fis = (fis_reg_h2d*)(this->c_tbl->cmd_fis);
 	logger_flush_buffer();
 
 	fis->dev_sel = 0;
@@ -205,20 +214,16 @@ bool ahci::ahci_port::identify( page_frame *dest_frame ) {
 	fis->pmport_c = 0x80;
 	fis->count_lo = 1;
 
-	cmd->prdt[0].count = 512 | (1<<31);
-	cmd->prdt[0].dba = dest_frame->address;
+	this->c_tbl->prdt[0].count = 512 | (1<<31);
+	this->c_tbl->prdt[0].dba = dest_frame->address;
 
-	// fill in the command slot
-	cmd_header* hdr = (cmd_header*)this->command_list_virt;
-	hdr[command_slot].prdt_length = 1;
-	hdr[command_slot].prd_bytes_transferred = 512;
-	hdr[command_slot].cmdt_addr = table_frame->address;
-	hdr[command_slot].params = 4;
+	this->cmd_list->prdt_length = 1;
+	this->cmd_list->params = 4;
 
 	channel_receiver ahci_int = listen_to_channel("ahci_interrupt");
 
 	// set CI
-	this->registers->cmd_issue |= (1<<command_slot);
+	this->registers->cmd_issue = 1;
 
 	//then wait for TFD.BSY and CI to clear
 	while(true) {
@@ -229,19 +234,28 @@ bool ahci::ahci_port::identify( page_frame *dest_frame ) {
 		//unsigned int port = m->data_size;
 		//delete m;
 
+		if( (this->registers->task_fdata & ATA_SR_BSY) > 0) {
+			kprintf("ahci: drive has status BSY\n");
+		}
+
+		if( (this->registers->task_fdata & ATA_SR_DRQ) > 0) {
+			kprintf("ahci: drive has status DRQ\n");
+		}
+
+		if( (this->registers->task_fdata & ATA_SR_ERR) > 0) {
+			kprintf("ahci: drive has status ERR\n");
+		}
+		logger_flush_buffer();
+
 		//if( port == this->port_number ) {
-			if( ((this->registers->task_fdata & ATA_SR_BSY) > 0) && ((this->registers->cmd_issue & (1<<command_slot)) > 0) ) {
+			if( ((this->registers->task_fdata & ATA_SR_BSY) > 0) || ((this->registers->cmd_issue & 1) > 0) ) {
+				asm volatile("pause");
+			} else {
 				// command's complete
 				break;
-			} else {
-				asm volatile("pause");
 			}
 		//}
 	}
-
-	paging_unset_pte( table_ptr );
-	pageframe_deallocate( table_frame, 1 );
-	k_vmem_free( table_ptr );
 
 	return true;
 }

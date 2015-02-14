@@ -2,6 +2,7 @@
 #include "arch/x86/isr.h"
 
 extern void paging_handle_pagefault(char, uint32_t, uint32_t, uint32_t);
+extern bool in_pagefault;
 
 // when we enter these functions, our stack will look like:
 // ... program stack ...
@@ -87,6 +88,7 @@ void do_isr_pagefault(size_t err, size_t eip, size_t cs) {
     uint32_t cr2;
     asm volatile("mov %%cr2, %0" : "=g"(cr2) : : "memory");
     paging_handle_pagefault(err, cr2, eip, cs);
+    in_pagefault = false;
     //halt_err(err, eip, cs, "Page fault");
 }
     

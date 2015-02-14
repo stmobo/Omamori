@@ -15,8 +15,8 @@
 #define HEAP_INITIAL_ALLOCATION     0x400000
 #define HEAP_INITIAL_PHYS_ADDR      0x401000
 #define HEAP_INITIAL_PT_ADDR        (HEAP_INITIAL_PHYS_ADDR+HEAP_INITIAL_ALLOCATION+0x1000)
-#define DMA_BUFFER_START			HEAP_INITIAL_PT_ADDR+0x1000
-#define DMA_BUFFER_N_PAGES			2048
+//#define DMA_BUFFER_START			HEAP_INITIAL_PT_ADDR+0x1000
+//#define DMA_BUFFER_N_PAGES			2048
 // 8 MiB for DMA buffers
 
 typedef struct memory_range {
@@ -43,12 +43,14 @@ struct vaddr_range {
     struct vaddr_range *prev;
 };
 
+/*
 typedef struct dma_frame_ll_element {
     unsigned int id;
     bool free;
     dma_frame_ll_element *next;
     dma_frame_ll_element *prev;
 } dma_frame_range;
+*/
 
 typedef struct vaddr_range vaddr_range;
 
@@ -94,8 +96,10 @@ extern page_frame* pageframe_allocate_specific(int,int);
 extern int pageframe_allocate_single(int);
 extern void pageframe_deallocate(page_frame*, int);
 extern void pageframe_deallocate_specific(int, int);
+/*
 extern page_frame* paging_allocate_dma_frames(unsigned int count);
 extern bool paging_free_dma_frames( page_frame *frames );
+*/
 
 // vmem allocation with arbitrary ranges
 extern size_t paging_vmem_alloc( vaddr_range*, size_t, int );

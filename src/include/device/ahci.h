@@ -247,6 +247,8 @@ namespace ahci {
 		volatile hba_mem* hba;
 		volatile hba_port* registers;
 		volatile fis_received* received_fis;
+		volatile cmd_table* c_tbl;
+		cmd_header* cmd_list;
 
 		void start_cmd();
 		void stop_cmd();

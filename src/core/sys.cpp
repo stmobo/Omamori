@@ -4,6 +4,7 @@
 #include "core/sys.h"
 #include "core/dynmem.h"
 #include "device/vga.h"
+#include "arch/x86/sys.h"
 
 void *__stack_chk_guard = NULL;
 

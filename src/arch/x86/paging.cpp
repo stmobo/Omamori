@@ -367,7 +367,7 @@ void paging_handle_pagefault(char error_code, uint32_t cr2, uint32_t eip, uint32
     if(in_pagefault) { // don't want to recursively pagefault (yet)
         recursive_cr2 = cr2;
         recursive_ins = eip;
-        panic("paging: page fault in page fault handler!\npaging: initial CR2: 0x%x\npaging: recursive CR2: 0x%x", panic_cr2, recursive_cr2);
+        panic("paging: page fault in page fault handler!\npaging: initial CR2/ins: 0x%x, 0x%x\npaging: recursive CR2/ins: 0x%x, 0x%x", panic_cr2, panic_ins, recursive_cr2, recursive_ins);
     }
     panic_cr2 = cr2;
     panic_ins = eip;

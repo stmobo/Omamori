@@ -112,8 +112,43 @@ _isr_gpfault:
     jmp _isr_call_cpp_func
     
 _isr_pagefault:
-    push $do_isr_pagefault
-    jmp _isr_call_cpp_func
+    #push $do_isr_pagefault
+    #jmp _isr_call_cpp_func
+
+    # make sure we don't mess up any running programs
+    #-16:  Return EFLAGS
+    #-12:  Return CS
+    # -8:  Return EIP
+    # -4:  Exception number / error code
+    # ESP: Function address
+    pusha
+
+    # -44: EFLAGS
+    # -40: Return CS
+    # -36: Return Address
+    # -32: ErrCode
+    # -28: EAX
+    # -24: ECX
+    # -20: EDX
+    # -16: EBX
+    # -12: ESP (pre-call)
+    # -8 : EBP
+    # -4 : ESI
+    # ESP: EDI
+
+    movl $do_isr_pagefault, %eax # get func addr
+    movl 32(%esp), %ebx # get err code (ISR vector no. if no err code)
+    movl 36(%esp), %ecx # saved EIP
+    movl 40(%esp), %edx # saved CS
+    push %edx
+    push %ecx
+    push %ebx
+    call *%eax # call cpp handler func
+    add $12, %esp
+
+    popa
+    add $4, %esp
+    iret
     
 _isr_fpexcept:
     push $15

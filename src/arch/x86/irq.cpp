@@ -237,6 +237,7 @@ void irq_end_interrupt( unsigned int irq_num ) {
 
 bool irq_get_in_service( unsigned int irq_num ) {
 	if( apics_initialized ) {
+		irq_num += 32;
 		unsigned int reg_num = irq_num / 32;
 		unsigned int reg_offset = irq_num % 32;
 		uint32_t isr = lapic_read_register( 0x100 + (0x10*reg_num) );

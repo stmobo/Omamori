@@ -26,8 +26,6 @@ static mutex __frame_allocator_lock;
 
 bool pageframes_initialized = false;
 
-static dma_frame_range dma_allocator;
-
 size_t pageframe_get_block_addr(int blk_num, int order) {
     int zero_order_blk = blk_num*(1<<order);
     for(int i=0;i<n_mem_ranges;i++) {
@@ -338,7 +336,6 @@ void initialize_pageframes(multiboot_info_t* mb_info) {
     pageframe_restrict_range( HEAP_INITIAL_PT_ADDR, HEAP_INITIAL_PT_ADDR+0xFFF );
     pageframe_restrict_range( 0, 0x400000 );
     pageframe_restrict_range( HEAP_INITIAL_PHYS_ADDR, HEAP_INITIAL_PHYS_ADDR+HEAP_INITIAL_ALLOCATION );
-    pageframe_restrict_range( DMA_BUFFER_START, DMA_BUFFER_START+(0x1000*DMA_BUFFER_N_PAGES) );
     //k_vmem_alloc( 0xC0000000, 0xC0400000 );
     k_vmem_alloc( (size_t)buddy_maps, (size_t)(((size_t)buddy_maps)+((BUDDY_MAX_ORDER+1)*sizeof(size_t*))) );
     kprintf("Map of buddy maps begins at 0x%x and ends at 0x%x\n", (unsigned long long int)buddy_maps, (unsigned long long int)(((size_t)buddy_maps)+((BUDDY_MAX_ORDER+1)*sizeof(size_t*))) );
@@ -643,83 +640,4 @@ int pageframe_allocate_single(int order) {
         }
     }
     return frame_id;
-}
-
-page_frame* paging_allocate_dma_frames(unsigned int count) {
-	dma_frame_range *current = &dma_allocator;
-	bool found = false;
-	while( current != NULL ) {
-		if( current->free ) {
-			unsigned int len = DMA_BUFFER_N_PAGES-1;
-			if( current->next != NULL ) {
-				len = current->next->id - 1;
-			}
-			len -= current->id;
-			if( len == count ) {
-				current->free = false;
-				found = true;
-				break;
-			} else if( len > count ) {
-				current->free = false;
-				dma_frame_range *next = current->next;
-				current->next = new dma_frame_range;
-				current->next->free = true;
-				current->next->id = (current->id)+count;
-
-				current->next->prev = current;
-				current->next->next = next;
-				if(next != NULL) {
-					next->prev = current->next;
-				}
-				found = true;
-				break;
-			}
-		}
-		current = current->next;
-	}
-	if( found ) {
-		page_frame *frames = new page_frame[count];
-		for(unsigned int i=0;i<count;i++) {
-			frames[i].address = DMA_BUFFER_START + ((current->id+i)*0x1000);
-			frames[i].id = (current->id + i);
-			frames[i].id_allocated_as = -1;
-			frames[i].order_allocated_as = -1;
-		}
-		return frames;
-	}
-	return NULL;
-}
-
-bool paging_free_dma_frames( page_frame *frames ) {
-	dma_frame_range *current = &dma_allocator;
-	if( !(frames[0].order_allocated_as == -1) ) {
-		return false;
-	}
-
-    while( current != NULL ) {
-        if( current->id == frames[0].id ) {
-            current->free = true;
-            if( ( current->prev != NULL ) && current->prev->free ) {
-                current->prev->next = current->next;
-                if( current->next ) {
-                    current->next->prev = current->prev;
-                }
-
-                delete current;
-            } else if( ( current->next != NULL ) && current->next->free ) {
-                dma_frame_range *next = current->next;
-                if(next) {
-                    if( next->next != NULL ) {
-                        next->next->prev = current;
-                    }
-                    current->next = next->next;
-
-                    delete next;
-                }
-            }
-            return true;
-        }
-        current = current->next;
-    }
-    return false;
 }
